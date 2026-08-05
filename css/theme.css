@@ -1,0 +1,775 @@
+/**
+ * SEVEN BITS COFFEE - BRAND THEME
+ * Location: /css/theme.css
+ */
+
+/* ==========================================================================
+   1. CORE BASE STYLES
+   Global resets and primary brand colors.
+   ========================================================================== */
+body {
+    background: #0a0a0a;
+    color: #f9fafb;
+    font-family: "Courier New", monospace;
+    margin: 0;
+    padding: 20px;
+}
+
+/* ==========================================================================
+   2. SYSTEM NAVIGATION & HEADER
+   The sticky top navigation bar and global header branding.
+   ========================================================================== */
+header {
+    border-bottom: 2px solid #d97706;
+    padding-bottom: 20px;
+    margin-bottom: 40px;
+}
+
+.system-nav {
+    display: flex;
+    gap: 10px;
+    background: #111;
+    padding: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 2000;
+    border-bottom: 1px solid #333;
+}
+
+.system-nav button {
+    background: transparent;
+    color:#f7f2e8;
+    border: 1px solid #f7f2e8;
+    padding: 8px 18px;
+    cursor: pointer;
+    font-family: "Courier New", monospace;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+}
+
+.system-nav button:hover {
+    color: #d97706;
+    border-color: #d97706;
+    background: rgba(217, 119, 6, 0.05);
+}
+
+.system-nav button.active-tab {
+    color: #d97706;
+    border-color: #d97706;
+    background: rgba(217, 119, 6, 0.1);
+    box-shadow: inset 0 0 10px rgba(217, 119, 6, 0.2);
+    font-weight: bold;
+}
+
+/* ==========================================================================
+   3. PAGE ARCHITECTURE
+   Logic for handling single-page visibility toggles.
+   ========================================================================== */
+.page {
+    display: none;
+}
+.page.active {
+    display: block;
+}
+
+/* ==========================================================================
+   4. MENU SEARCH & VIEW CONTROLS
+   Alignment logic for the search bar and List/Grid toggle buttons.
+   ========================================================================== */
+.menu-controls {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap; /* Prevents stacking on small screens */
+    justify-content: flex-end;
+    align-items: center; /* Aligns search and buttons vertically */
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+#menu-search {
+    height: 48px; /* Locked height for alignment */
+    background: black;
+    border: 1px solid #333;
+    color: #d97706;
+    padding: 0 15px;
+    font-family: 'Courier New', monospace;
+    box-sizing: border-box; /* Includes border in height calculation */
+    outline: none;
+    flex-grow: 0;
+    min-width: 200px;
+}
+
+.btn-view-toggle {
+    height: 44px; /* Matches search input height */
+    width: 44px;  /* Square aspect ratio */
+    flex-shrink: 0; /* Prevents buttons from squishing */
+    background: #1a1a1a;
+    border: 1px solid #333;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    padding: 0;
+    transition: all 0.2s;
+}
+
+.btn-view-toggle:hover {
+    border-color: #d97706;
+}
+
+.btn-view-toggle span.icon,
+.icon-ui-list,
+.icon-ui-grid {
+    width: 24px;
+    height: 24px;
+    display: block;
+    background-size: contain;
+    background-repeat: no-repeat;
+    filter: invert(0.8);
+}
+
+.icon-ui-list {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>');
+}
+.icon-ui-grid {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/></svg>');
+}
+
+/* Responsive adjustments for controls */
+@media (max-width: 600px) {
+    .menu-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    #menu-search {
+        height: 44px;
+    }
+    .menu-controls div {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+    }
+}
+
+/* ==========================================================================
+   5. MENU ITEM COMPONENTS
+   Styling for product cards in both List and Grid formats.
+   ========================================================================== */
+.section-container {
+    margin-bottom: 60px;
+}
+.section-title {
+    color: #d97706;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    border-left: 5px solid #d97706;
+    padding-left: 15px;
+    margin-bottom: 20px;
+}
+
+.menu-item {
+    background: #111;
+    padding: 15px;
+    border-radius: 4px;
+    transition: transform 0.2s;
+    display: flex;
+    align-items: center;
+    border: 1px solid #222;
+}
+
+.menu-item:hover {
+    transform: scale(1.02);
+    background: #1a1a1a;
+}
+
+.menu-item .name {
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: #fff;
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+}
+
+.menu-item .story {
+    font-family: "Courier New", monospace;
+    font-size: 0.85rem;
+    color: #888;
+    line-height: 1.2;
+    font-style: normal;
+}
+
+/* List View Specifics */
+.menu-list .menu-item {
+    margin: 10px 0;
+}
+.menu-list .price {
+    margin-left: auto;
+    margin-right: 20px;
+    color: #d97706;
+    font-weight: bold;
+}
+
+/* Grid View Specifics */
+.menu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 20px;
+    padding: 20px 0;
+}
+
+.menu-grid .menu-item {
+    flex-direction: column;
+    text-align: center;
+    justify-content: center;
+    align-items: center;
+    min-height: 240px;
+}
+
+.menu-grid .name {
+    font-size: 1.2rem;
+    margin-top: 10px;
+}
+
+.menu-grid .price {
+    margin: 10px 0;
+    color: #d97706;
+    font-weight: bold;
+}
+.menu-grid .info {
+    margin-bottom: auto;
+}
+
+.menu-grid .item-controls {
+    width: 100%;
+    justify-content: space-between;
+    margin-top: 20px;
+    border-top: 1px dashed #333;
+    padding-top: 15px;
+}
+
+/* Item Iconography */
+.icon {
+    width: 40px;
+    height: 40px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    display: inline-block;
+    flex-shrink: 0;
+}
+.menu-list .icon {
+    margin-right: 15px;
+}
+.menu-grid .icon {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 15px;
+}
+
+.menu-controls {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Default Desktop Size (44px) */
+#menu-search {
+    height: 44px;
+    flex-grow: 1;
+    max-width: 400px;
+}
+
+.btn-view-toggle {
+    height: 44px;
+    width: 44px;
+    flex-shrink: 0;
+}
+
+/* Compact Mobile Scaling (36px) */
+@media (max-width: 600px) {
+    #menu-search {
+        height: 36px;
+        font-size: 0.8rem;
+        padding: 0 10px;
+    }
+
+    .btn-view-toggle {
+        height: 36px;
+        width: 36px;
+    }
+
+    .btn-view-toggle span.icon {
+        width: 18px;
+        height: 18px;
+    }
+}
+
+/* Responsive List adjustments */
+/* ==========================================================================
+   5. MENU ITEM COMPONENTS - RESPONSIVE FIX
+   Ensures List Mode stays horizontal even on mobile.
+   ========================================================================== */
+@media (max-width: 500px) {
+    .menu-list .menu-item {
+        flex-direction: row !important;
+        padding: 8px 12px; /* Tighter padding */
+        gap: 8px;
+        cursor: pointer;
+        align-items: flex-end
+    }
+
+    /* Shrink the icon to make room for text + button */
+    .menu-list .icon {
+        width: 28px;
+        height: 28px;
+        margin-right: 5px;
+        flex-direction: row;
+        align-items: center;
+    }
+
+    /* Hide story text on small screens to prioritize the Action Row */
+    .menu-list .story {
+        display: none;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed #333;
+        font-size: 0.8rem;
+        color: #888;
+        width: 100%;
+    }
+
+    .menu-list .name {
+        font-size: 0.9rem;
+    }
+
+    .item-controls {
+        gap: 8px;
+        margin-left: auto; /* Keeps price/button locked to the right */
+    }
+    /* Active state: Show story */
+    .menu-list .menu-item.active-story .story {
+        display: block;
+    }
+}
+
+/* ==========================================================================
+   6. CONTROL & ACTION BUTTONS
+   Add-to-cart buttons, quantity selectors, and fixed control layouts.
+   ========================================================================== */
+.item-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-left: auto;
+}
+
+.btn-order, .btn-add-fixed {
+    background: #d97706;
+    color: black;
+    border: 2px solid #d97706;
+    padding: 5px 15px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: background 0.2s;
+    height: 34px;
+    width: 110px;
+}
+
+.btn-add-fixed {
+    background: black;
+    color: #d97706;
+}
+
+.btn-add-fixed:hover {
+    background: #d97706;
+    color: black;
+}
+
+.btn-order.active-count {
+    background: #000 !important;
+    color: #f59e0b !important;
+    border: 2px solid #f59e0b !important;
+    box-shadow: inset 0 0 5px #f59e0b;
+}
+
+/* Quantity Selection */
+.btn-qty-container, .quantity-selector {
+    display: flex;
+    align-items: center;
+    border: 2px solid #d97706;
+    height: 34px;
+    background: black;
+}
+
+.btn-qty-container button, .quantity-selector button {
+    width: 30px;
+    height: 100%;
+    background: transparent;
+    color: #d97706;
+    border: none;
+    cursor: pointer;
+    font-size: 14pt;
+    font-family: "Courier New", Courier, monospace;
+}
+
+.btn-qty-container span, .quantity-selector .quantity-display {
+    width: 30px;
+    text-align: center;
+    color: #d97706;
+    font-weight: bold;
+}
+/* Desktop Base (34px) */
+.btn-order, .btn-add-fixed, .btn-qty-container {
+    height: 34px;
+}
+
+/* Mobile Slim (28px) */
+@media (max-width: 500px) {
+    .btn-order, .btn-add-fixed {
+        height: 28px;
+        width: 85px; /* Narrower footprint */
+        font-size: 0.75rem;
+        padding: 0 5px;
+    }
+
+    .btn-qty-container, .quantity-selector {
+        height: 28px;
+    }
+
+    .btn-qty-container button, 
+    .btn-qty-container span {
+        width: 22px; /* Smaller touch targets for mobile row */
+        font-size: 10pt;
+    }
+}
+/* ==========================================================================
+   7. UNIFIED ACTION FOOTER
+   Centering logic for the cart bar and jump-navigation FAB.
+   ========================================================================== */
+.footer-container {
+    position: sticky;
+    bottom: 20px;
+    left: 100%;
+    z-index: 5000;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    justify-content: flex-end; /* Keeps button on the right */
+    gap: 12px;
+    /* Changed width to 90vw and added horizontal padding */
+    width: 90vw; 
+    max-width: 500px;
+    padding: 0 10px; 
+    box-sizing: border-box; /* Ensures padding doesn't expand the width */
+    pointer-events: none;
+}
+
+.cart-bar, .btn-jump-fab {
+    pointer-events: auto;
+    flex-shrink: 0;
+}
+
+.cart-bar {
+    background: #d97706;
+    color: #000;
+    padding: 12px 25px;
+    flex-grow: 1; /* Allows bar to fill space and push FAB right */
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+    box-shadow: 4px 4px 0px #000;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+}
+
+.btn-jump-fab {
+    position: relative;  
+    width: 48px;
+    height: 48px;
+    background: #d97706;
+    border: none;
+    box-shadow: 4px 4px 0px #000;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s;
+}
+
+.btn-jump-fab:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0px #000;
+}
+
+@media (max-width: 480px) {
+    .footer-container { gap: 8px; }
+    .cart-bar { min-width: 200px; padding: 10px 15px; font-size: 0.9rem; }
+}
+
+/* ==========================================================================
+   8. JUMP OVERLAY & NAVIGATION
+   Section jump-menu used for quick menu navigation.
+   ========================================================================== */
+.jump-overlay {
+    position: absolute; /* Relative to footer-container */
+    bottom: 60px;      /* Distance above the buttons */
+    right: 10px;       /* Aligns with the Jump FAB button edge */
+    
+    /* Reset centering logic */
+    left: auto !important;
+    transform: none !important;
+    
+    background: #000;
+    border: 2px solid #d97706;
+    width: 250px;
+    display: none;
+    z-index: 5001;
+    box-shadow: 8px 8px 0px #000;
+}
+.jump-overlay, .cart-bar, .btn-jump-fab {
+    pointer-events: auto; /* Ensure menu items are clickable */
+}
+/* Adjust for small screens to ensure it doesn't bleed off-edge */
+@media (max-width: 540px) {
+    .jump-overlay {
+        right: 5vw; /* Matches the padding of your footer-container on mobile */
+    }
+}
+
+.jump-header { background: #d97706; color: #000; font-size: 8pt; padding: 5px 10px; font-weight: bold; }
+.jump-option { padding: 12px 15px; color: #d97706; cursor: pointer; border-bottom: 1px solid #222; }
+.jump-option:hover { background: #111; color: #fff; }
+.jump-id { opacity: 0.5; margin-right: 8px; }
+
+
+/* Offsets the scroll target so the title doesn't hide under the sticky nav */
+.section-header {
+    scroll-margin-top: 100px; /* Adjust based on your header height */
+}
+
+/* If you jump to the whole section, add it there too */
+.menu-section {
+    scroll-margin-top: 80px;
+}
+/* Add this to theme.css */
+.section-header, 
+.menu-section h2 {
+    scroll-margin-top: 100px; /* This creates the buffer for the jump */
+}
+/* ==========================================================================
+   9. CHECKOUT & MODAL UI
+   Transactional summaries and payment triggers.
+   ========================================================================== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+}
+.modal-content {
+    background: #111;
+    border: 2px solid #d97706;
+    padding: 30px;
+    width: 400px;
+    font-family: "Courier New", monospace;
+}
+.cart-row, .calc-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.total-row {
+    color: #d97706;
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-top: 15px;
+    border-top: 1px solid #333;
+    padding-top: 10px;
+}
+
+/* ==========================================================================
+   10. ADMIN & KITCHEN PORTALS
+   Order management, sales metrics, and global system configuration.
+   ========================================================================== */
+.admin-wrapper {
+    max-width: 900px;
+    margin: 20px auto;
+    background: #111;
+    border: 1px solid #333;
+    padding: 30px;
+}
+.admin-header {
+    border-bottom: 2px solid #d97706;
+    padding-bottom: 15px;
+    margin-bottom: 30px;
+}
+.config-controls {
+    background: #1a1a1a;
+    padding: 20px;
+    border-left: 4px solid #22d3ee;
+    margin-bottom: 30px;
+}
+.control-group {
+    margin-bottom: 15px;
+}
+.control-group label {
+    display: block;
+    font-size: 9pt;
+    color: #888;
+    margin-bottom: 5px;
+}
+.control-group input[type="text"] {
+    background: #000;
+    border: 1px solid #333;
+    color: #fff;
+    padding: 10px;
+    width: 100%;
+    font-family: inherit;
+}
+
+#kitchen-orders-root {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-top: 20px;
+}
+.kot-ticket {
+    /* Was a plain white card with black text - the only screen in the app that
+       broke the black/orange terminal theme. Now matches the rest of the UI. */
+    background: #111;
+    color: #f9fafb;
+    border: 1px solid #333;
+    padding: 15px;
+    width: 250px;
+    font-family: "Courier New";
+    box-shadow: 5px 5px #d97706;
+}
+.kot-header { border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 8px; font-weight: bold; }
+.item-pending { color: #22d3ee; }
+.item-done { color: #666; text-decoration: line-through; opacity: 0.6; }
+
+.kitchen-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+}
+.kitchen-tabs button {
+    background: #000;
+    color: #22d3ee;
+    border: 1px solid #22d3ee;
+    padding: 12px 25px;
+    cursor: pointer;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+.kitchen-tabs button.active-station {
+    background: #22d3ee;
+    color: #000;
+}
+
+/* ==========================================================================
+   11. HERO, ANIMATIONS & DECOR
+   Brand identity, storytelling sections, and pixel-art elements.
+   ========================================================================== */
+.hero-section {
+    text-align: center;
+    padding: 60px 20px;
+    max-width: 700px;
+    margin: 0 auto;
+}
+.story-text {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #a3a3a3;
+    margin: 30px 0;
+    border-top: 1px solid #222;
+    border-bottom: 1px solid #222;
+    padding: 20px 0;
+}
+
+.btn-primary {
+    background: #d97706;
+    color: #000;
+    font-family: inherit;
+    font-weight: 900;
+    font-size: 1.2rem;
+    padding: 15px 35px;
+    border: none;
+    cursor: pointer;
+    text-transform: uppercase;
+    box-shadow: 4px 4px #000;
+}
+
+.pixel-cat-container {
+    height: 60px;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+    margin: 20px 0;
+    border-bottom: 2px solid #1a1a1a;
+}
+.pixel-cat {
+    width: 60px;
+    height: 40px;
+    position: absolute;
+    bottom: 5px;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 12" shape-rendering="crispEdges"><path d="M2 2h1v1H2zM5 2h1v1H5zM2 3h4v4H2zM1 4h1v3H1zM6 4h1v3H6zM2 7h1v1H2zM5 7h1v1H5zM6 5h2v1H6zM8 4h1v1H8zM9 3h1v1H9zM10 2h1v1H10z" fill="%23d97706"/></svg>');
+    background-size: contain;
+    background-repeat: no-repeat;
+    animation: cat-across 12s infinite linear;
+}
+@keyframes cat-across {
+    0% { left: -70px; }
+    100% { left: 110%; }
+}
+
+/* Limited Edition Cyan Theme */
+.section-limited .section-title,
+.section-limited .price {
+    color: #22d3ee;
+    border-color: #22d3ee;
+}
+
+.section-limited .btn-order {
+    background: #22d3ee;
+}
+
+.section-limited .btn-order.active-count {
+    background: #000 !important;
+    color: #22d3ee !important;
+    border: 2px solid #22d3ee !important;
+    box-shadow: inset 0 0 5px #22d3ee;
+}
+
+.filler-bit {
+    background: #080808;
+    border: 1px dashed #222;
+    opacity: 0.3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.filler-cat {
+    width: 40px;
+    height: 40px;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 12" shape-rendering="crispEdges"><path d="M2 2h1v1H2zM5 2h1v1H5zM2 3h4v4H2zM1 4h1v3H1zM6 4h1v3H6zM2 7h1v1H2zM5 7h1v1H5zM6 5h2v1H6zM8 4h1v1H8zM9 3h1v1H9zM10 2h1v1H10z" fill="%23d97706"/></svg>');
+    background-size: contain;
+}

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!--
+            Tightened from the old policy (default-src * 'unsafe-inline' 'unsafe-eval'),
+            which let scripts/styles load from ANY origin and allowed eval() - that
+            effectively disabled CSP as a defense. This restricts everything to this
+            origin only, and only allows the one external image host actually used
+            (the UPI QR generator).
+            script-src and style-src still need 'unsafe-inline' because this codebase
+            uses onclick="..."/style="..." attributes throughout every dynamically
+            generated screen (menu, checkout, admin, kitchen) rather than
+            addEventListener - removing unsafe-inline would break all of those clicks.
+            Fully closing that gap means migrating every onclick attribute to
+            addEventListener + CSS classes; flagging it here as the next hardening
+            step rather than doing a full UI rewrite under this change.
+            Clickjacking protection is handled instead by the X-Frame-Options header
+            server.js sends - the frame-ancestors directive doesn't work in a <meta>
+            tag, only in a real HTTP header.
+        -->
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.qrserver.com; connect-src 'self';" />
+        <link rel="stylesheet" href="css/theme.css" />
+        <link rel="stylesheet" href="css/iconsvg.css" />
+        <title>Seven Bits Coffee // Hazaribagh</title>
+    </head>
+    <body>
+        <!-- SYSTEM NAVIGATION: Persistent header for page switching -->
+        <nav class="system-nav">
+            <button onclick="showPage('home')">HOME</button>
+            <button onclick="showPage('menu')">MENU</button>
+            <button onclick="showPage('kitchen')">ORDERS</button>
+            <button onclick="showPage('admin')">ADMIN</button>
+        </nav>
+
+        <!-- PAGE: HOME (Landing section with hero logo and story) -->
+        <div id="page-home" class="page active">
+            <div class="hero-section">
+                <div class="icon-logo icon-logo-hero"></div>
+                <h1>SEVEN BITS COFFEE</h1>
+                <p class="story-text">
+                    Born from love for Physics, Coffee, a cat named Ginger and an obssesion with the number seven. We
+                    don't just brew; we process flavor with low-latency precision.
+                </p>
+                <button class="btn-primary" onclick="showPage('menu')">ORDER NOW</button>
+                <div class="pixel-cat-container">
+                    <div class="pixel-cat"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: MENU (Dynamic menu rendering with view toggles) -->
+       <!-- PAGE: MENU -->
+<div id="page-menu" class="page">
+    <div class="menu-controls" style="padding: 10px; display: flex; justify-content: flex-end; gap: 15px">
+    <!-- Search is wired via window.initSearchBar() in app.js (debounced), not an inline
+         handler - the old oninput="renderMenu(...)" called a function that was never
+         attached to window, so it silently errored on every keystroke. -->
+    <input type="text" id="menu-search" placeholder="SEARCH_BITS..."
+           style="background: black; border: 1px solid #333; color: #d97706; padding: 5px 10px; font-family: 'Courier New';">
+    
+    <button class="btn-view-toggle" onclick="window.setViewMode('list')">
+        <span class="icon icon-hamburger"></span>
+    </button>
+    <button class="btn-view-toggle" onclick="window.setViewMode('grid')">
+        <span class="icon icon-grid"></span>
+    </button>
+</div>
+
+    <div id="menu-root"></div>
+
+   
+    <!-- UNIFIED ACTION FOOTER -->
+<div id="footer-actions" class="footer-container" style="display: none;">
+    
+    <!-- JUMP MENU (NESTED INSIDE) -->
+    <!-- This now follows the footer's sticky position and 500px max-width -->
+    <div id="jump-menu" class="jump-overlay">
+        <div class="jump-header">CATEGORIES:</div>
+        <div id="jump-options-container">
+            <!-- Options injected by JS -->
+        </div>
+    </div>
+
+    <!-- CART BAR -->
+    <div id="cart-status" class="cart-bar" onclick="window.handleCartStatusClick()">
+        <span>BITS IN CART:</span>
+        <span id="cart-count">0</span>
+    </div>
+    
+    <!-- JUMP BUTTON -->
+    <button class="btn-jump-fab" onclick="window.toggleJumpMenu(event)">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+        </svg>
+    </button>
+</div>
+
+    <div id="jump-menu" class="jump-overlay"></div>
+</div>
+
+        <!-- PAGE: ORDERS (Kitchen Display System / KOT Management) -->
+        <div id="page-kitchen" class="page">
+            <div class="kitchen-tabs">
+                <button class="active-station" data-station="MASTER" onclick="filterKitchen('MASTER')">ALL</button>
+                <button data-station="BARISTA" onclick="filterKitchen('BARISTA')">BARISTA</button>
+                <button data-station="KITCHEN" onclick="filterKitchen('KITCHEN')">KITCHEN</button>
+                <!-- New Dessert Station -->
+                <button data-station="DESSERTS" onclick="window.filterKitchen('DESSERTS')">DESSERTS</button>
+            </div>
+            <!-- Target for dynamic KOT ticket injection -->
+            <div id="kitchen-orders-root"></div>
+        </div>
+
+        <!-- PAGE: ADMIN (System configuration and menu repository) -->
+        <div id="page-admin" class="page">
+            <div class="admin-wrapper">
+                <header class="admin-header">
+                    <h1>SYSTEM CONFIGURATION</h1>
+                    <!-- Dynamic sales metrics -->
+                    <div id="admin-sales-root"></div>
+                </header>
+                <section class="config-controls">
+                    <h3>GLOBAL PARAMETERS</h3>
+                    <div class="control-group">
+                        <label for="shop-name-input">SHOP NAME:</label>
+                        <input type="text" id="shop-name-input" onchange="AdminPortal.updateGlobalConfig()" />
+                    </div>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="tip-toggle" onchange="AdminPortal.updateGlobalConfig()" />
+                            ENABLE GINGER TIP (₹7.00)
+                        </label>
+                    </div>
+                </section>
+                <section class="menu-management">
+                    <h3>BIT REPOSITORY (MENU ITEMS)</h3>
+                    <!-- List of items for price editing and deletion -->
+                    <div id="admin-menu-list"></div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Main JS entry point (Module type required for ES6 imports) -->
+        <script type="module" src="js/app.js"></script>
+    </body>
+</html>
