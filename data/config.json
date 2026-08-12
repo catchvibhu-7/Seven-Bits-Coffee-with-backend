@@ -1,0 +1,28 @@
+{
+  "shopName": "SEVEN BITS COFFEE",
+  "currency": "₹",
+  "cgstRate": 0.05,
+  "sgstRate": 0.05,
+  "serviceChargeRate": 0.02,
+  "tipEnabled": true,
+  "tipAmount": 7,
+  "theme": "dark",
+  "heroImageUrl": "",
+  "logoUrl": "",
+  "colors": {
+    "accent": "#d97706",
+    "background": "#0a0a0a",
+    "surface": "#111111",
+    "text": "#f9fafb",
+    "secondary": "#ff8000"
+  },
+  "footer": {
+    "tagline": "7 Bits of coffee with 7 bits of precision.",
+    "address": "Anandpuri Hazaribagh",
+    "phone": "7230931024",
+    "email": "7bitscoffee@7bits.com",
+    "hours": "Mon-Sat: 8Am to 8Pm"
+  },
+  "upiVpa": "catchvibhu-1@okaysbi",
+  "upiPayeeName": "Kumar Vaibhav"
+}

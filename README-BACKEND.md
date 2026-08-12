@@ -1,82 +1,139 @@
 # Seven Bits Coffee - Backend
 
-This adds a real server (`server.js`) behind the existing frontend, replacing
-the old client-only build where orders lived only in one browser tab's memory
-and "admin login" was a hardcoded passcode anyone could read in the JS
-source or bypass from devtools.
+A real server (`server.js`) behind the frontend, with actual user accounts
+and roles - replacing the old client-only build where orders lived only in
+one browser tab's memory and "admin login" was a hardcoded passcode anyone
+could read in the JS source or bypass from devtools.
 
-Written in **plain Node.js** (only built-in modules - `http`, `fs`, `crypto`)
-so it runs with nothing to install:
+Written in **plain Node.js** (only built-in modules - `http`, `fs`,
+`crypto`) so it runs with nothing to install:
 
 ```
 node server.js
 ```
 
+**Windows:** just double-click `start.bat` instead - it checks Node.js is
+installed, creates a `server-settings.bat` file for your password/settings
+on first run, and keeps the window open if something goes wrong so you can
+read the error.
+
 Then open `http://localhost:3000`.
 
-## Configuration
+## Accounts & roles
 
-Copy `.env.example` to `.env` for reference, and export the variables it
-lists before starting the server (see that file for what each one does -
-`ADMIN_PASSWORD`, `UPI_VPA`, `UPI_PAYEE_NAME`, `PORT`, `FORCE_SECURE_COOKIE`).
-Since no dependencies were installed, `.env` isn't loaded automatically -
-either `export` the values yourself, use your host's environment-variable
-settings (Render/Railway/Fly/etc. all have a place for this), or add a
-dotenv loader if you'd rather.
+There are five kinds of access:
 
-**Set `ADMIN_PASSWORD` explicitly before your first real run.** If you
+| Role | Can see | How the account is made |
+|---|---|---|
+| **Owner** | Everything: Admin panel (menu, pricing, settings, staff accounts) + Kitchen/Orders board | One owner account is auto-created the first time you run the server, from `OWNER_USERNAME` / `OWNER_PASSWORD` |
+| **Admin** | Admin panel + Kitchen/Orders board. Can create **employee** accounts only | Created by the owner (or another admin) from the Admin panel's "Staff Accounts" section |
+| **Employee** | Kitchen/Orders board only (not Admin) | Created by an owner or admin |
+| **Customer** | Their own order status on the home page | Self-registers with the "SIGN UP" tab on the login screen (username, password, name, phone) |
+| **Guest** | The order status tied to whichever phone number they enter - nothing else | No account needed - "GUEST" tab on the login screen, just enter a phone number |
+
+Staff roles (owner/admin/employee) are never available to the public
+sign-up form - only an existing owner/admin can hand those out, and the
+server enforces who's allowed to create which role even if someone calls
+the API directly (an admin trying to create another admin gets rejected).
+
+**Set `OWNER_PASSWORD` explicitly before your first real run.** If you
 don't, the server generates a random one and prints it to the console a
 single time on first boot - fine for testing, risky for production if you
 miss it.
 
-## What changed vs. the old build, and why
+## How order tracking works
+
+Every order needs a phone number attached (typed in at checkout, or
+pre-filled and locked if you're logged in as a customer). That phone number
+is what "Guest" login uses to find your order afterwards - a guest can only
+ever see orders placed under the exact phone number they typed in, nothing
+else. A logged-in customer sees orders tied to their account instead.
+
+This was designed so it drops into a real database later with no rework:
+every place that reads/writes users, menu items, config, or orders goes
+through a small set of functions (`readJson`/`writeJson`, `findUserById`,
+etc.) in `server.js` - swapping those for real database calls is the only
+change needed; none of the route logic, the role checks, or the frontend
+would need to change.
+
+## Configuration
+
+Copy `.env.example` to `.env` for reference and export those variables
+yourself (see that file for what each one does), or on Windows just edit
+`server-settings.bat` (created automatically by `start.bat`). Since no
+dependencies were installed, `.env` isn't loaded automatically outside of
+that.
+
+## What changed vs. the single-password build
 
 | Before | Now |
 |---|---|
-| `passcode: "1024"` shipped in plain JS; "logged in" was just a `sessionStorage` flag anyone could set from devtools | Password is hashed on disk (`data/admin.json`), checked server-side, session is an httpOnly cookie the browser can't read or forge |
-| Orders lived in an in-memory array in one browser tab - refresh, or open the kitchen display on another device, and they're gone | Orders persist in `data/orders.json`; every station (register, kitchen screen, admin) reads/writes the same server data, live-synced over Server-Sent Events |
-| "Pay Online" QR always requested a fixed ₹500 to a hardcoded personal UPI ID, regardless of the actual order | Order totals are computed **server-side** from the server's own menu prices; the QR is built from that real total and a UPI ID you configure via env vars, not baked into the source |
-| Admin price edits / menu deletes only changed an in-memory object - gone on refresh | All menu/config changes go through the API and are saved to disk |
-| GST/service-charge rates in "admin settings" were never actually read anywhere | Checkout math now reads these from `data/config.json`, which the admin panel actually edits |
-| CSP allowed scripts/styles/images from any origin plus `eval()` | Restricted to this origin only (see the comment in `index.html` for the one remaining tradeoff: inline `onclick=""` still needs `unsafe-inline` until those are migrated to `addEventListener`, which is real follow-up work, not done here) |
-| Order IDs were `SB-` + a random 4-digit number - collisions likely at real volume | Order IDs use random hex, effectively collision-free |
+| One hardcoded passcode (`"1024"`), same access for everyone who had it | Real accounts with 5 distinct roles, each seeing only what they're supposed to |
+| Orders lived in one browser tab's memory | Orders persist in `data/orders.json`, synced live across every device via Server-Sent Events |
+| No way for a customer to check on their order | Home page shows the signed-in customer's/guest's latest order and live status (Preparing/Ready) |
+| Anyone could open Kitchen or Admin from the nav | Kitchen requires employee/admin/owner; Admin requires admin/owner; the nav itself hides tabs you can't use, and the server double-checks on every request regardless of what the nav shows |
+| "Pay Online" QR always requested a fixed ₹500 to a hardcoded personal UPI ID | Server computes the real total from its own menu prices and builds the QR from that |
+
+(See the git history / earlier conversation for the full list of fixes from
+the original client-only build - QR bug, dead config settings, kitchen
+ticket theme, CSP, etc. - all still included here.)
 
 ## Data storage
 
 Everything lives as JSON files under `./data/` (created automatically on
 first run, seeded from `./data-seed/menu-seed.json`):
 
+- `users.json` - accounts (hashed passwords, never plaintext) with role, name, phone
 - `menu.json` - items, prices, sections
 - `config.json` - shop name, tax rates, service charge, tip settings
-- `orders.json` - every order ever placed
-- `admin.json` - the hashed admin password (never the plaintext)
+- `orders.json` - every order ever placed, with the phone/customer it's linked to
 
 This is intentionally simple (no database server to run) and is fine for a
-single coffee shop's volume. If you outgrow it, the next step is swapping
-`readJson`/`writeJson` in `server.js` for a real database (Postgres/SQLite) -
-the rest of the code doesn't need to change since those two functions are
-the only thing touching disk.
-
-**Back these files up.** There's no replication - if the machine running
-this dies, you lose order history unless you're backing up `./data/`.
+single coffee shop's volume. **Back these files up** - there's no
+replication, so if the machine running this dies, you lose order and
+account history unless you're backing up `./data/`.
 
 ## Known limitation worth knowing about: online payments are still trust-based
 
 Marking an `ONLINE` order as paid currently happens automatically when the
 order is created - there's no verification that money actually arrived,
-because that requires integrating a real UPI/payment-gateway webhook (Razorpay,
-Cashfree, PhonePe Business, etc.), which needs a merchant account and
-credentials only you can set up. The QR code now at least requests the
-*correct amount*, which fixes the bigger bug, but a customer could still
-show "payment pending" at the counter without having actually paid. Wiring
-up a real payment gateway's server-to-server confirmation is the natural
-next step - happy to help with that once you've picked a provider.
+because that requires integrating a real UPI/payment-gateway webhook
+(Razorpay, Cashfree, PhonePe Business, etc.), which needs a merchant
+account and credentials only you can set up. The QR code requests the
+*correct amount* (fixed from the original build), but a customer could
+still show "payment pending" at the counter without having actually paid.
+Wiring up a real payment gateway's server-to-server confirmation is the
+natural next step - happy to help with that once you've picked a provider.
 
-## Everything else from the original review
+## Good next steps (not done yet)
 
-The other fixes discussed earlier (dynamic QR amount, real auth, orders
-syncing across devices, dead-config bug, kitchen ticket theme, CSP) are all
-included in this build. Feature suggestions from that review (order status
-timeline, low-stock alerts, CSV export, "add new item" in admin) - the
-"add item" button is now in Admin; the rest are still open and would be
-good follow-ups whenever you're ready.
+- Real payment verification (see above)
+- Migrate the remaining `onclick=""` handlers to `addEventListener` so the
+  Content-Security-Policy can drop `unsafe-inline` entirely
+- Order history (beyond "most recent") on the customer's home page
+- Low-stock alerts, CSV export of sales - from the original feature list
+
+## Admin panel tour (Global Settings / Menu Items / Order History / User Management / Branding)
+
+- **Menu Items**: add/edit items through a form (not a browser prompt) -
+  section and icon are dropdowns, and edits cover every field, not just price.
+- **Order History**: a filterable (All/Active/Completed), sortable
+  (newest/oldest) grid of every order ever placed - separate from the live
+  Kitchen board, meant for looking back rather than working an order queue.
+- **User Management**: staff accounts, password resets/removal, and - owner
+  only - an **account activity log** showing every password reset or
+  removal an admin has performed on another account, so an owner can catch
+  misuse. Admins can't see or clear this log.
+- **Branding**: theme presets (DARK/LIGHT fill in that theme's standard
+  colors; CUSTOM leaves your colors alone), a **Reset to Default** button,
+  **custom icons** (add your own by image URL, usable in the menu item
+  editor alongside the built-in set), and **saved branding profiles** - e.g.
+  a "Diwali" or "Christmas" look you can save once and switch back to
+  instantly later.
+- Every logged-in account (not just staff) can reach **Account Settings**
+  from the nav button in the top right, to change their own password.
+
+Note on image URLs: the CSP's `img-src` allows any `https://` source (not
+just specific hosts) because Branding lets an admin point the hero image,
+logo, and custom icons at any URL - that's admin-configured content, not
+something a random visitor can inject.

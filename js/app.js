@@ -3,24 +3,230 @@
  * Location: /js/app.js
  */
 import { KitchenSystem } from "./features/kitchen-logic.js";
-import { SecuritySystem } from "./features/auth-logic.js";
+import { AuthSystem } from "./features/auth-logic.js";
+import { AdminConfig } from "./features/config-logic.js";
 import { renderCheckoutModal, renderPaymentConfirmation } from "./ui/checkout-modal.js";
-import { renderLoginModal } from "./ui/login-modal.js";
+import { renderLoginModal, renderForceChangePasswordModal } from "./ui/login-modal.js";
+import { renderAccountSettingsModal } from "./ui/account-settings-modal.js";
 
 // --- System State ---
 let cart = [];
 let serviceChargeActive = true;
 let tipApplied = false;
-let currentKitchenStation = "BARISTA";
+let currentKitchenStation = "MASTER"; // matches the "ALL" tab that's marked active by default in index.html
 let viewMode = "list";
 let menuData = { sections: [], items: [] };
+let siteConfig = {}; // last-loaded config (colors/customIcons/etc.) for icon rendering + branding
 let pendingOrder = null; // order returned by the server, waiting to be printed
 let ordersStream = null; // SSE connection, opened once after the first authenticated view
+let session = { authenticated: false, role: null, name: null, phone: null }; // current login state
+
+const KITCHEN_ROLES = ["employee", "admin", "owner"];
+const ADMIN_ROLES = ["admin", "owner"];
+const TRACKING_ROLES = ["customer", "guest"];
 
 async function loadMenu() {
     const res = await fetch("/api/menu");
     menuData = await res.json();
 }
+
+async function refreshSession() {
+    session = await AuthSystem.getSession();
+    updateNavForSession();
+    return session;
+}
+
+/**
+ * Shows/hides the Kitchen and Admin nav tabs based on role, and updates the
+ * account button's label - purely visual, the server enforces the real
+ * access control on every request regardless of what the nav shows.
+ */
+function updateNavForSession() {
+    const kitchenTab = document.getElementById("nav-kitchen");
+    const adminTab = document.getElementById("nav-admin");
+    const accountBtn = document.getElementById("nav-account");
+
+    if (kitchenTab) kitchenTab.style.display = KITCHEN_ROLES.includes(session.role) ? "" : "none";
+    if (adminTab) adminTab.style.display = ADMIN_ROLES.includes(session.role) ? "" : "none";
+
+    if (accountBtn) {
+        if (session.authenticated) {
+            const label = session.role === "guest" ? "GUEST" : session.name || session.role.toUpperCase();
+            accountBtn.textContent = `\u2b95 ${label}`;
+        } else {
+            accountBtn.textContent = "LOGIN";
+        }
+    }
+}
+
+/**
+ * If the account that just logged in has a temporary/reset password, force
+ * a change before letting them proceed anywhere - the temp password is
+ * meant to work exactly once.
+ */
+async function afterLoginSuccess(loginResult, proceed) {
+    if (loginResult && loginResult.mustChangePassword) {
+        renderForceChangePasswordModal(
+            async () => {
+                await refreshSession();
+                await proceed();
+            },
+            async () => {
+                await AuthSystem.logout();
+                await refreshSession();
+                window.showPage("home");
+            }
+        );
+        return;
+    }
+    await refreshSession();
+    await proceed();
+}
+
+/**
+ * Applies the admin's Branding settings (colors/theme/hero/logo) as CSS
+ * custom properties + element updates - called on boot and immediately
+ * after saving Branding in the admin panel, no reload needed.
+ */
+window.applyBranding = (config) => {
+    siteConfig = config;
+    const root = document.documentElement;
+    const colors = config.colors || {};
+    if (colors.accent) root.style.setProperty("--color-accent", colors.accent);
+    if (colors.background) root.style.setProperty("--color-bg", colors.background);
+    if (colors.surface) root.style.setProperty("--color-surface", colors.surface);
+    if (colors.text) root.style.setProperty("--color-text", colors.text);
+    if (colors.textMuted) root.style.setProperty("--color-text-muted", colors.textMuted);
+    if (colors.secondary) root.style.setProperty("--color-cyan", colors.secondary);
+
+    document.body.classList.toggle("theme-light", config.theme === "light");
+
+    const heroEl = document.querySelector(".icon-logo-hero");
+    if (heroEl) {
+        if (config.heroImageUrl) {
+            heroEl.style.backgroundImage = `url(${JSON.stringify(config.heroImageUrl).slice(1, -1)})`;
+            heroEl.style.backgroundSize = "contain";
+            heroEl.style.backgroundRepeat = "no-repeat";
+            heroEl.style.backgroundPosition = "center";
+        } else {
+            heroEl.style.backgroundImage = "";
+        }
+    }
+
+    const logoEl = document.getElementById("site-logo");
+    if (logoEl) {
+        if (config.logoUrl) {
+            logoEl.src = config.logoUrl;
+            logoEl.style.display = "inline-block";
+        } else {
+            logoEl.style.display = "none";
+        }
+    }
+};
+
+window.handleAccountClick = () => {
+    if (session.authenticated) {
+        renderAccountMenu();
+    } else {
+        renderLoginModal(
+            (loginResult) => afterLoginSuccess(loginResult, () => window.showPage("home")),
+            { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
+        );
+    }
+};
+
+/**
+ * Small dropdown under the account nav button - kept separate from Account
+ * Settings (rather than nesting Logout inside that modal) so Logout stays a
+ * one-click action as more account features get added to Settings later.
+ */
+function renderAccountMenu() {
+    document.getElementById("account-menu")?.remove();
+    const btn = document.getElementById("nav-account");
+    if (!btn) return;
+
+    const menu = document.createElement("div");
+    menu.id = "account-menu";
+    const rect = btn.getBoundingClientRect();
+    menu.style.cssText = `
+        position: fixed; top: ${rect.bottom + 6}px; right: ${window.innerWidth - rect.right}px;
+        background: var(--color-surface); border: 1px solid var(--color-accent);
+        min-width: 180px; z-index: 5500; font-family: 'Courier New', monospace;
+        box-shadow: 4px 4px 0 rgba(0,0,0,0.4);
+    `;
+
+    const items = [];
+    if (session.role !== "guest") {
+        items.push({ label: "ACCOUNT SETTINGS", action: () => renderAccountSettingsModal(session) });
+    }
+    items.push({ label: "LOG OUT", action: doLogout, danger: true });
+
+    menu.innerHTML = items
+        .map(
+            (item, i) => `
+        <button data-menu-index="${i}" style="display:block; width:100%; text-align:left; background:none; border:none; ${i > 0 ? "border-top:1px solid var(--color-border);" : ""} color:${item.danger ? "var(--color-danger)" : "var(--color-text)"}; padding:12px 16px; cursor:pointer; font-family:inherit; font-size:8pt; text-transform:uppercase;">${item.label}</button>
+    `
+        )
+        .join("");
+
+    document.body.appendChild(menu);
+    menu.querySelectorAll("[data-menu-index]").forEach((el, i) => {
+        el.addEventListener("click", () => {
+            menu.remove();
+            items[i].action();
+        });
+    });
+
+    setTimeout(() => {
+        document.addEventListener(
+            "click",
+            function closeMenu(e) {
+                if (!menu.contains(e.target) && e.target !== btn) {
+                    menu.remove();
+                    document.removeEventListener("click", closeMenu);
+                }
+            },
+            { once: false }
+        );
+    }, 0);
+}
+
+function doLogout() {
+    AuthSystem.logout().then(async () => {
+        await refreshSession();
+        window.showPage("home");
+    });
+}
+
+/**
+ * Small toast used to confirm actions like "Settings saved" - several admin
+ * save buttons had no feedback at all before, so it looked like clicking
+ * them did nothing even when the save succeeded.
+ */
+window.showToast = (message, tone = "success") => {
+    document.getElementById("app-toast")?.remove();
+    const toast = document.createElement("div");
+    toast.id = "app-toast";
+    const color = tone === "error" ? "var(--color-danger)" : "var(--color-success)";
+    toast.style.cssText = `
+        position: fixed; bottom: 24px; right: 24px; z-index: 9000;
+        background: var(--color-surface); border: 1px solid ${color}; color: ${color};
+        padding: 12px 20px; font-family: 'Courier New', monospace; font-size: 9pt;
+        font-weight: bold; box-shadow: 4px 4px 0 rgba(0,0,0,0.4);
+        transform: translateY(20px); opacity: 0; transition: all 0.25s ease;
+    `;
+    toast.textContent = (tone === "error" ? "\u2717 " : "\u2713 ") + message;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => {
+        toast.style.transform = "translateY(0)";
+        toast.style.opacity = "1";
+    });
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(20px)";
+        setTimeout(() => toast.remove(), 300);
+    }, 2200);
+};
 
 /**
  * NAVIGATION & VIEW CONTROL
@@ -31,11 +237,21 @@ window.setViewMode = (mode) => {
 };
 
 window.showPage = async (pageId) => {
-    const isProtected = pageId === "admin" || pageId === "kitchen" || pageId === "orders";
-    if (isProtected) {
-        const authed = await SecuritySystem.checkAccess();
-        if (!authed) {
-            renderLoginModal(() => window.showPage(pageId));
+    const needsKitchenRole = pageId === "kitchen" || pageId === "orders";
+    const needsAdminRole = pageId === "admin";
+
+    if (needsKitchenRole || needsAdminRole) {
+        await refreshSession();
+        const allowedRoles = needsAdminRole ? ADMIN_ROLES : KITCHEN_ROLES;
+        if (!allowedRoles.includes(session.role)) {
+            if (session.authenticated) {
+                alert("Your account doesn't have access to this page.");
+                return;
+            }
+            renderLoginModal(
+                (loginResult) => afterLoginSuccess(loginResult, () => window.showPage(pageId)),
+                { title: "STAFF LOGIN REQUIRED", allowGuest: false, allowRegister: false }
+            );
             return;
         }
     }
@@ -69,7 +285,61 @@ window.showPage = async (pageId) => {
         renderKitchen();
         ensureOrdersStream();
     }
+    if (pageId === "home") {
+        renderPopularPicks();
+        await refreshOrderStatusWidget();
+        if (TRACKING_ROLES.includes(session.role)) ensureOrdersStream();
+    }
 };
+
+/**
+ * Shows the signed-in customer's/guest's current order and its live status
+ * on the home page - but ONLY when there's an actual order in progress.
+ * Staff, nobody logged in, a customer/guest with no orders, and a
+ * customer/guest whose only orders are already fully completed all just
+ * don't show this section at all, rather than an empty/prompt state taking
+ * up space on every visit.
+ */
+async function refreshOrderStatusWidget() {
+    const section = document.getElementById("order-status-section");
+    const root = document.getElementById("order-status-root");
+    if (!section || !root) return;
+
+    if (!TRACKING_ROLES.includes(session.role)) {
+        section.style.display = "none";
+        return;
+    }
+
+    const orders = await KitchenSystem.fetchMine();
+    // "Active" = still being made, or just became ready recently (so the
+    // customer still sees "come pick it up") - once it's been ready for a
+    // while, or once there's simply no order, this section just disappears
+    // rather than showing an empty/prompt state indefinitely.
+    const READY_VISIBLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+    const activeOrder = orders.find((o) => {
+        if (o.status !== "READY") return true;
+        return Date.now() - new Date(o.createdAt).getTime() < READY_VISIBLE_WINDOW_MS;
+    });
+    if (!activeOrder) {
+        section.style.display = "none";
+        return;
+    }
+
+    const order = activeOrder;
+    const statusColor = order.status === "READY" ? "var(--color-success)" : order.status === "PREPARING" ? "var(--color-cyan)" : "var(--color-accent)";
+
+    section.style.display = "block";
+    root.innerHTML = `
+        <div class="status-card" style="border:1px solid var(--color-accent); padding:15px; font-family:'Courier New',monospace;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span>#${order.id}</span>
+                <span style="color:${statusColor}; font-weight:bold;">${order.status}</span>
+            </div>
+            <div style="font-size:9pt; color:var(--color-text-muted);">${order.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")}</div>
+            <div style="font-size:9pt; margin-top:8px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 \u20b9${order.total.toFixed(2)}</div>
+        </div>
+    `;
+}
 
 /**
  * Opens the live-updates connection once per session so every station
@@ -79,9 +349,15 @@ window.showPage = async (pageId) => {
 function ensureOrdersStream() {
     if (ordersStream) return;
     ordersStream = KitchenSystem.connectLiveUpdates(async () => {
-        await KitchenSystem.fetchOrders();
         const kitchenPage = document.getElementById("page-kitchen") || document.getElementById("page-orders");
-        if (kitchenPage && kitchenPage.classList.contains("active")) renderKitchen();
+        if (kitchenPage && kitchenPage.classList.contains("active")) {
+            await KitchenSystem.fetchOrders();
+            renderKitchen();
+        }
+        const homePage = document.getElementById("page-home");
+        if (homePage && homePage.classList.contains("active")) {
+            await refreshOrderStatusWidget();
+        }
     });
 }
 
@@ -207,13 +483,20 @@ window.startCheckout = async (method) => {
     const btn = document.getElementById(method === "ONLINE" ? "btn-pay-online" : "btn-pay-cash");
     const errorBox = document.getElementById("checkout-error");
     if (errorBox) errorBox.textContent = "";
+
+    const phone = document.getElementById("checkout-phone")?.value || "";
+    if (!phone.trim()) {
+        if (errorBox) errorBox.textContent = "Enter a phone number so this order can be tracked.";
+        return;
+    }
+
     if (btn) {
         btn.disabled = true;
         btn.textContent = "PROCESSING...";
     }
 
     try {
-        const order = await KitchenSystem.pushOrder(cart, method, { serviceChargeActive, tipApplied });
+        const order = await KitchenSystem.pushOrder(cart, method, { serviceChargeActive, tipApplied, phone });
         pendingOrder = order;
         renderPaymentConfirmation(order, method);
     } catch (e) {
@@ -237,6 +520,7 @@ window.finalizeAndPrint = () => {
     document.getElementById("payment-overlay")?.remove();
     window.closeModal();
     renderMenu();
+    refreshOrderStatusWidget();
 
     if (order) {
         setTimeout(() => {
@@ -304,6 +588,15 @@ window.jumpTo = (sectionId) => {
     }
 };
 
+/** Renders an item's icon - a custom admin-uploaded image if configured for that key, else the built-in CSS icon. */
+function iconMarkup(iconKey) {
+    const customUrl = siteConfig.customIcons && siteConfig.customIcons[iconKey];
+    if (customUrl) {
+        return `<img src="${customUrl}" alt="" style="width:32px; height:32px; object-fit:contain;" />`;
+    }
+    return `<span class="icon icon-${iconKey}"></span>`;
+}
+
 function renderMenu(filterQuery = "") {
     const root = document.getElementById("menu-root");
     if (!root) return;
@@ -340,7 +633,7 @@ function renderMenu(filterQuery = "") {
             const itemEl = document.createElement("div");
             itemEl.className = "menu-item";
             itemEl.innerHTML = `
-                <span class="icon icon-${item.icon}"></span>
+                ${iconMarkup(item.icon)}
                 <div class="info">
                     <div class="name">${item.name}</div>
                     <div class="story">${item.story}</div>
@@ -370,26 +663,55 @@ function renderMenu(filterQuery = "") {
 // on every click even though the bar still happened to work. Defining the
 // actual function it calls fixes that and removes the duplicate listener.
 window.handleCartStatusClick = async () => {
-    if (cart.length > 0) {
-        await renderCheckoutModal(cart, serviceChargeActive, tipApplied);
-    } else {
+    if (cart.length === 0) {
         alert("SYSTEM IDLE: Select bits.");
+        return;
     }
+
+    await refreshSession();
+    if (!session.authenticated) {
+        renderLoginModal(
+            (loginResult) =>
+                afterLoginSuccess(loginResult, async () => {
+                    await renderCheckoutModal(cart, serviceChargeActive, tipApplied);
+                }),
+            { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
+        );
+        return;
+    }
+
+    await renderCheckoutModal(cart, serviceChargeActive, tipApplied);
 };
 
 /**
  * KITCHEN MANAGEMENT
  */
+let kitchenStatusFilter = "active"; // "active" | "history" | "all"
+let kitchenSortOrder = "newest"; // "newest" | "oldest"
+
 window.filterKitchen = (station) => {
     currentKitchenStation = station;
 
-    document.querySelectorAll(".kitchen-tabs button").forEach((btn) => {
-        btn.classList.remove("active-station");
+    document.querySelectorAll(".kitchen-tabs .admin-tab-btn").forEach((btn) => {
+        btn.classList.remove("active");
         if (btn.getAttribute("data-station") === station) {
-            btn.classList.add("active-station");
+            btn.classList.add("active");
         }
     });
 
+    renderKitchen();
+};
+
+window.setKitchenStatusFilter = (filter) => {
+    kitchenStatusFilter = filter;
+    document.querySelectorAll("[data-status-filter]").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.statusFilter === filter);
+    });
+    renderKitchen();
+};
+
+window.setKitchenSort = (sort) => {
+    kitchenSortOrder = sort;
     renderKitchen();
 };
 
@@ -398,34 +720,46 @@ function renderKitchen() {
     if (!root) return;
     root.innerHTML = "";
 
-    KitchenSystem.orders
-        .slice()
-        .reverse()
-        .forEach((order) => {
+    const sorted = KitchenSystem.orders.slice().sort((a, b) => {
+        const diff = new Date(a.createdAt) - new Date(b.createdAt);
+        return kitchenSortOrder === "newest" ? -diff : diff;
+    });
+
+    let visibleCount = 0;
+
+    sorted.forEach((order) => {
             const isMaster = currentKitchenStation === "MASTER";
+            const orderIsComplete = order.items.every((i) => i.isDone);
+
+            // ACTIVE hides fully-completed orders; HISTORY shows only
+            // completed ones; ALL shows everything regardless of status.
+            if (kitchenStatusFilter === "active" && orderIsComplete) return;
+            if (kitchenStatusFilter === "history" && !orderIsComplete) return;
 
             const itemsToDisplay = isMaster
                 ? order.items
                 : order.items.filter((i) => {
                       const station = i.station || KitchenSystem.getStation(i);
-                      return station === currentKitchenStation && !i.isDone;
+                      return station === currentKitchenStation && (!i.isDone || kitchenStatusFilter !== "active");
                   });
 
             if (!isMaster && itemsToDisplay.length === 0) return;
 
+            visibleCount++;
             const hasPendingItems = itemsToDisplay.some((i) => !i.isDone);
 
             const ticket = document.createElement("div");
             ticket.className = "kot-ticket";
             const paidStatus = order.isPaid
                 ? "\u2713 PAID"
-                : `<button onclick="window.markPaid('${order.id}')" style="cursor:pointer; border:1px solid #d97706; background:none; color:#d97706; font-size:7pt;">MARK PAID</button>`;
+                : `<button onclick="window.markPaid('${order.id}')" style="cursor:pointer; border:1px solid var(--color-accent); background:none; color:var(--color-accent); font-size:7pt;">MARK PAID</button>`;
 
             ticket.innerHTML = `
             <div class="kot-header">
                 <span>#${order.id}</span>
                 <span style="float:right;">${paidStatus}</span>
             </div>
+            <div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:6px;">${new Date(order.createdAt).toLocaleString()}</div>
             <div class="kot-body">
                 ${itemsToDisplay
                     .map(
@@ -443,7 +777,7 @@ function renderKitchen() {
                 hasPendingItems
                     ? `
                 <button class="btn-primary"
-                        style="width:100%; margin-top:10px; font-size:9pt; background:#d97706; color:black; border:none; padding:8px; font-weight:bold; cursor:pointer;"
+                        style="width:100%; margin-top:10px; font-size:9pt; background:var(--color-accent); color:var(--color-accent-contrast); border:none; padding:8px; font-weight:bold; cursor:pointer;"
                         onclick="window.markCompleted('${order.id}')">
                     ${isMaster ? "MARK ALL DONE" : "MARK DONE"}
                 </button>
@@ -453,6 +787,10 @@ function renderKitchen() {
         `;
             root.appendChild(ticket);
         });
+
+    if (visibleCount === 0) {
+        root.innerHTML = `<p style="color:var(--color-text-muted); font-family:'Courier New',monospace; font-size:9pt;">No ${kitchenStatusFilter === "history" ? "completed" : kitchenStatusFilter === "active" ? "active" : ""} orders${currentKitchenStation !== "MASTER" ? ` for ${currentKitchenStation}` : ""}.</p>`;
+    }
 }
 
 window.markPaid = async (orderId) => {
@@ -539,10 +877,87 @@ document.addEventListener("click", (event) => {
 });
 
 /**
+ * Renders the home page footer (store details) from admin-configured
+ * settings. Sections with nothing filled in are simply omitted rather than
+ * showing empty labels.
+ */
+window.renderFooter = (config) => {
+    const root = document.getElementById("site-footer");
+    if (!root) return;
+    const f = config.footer || {};
+    const hasAnyDetail = f.address || f.phone || f.email || f.hours;
+
+    if (!hasAnyDetail && !f.tagline) {
+        root.innerHTML = "";
+        return;
+    }
+
+    root.innerHTML = `
+        <div class="footer-inner">
+            ${f.tagline ? `<div class="footer-tagline">${f.tagline}</div>` : ""}
+            <div class="footer-columns">
+                ${
+                    f.address
+                        ? `<div><div class="footer-col-title">Location</div><div class="footer-line">${f.address}</div></div>`
+                        : ""
+                }
+                ${
+                    f.phone || f.email
+                        ? `<div><div class="footer-col-title">Contact</div><div class="footer-line">${[f.phone, f.email].filter(Boolean).join("\n")}</div></div>`
+                        : ""
+                }
+                ${
+                    f.hours
+                        ? `<div><div class="footer-col-title">Hours</div><div class="footer-line">${f.hours}</div></div>`
+                        : ""
+                }
+            </div>
+        </div>
+    `;
+};
+
+/**
+ * Home page "Popular Picks" - a handful of featured items so there's
+ * something to click right on arrival, not just an empty page below the
+ * hero. Clicking a card adds it to the cart and jumps to the Menu page so
+ * the person can see it land there.
+ */
+function renderPopularPicks() {
+    const root = document.getElementById("popular-picks-grid");
+    if (!root || !menuData.items.length) return;
+
+    // First section's items are the intended "signature" picks; fall back
+    // to the first few items overall if that section is ever empty/renamed.
+    const firstSectionId = menuData.sections[0]?.id;
+    const picks = (firstSectionId ? menuData.items.filter((i) => i.section === firstSectionId) : menuData.items).slice(0, 4);
+
+    root.innerHTML = picks
+        .map(
+            (item) => `
+        <div class="popular-pick-card" onclick="window.pickFromHome(${item.id})">
+            ${iconMarkup(item.icon)}
+            <div class="name">${item.name}</div>
+            <div class="price">\u20b9${item.price}</div>
+        </div>
+    `
+        )
+        .join("");
+}
+
+window.pickFromHome = (itemId) => {
+    window.addToCart(itemId);
+    window.showPage("menu");
+};
+
+/**
  * BOOT
  */
 (async () => {
     await loadMenu();
+    await refreshSession();
+    const config = await AdminConfig.loadSettings();
+    window.applyBranding(config);
+    window.renderFooter(config);
     window.initSearchBar();
     window.showPage("home");
 })();

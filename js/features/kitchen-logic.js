@@ -16,15 +16,24 @@ export const KitchenSystem = {
         return this.orders;
     },
 
-    async pushOrder(cartItems, method, { serviceChargeActive = true, tipApplied = false } = {}) {
+    /** Orders belonging to the signed-in customer or guest phone session. */
+    async fetchMine() {
+        const res = await fetch("/api/orders/mine", { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+    },
+
+    async pushOrder(cartItems, method, { serviceChargeActive = true, tipApplied = false, phone = null } = {}) {
         const res = await fetch("/api/orders", {
             method: "POST",
+            credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 items: cartItems.map((i) => ({ id: i.id, quantity: i.quantity })),
                 method,
                 serviceChargeActive,
-                tipApplied
+                tipApplied,
+                phone
             })
         });
         const data = await res.json();

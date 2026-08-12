@@ -4,12 +4,43 @@
  */
 
 /* ==========================================================================
+   0. THEME VARIABLES
+   Defaults match the original hardcoded look. app.js's applyBranding()
+   overrides these at runtime from the admin's Branding settings, and toggles
+   .theme-light on <body> for the light preset below - so every rule in this
+   file that uses var(--color-*) picks up branding/theme changes live,
+   without a page reload.
+   ========================================================================== */
+:root {
+    --color-accent: #d97706;
+    --color-accent-contrast: #000000;
+    --color-bg: #0a0a0a;
+    --color-surface: #111111;
+    --color-border: #333333;
+    --color-text: #f9fafb;
+    --color-text-muted: #888888;
+    --color-cyan: #22d3ee;
+    --color-success: #4ade80;
+    --color-danger: #f87171;
+}
+
+body.theme-light {
+    --color-bg: #f5f5f0;
+    --color-surface: #ffffff;
+    --color-border: #ddd8cc;
+    --color-text: #1a1a1a;
+    --color-text-muted: #666666;
+    /* accent/cyan/success/danger stay admin-configurable and usually work on
+       both backgrounds, so they aren't overridden here by default */
+}
+
+/* ==========================================================================
    1. CORE BASE STYLES
    Global resets and primary brand colors.
    ========================================================================== */
 body {
-    background: #0a0a0a;
-    color: #f9fafb;
+    background: var(--color-bg);
+    color: var(--color-text);
     font-family: "Courier New", monospace;
     margin: 0;
     padding: 20px;
@@ -20,7 +51,7 @@ body {
    The sticky top navigation bar and global header branding.
    ========================================================================== */
 header {
-    border-bottom: 2px solid #d97706;
+    border-bottom: 2px solid var(--color-accent);
     padding-bottom: 20px;
     margin-bottom: 40px;
 }
@@ -28,18 +59,19 @@ header {
 .system-nav {
     display: flex;
     gap: 10px;
-    background: #111;
+    background: var(--color-surface);
     padding: 10px;
     position: sticky;
     top: 0;
     z-index: 2000;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--color-border);
+    flex-wrap: wrap;
 }
 
 .system-nav button {
     background: transparent;
-    color:#f7f2e8;
-    border: 1px solid #f7f2e8;
+    color: var(--color-text);
+    border: 1px solid var(--color-text);
     padding: 8px 18px;
     cursor: pointer;
     font-family: "Courier New", monospace;
@@ -50,17 +82,32 @@ header {
 }
 
 .system-nav button:hover {
-    color: #d97706;
-    border-color: #d97706;
+    color: var(--color-accent);
+    border-color: var(--color-accent);
     background: rgba(217, 119, 6, 0.05);
 }
 
 .system-nav button.active-tab {
-    color: #d97706;
-    border-color: #d97706;
+    color: var(--color-accent);
+    border-color: var(--color-accent);
     background: rgba(217, 119, 6, 0.1);
     box-shadow: inset 0 0 10px rgba(217, 119, 6, 0.2);
     font-weight: bold;
+}
+
+@media (max-width: 560px) {
+    .system-nav {
+        justify-content: center;
+    }
+    .system-nav button {
+        padding: 8px 12px;
+        font-size: 0.75rem;
+    }
+    #nav-account {
+        margin-left: 0 !important;
+        width: 100%;
+        order: 10;
+    }
 }
 
 /* ==========================================================================
@@ -610,21 +657,27 @@ header {
    Order management, sales metrics, and global system configuration.
    ========================================================================== */
 .admin-wrapper {
-    max-width: 900px;
+    /* Was capped at a hard 900px, then 1200px - still felt cramped on wide
+       monitors for an internal tool where more width just means more room
+       for tables/forms. Now uses nearly the whole viewport, with only a
+       small margin so content doesn't touch the very edge. */
+    max-width: 98vw;
+    width: 100%;
+    box-sizing: border-box;
     margin: 20px auto;
-    background: #111;
-    border: 1px solid #333;
-    padding: 30px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: clamp(14px, 3vw, 36px);
 }
 .admin-header {
-    border-bottom: 2px solid #d97706;
+    border-bottom: 2px solid var(--color-accent);
     padding-bottom: 15px;
     margin-bottom: 30px;
 }
 .config-controls {
-    background: #1a1a1a;
+    background: rgba(255, 255, 255, 0.03);
     padding: 20px;
-    border-left: 4px solid #22d3ee;
+    border-left: 4px solid var(--color-cyan);
     margin-bottom: 30px;
 }
 .control-group {
@@ -633,16 +686,170 @@ header {
 .control-group label {
     display: block;
     font-size: 9pt;
-    color: #888;
+    color: var(--color-text-muted);
     margin-bottom: 5px;
 }
-.control-group input[type="text"] {
-    background: #000;
-    border: 1px solid #333;
-    color: #fff;
+.control-group input[type="text"],
+.control-group input[type="number"] {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
     padding: 10px;
     width: 100%;
+    box-sizing: border-box;
     font-family: inherit;
+}
+.control-group input[type="color"] {
+    /* type=color ignores padding oddly in most browsers, rendering as a
+       thin sliver if padded like a text input - give it a fixed height
+       and no padding instead so the swatch actually shows. */
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    width: 100%;
+    height: 42px;
+    padding: 3px;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+/* Admin panel sub-tabs (Global Settings / Menu Items / Staff / Branding) */
+.admin-tabs {
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+.admin-tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--color-text-muted);
+    padding: 10px 16px;
+    cursor: pointer;
+    font-family: "Courier New", monospace;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.admin-tab-btn:hover {
+    color: var(--color-text);
+}
+.admin-tab-btn.active {
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+}
+
+/* Admin data tables (menu items, staff accounts) - was previously an
+   unstyled default HTML <table>, which is why it looked like a plain
+   browser form instead of matching the rest of the app. */
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin-top: 10px;
+}
+.admin-table th {
+    text-align: left;
+    color: var(--color-accent);
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--color-accent);
+    font-size: 8pt;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+.admin-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    vertical-align: middle;
+}
+.admin-table tr:hover td {
+    background: rgba(217, 119, 6, 0.05);
+}
+
+.admin-btn {
+    background: var(--color-bg);
+    border: 1px solid var(--color-accent);
+    color: var(--color-accent);
+    padding: 6px 10px;
+    font-size: 7pt;
+    cursor: pointer;
+    font-family: inherit;
+    text-transform: uppercase;
+    margin-right: 4px;
+    letter-spacing: 0.5px;
+}
+.admin-btn:hover {
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
+}
+.admin-btn-danger {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+}
+.admin-btn-danger:hover {
+    background: var(--color-danger);
+    color: #000;
+}
+.admin-btn-primary {
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
+    border: none;
+    padding: 8px 16px;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.admin-btn-secondary {
+    background: var(--color-border);
+    color: var(--color-text);
+    border: none;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-family: inherit;
+    text-transform: uppercase;
+}
+.admin-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.order-history-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 15px;
+}
+.order-history-card {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    padding: 12px;
+    font-size: 9pt;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 25px;
+}
+.stat-card {
+    border: 1px solid var(--color-accent);
+    padding: 12px;
+    background: var(--color-bg);
+}
+.stat-card .stat-label {
+    font-size: 8pt;
+    color: var(--color-text-muted);
+}
+.stat-card .stat-value {
+    font-size: 18pt;
+    color: var(--color-accent);
 }
 
 #kitchen-orders-root {
@@ -654,35 +861,40 @@ header {
 .kot-ticket {
     /* Was a plain white card with black text - the only screen in the app that
        broke the black/orange terminal theme. Now matches the rest of the UI. */
-    background: #111;
-    color: #f9fafb;
-    border: 1px solid #333;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
     padding: 15px;
     width: 250px;
     font-family: "Courier New";
-    box-shadow: 5px 5px #d97706;
+    box-shadow: 5px 5px var(--color-accent);
 }
-.kot-header { border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 8px; font-weight: bold; }
-.item-pending { color: #22d3ee; }
-.item-done { color: #666; text-decoration: line-through; opacity: 0.6; }
+.kot-header { border-bottom: 1px solid var(--color-border); padding-bottom: 8px; margin-bottom: 8px; font-weight: bold; }
+.item-pending { color: var(--color-cyan); }
+.item-done { color: var(--color-text-muted); text-decoration: line-through; opacity: 0.6; }
 
-.kitchen-tabs {
+/* Kitchen station tabs now reuse .admin-tabs/.admin-tab-btn styling (see
+   section 10) so they match the rest of the app instead of using their own
+   solid cyan filled-button look. */
+.kitchen-tabs.admin-tabs {
+    margin-bottom: 15px;
+}
+
+.kitchen-toolbar {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
 }
-.kitchen-tabs button {
-    background: #000;
-    color: #22d3ee;
-    border: 1px solid #22d3ee;
-    padding: 12px 25px;
-    cursor: pointer;
-    text-transform: uppercase;
-    font-weight: bold;
+.kitchen-status-filter {
+    display: flex;
+    gap: 6px;
 }
-.kitchen-tabs button.active-station {
-    background: #22d3ee;
-    color: #000;
+.kitchen-status-filter .admin-btn.active {
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
 }
 
 /* ==========================================================================
@@ -691,23 +903,23 @@ header {
    ========================================================================== */
 .hero-section {
     text-align: center;
-    padding: 60px 20px;
-    max-width: 700px;
+    padding: clamp(30px, 8vw, 60px) 20px;
+    max-width: min(1080px, 94vw);
     margin: 0 auto;
 }
 .story-text {
     font-size: 1rem;
     line-height: 1.6;
-    color: #a3a3a3;
+    color: var(--color-text-muted);
     margin: 30px 0;
-    border-top: 1px solid #222;
-    border-bottom: 1px solid #222;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
     padding: 20px 0;
 }
 
 .btn-primary {
-    background: #d97706;
-    color: #000;
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
     font-family: inherit;
     font-weight: 900;
     font-size: 1.2rem;
@@ -716,6 +928,140 @@ header {
     cursor: pointer;
     text-transform: uppercase;
     box-shadow: 4px 4px #000;
+}
+
+/* Home page "Popular Picks" preview - fills the empty space below the hero
+   with something browsable/interactive instead of blank space, and gives a
+   faster path to ordering than reading the MENU nav link. */
+.popular-picks-section {
+    max-width: min(1080px, 94vw);
+    margin: 10px auto 40px;
+    padding: 0 20px;
+}
+.popular-picks-section h3 {
+    font-size: 10pt;
+    letter-spacing: 1px;
+    color: var(--color-accent);
+    margin-bottom: 15px;
+    text-align: center;
+}
+.popular-picks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 15px;
+}
+.popular-pick-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.15s;
+}
+.popular-pick-card:hover {
+    border-color: var(--color-accent);
+    transform: translateY(-3px);
+}
+.popular-pick-card .icon {
+    width: 36px;
+    height: 36px;
+    margin: 0 auto 10px;
+    display: block;
+}
+.popular-pick-card .name {
+    font-weight: bold;
+    font-size: 9pt;
+    margin-bottom: 4px;
+}
+.popular-pick-card .price {
+    color: var(--color-accent);
+    font-size: 9pt;
+}
+
+/* Home page footer - store details, admin-editable. Uses negative margins
+   to break out of body's padding so the band spans full width regardless of
+   screen size, while its inner content stays readable/centered. */
+.site-footer {
+    margin: 50px -20px -20px;
+    padding: 30px 20px;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-surface);
+    font-size: 9pt;
+    color: var(--color-text-muted);
+}
+.site-footer .footer-inner {
+    max-width: 1100px;
+    margin: 0 auto;
+    text-align: center;
+}
+/* Tagline is its own centered block above the columns (not a grid item -
+   mixing a "span all columns" row with auto-fit grid columns is a known CSS
+   trap: the browser counts those spanned tracks as "occupied", so auto-fit
+   won't collapse the extra empty ones, and the real columns end up bunched
+   on the left instead of spread/centered). Flexbox with justify-content:
+   center sidesteps that entirely and centers reliably regardless of how
+   many detail columns are actually filled in. */
+.site-footer .footer-tagline {
+    color: var(--color-text);
+    font-size: 10pt;
+    letter-spacing: 0.5px;
+    text-align: center;
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+    /* Separator between the tagline and the detail columns below it. */
+    border-bottom: 1px dashed var(--color-border);
+}
+.site-footer .footer-columns {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0;
+    text-align: center;
+}
+.site-footer .footer-columns > div {
+    padding: 0 30px;
+    /* Vertical separators between LOCATION / CONTACT / HOURS - not just
+       whitespace, so the columns read as distinct sections. */
+    border-left: 1px solid var(--color-border);
+}
+.site-footer .footer-columns > div:first-child {
+    border-left: none;
+    padding-left: 0;
+}
+.site-footer .footer-col-title {
+    color: var(--color-accent);
+    font-size: 8pt;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+}
+.site-footer .footer-line {
+    line-height: 1.6;
+    white-space: pre-line;
+}
+@media (max-width: 600px) {
+    .site-footer {
+        margin: 30px -20px -20px;
+        padding: 20px 16px;
+    }
+    /* Vertical dividers don't read well once columns wrap to their own
+       rows on narrow screens - switch to horizontal separators instead. */
+    .site-footer .footer-columns {
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+    }
+    .site-footer .footer-columns > div {
+        border-left: none;
+        border-top: 1px dashed var(--color-border);
+        padding: 16px 0 0;
+        width: 100%;
+        max-width: 260px;
+    }
+    .site-footer .footer-columns > div:first-child {
+        border-top: none;
+        padding-top: 0;
+    }
 }
 
 .pixel-cat-container {

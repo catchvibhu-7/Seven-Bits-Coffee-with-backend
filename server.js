@@ -2,23 +2,27 @@
  * SEVEN BITS COFFEE - BACKEND SERVER
  * Plain Node.js (no external dependencies) so it runs with just `node server.js`.
  *
- * Responsibilities this server takes over from the old client-only app:
- *   - Menu, config and orders are stored on disk (./data/*.json), not in a
- *     browser tab's memory - refreshing a page, or opening the kitchen
- *     display on a different device, no longer loses/hides data.
- *   - Admin/staff login is verified server-side against a hashed password,
- *     with a session cookie - the old build shipped the passcode in plain
- *     JS ("1024") and anyone could fake auth from devtools.
- *   - Order totals (and the UPI QR amount) are calculated HERE from the
- *     server's own menu prices, never trusted from the browser. The old
- *     app also hardcoded a fixed am=500 UPI amount regardless of order size.
- *   - Live updates: kitchen/admin clients get pushed order changes over
- *     Server-Sent Events, so multiple stations (register, kitchen screen,
- *     admin laptop) all stay in sync.
+ * Auth model:
+ *   - Real accounts (username + hashed password) with a role: owner, admin,
+ *     employee, or customer. Roles are stored in data/users.json now so
+ *     switching this to a real database later just means swapping the
+ *     readJson/writeJson calls near USERS_FILE - the rest of the app talks
+ *     to "the user store" through a few functions, not raw file access.
+ *   - Guests don't need an account: they give a phone number, get a session
+ *     scoped to that phone, and can only ever see orders placed under that
+ *     phone number - never anyone else's data.
+ *   - Session cookies are httpOnly + random tokens, checked server-side on
+ *     every protected request. The browser never holds a password or a
+ *     forgeable "I'm an admin" flag.
+ *
+ * Page/route access:
+ *   - Kitchen/orders board: employee, admin, owner
+ *   - Admin panel (menu/config/staff): admin, owner
+ *   - "My order" status: customer, guest (own orders only)
  *
  * Run:
- *   ADMIN_PASSWORD=yourStrongPassword node server.js
- * (see README-BACKEND.md for all options)
+ *   OWNER_USERNAME=owner OWNER_PASSWORD=yourStrongPassword node server.js
+ * (see README-BACKEND.md for all options, and start.bat for a Windows helper)
  */
 
 "use strict";
@@ -42,6 +46,11 @@ const IS_HTTPS = process.env.FORCE_SECURE_COOKIE === "1";
 
 const UPI_VPA = process.env.UPI_VPA || "";
 const UPI_PAYEE_NAME = process.env.UPI_PAYEE_NAME || "";
+
+const STAFF_ROLES = ["employee", "admin", "owner"];
+const MENU_ADMIN_ROLES = ["admin", "owner"];
+const KITCHEN_ROLES = ["employee", "admin", "owner"];
+const TRACKING_ROLES = ["customer", "guest"];
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -67,7 +76,33 @@ function writeJson(file, data) {
 const MENU_FILE = path.join(DATA_DIR, "menu.json");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
-const ADMIN_FILE = path.join(DATA_DIR, "admin.json");
+const USERS_FILE = path.join(DATA_DIR, "users.json");
+const AUDIT_LOG_FILE = path.join(DATA_DIR, "audit-log.json");
+const BRANDING_PROFILES_FILE = path.join(DATA_DIR, "branding-profiles.json");
+
+if (!fs.existsSync(AUDIT_LOG_FILE)) writeJson(AUDIT_LOG_FILE, []);
+if (!fs.existsSync(BRANDING_PROFILES_FILE)) writeJson(BRANDING_PROFILES_FILE, {});
+
+/**
+ * Records sensitive admin actions (currently: password resets and staff
+ * removal) so an owner can see what admins have been doing to other
+ * accounts - the request that prompted this was explicitly "so admin can't
+ * abuse it", so only the owner can read this log (see GET /api/audit-log).
+ */
+function logAuditEvent(actorSession, action, targetUser) {
+  const log = readJson(AUDIT_LOG_FILE, []);
+  log.push({
+    timestamp: new Date().toISOString(),
+    action,
+    actorId: actorSession.userId,
+    actorName: actorSession.name,
+    actorRole: actorSession.role,
+    targetId: targetUser ? targetUser.id : null,
+    targetUsername: targetUser ? targetUser.username : null
+  });
+  // Keep this bounded - it's an audit trail, not an infinite log.
+  writeJson(AUDIT_LOG_FILE, log.slice(-1000));
+}
 
 if (!fs.existsSync(MENU_FILE)) {
   const seed = readJson(path.join(SEED_DIR, "menu-seed.json"), { sections: [], items: [], inventory: {} });
@@ -82,27 +117,100 @@ if (!fs.existsSync(CONFIG_FILE)) {
     sgstRate: 0.05,
     serviceChargeRate: 0.02,
     tipEnabled: true,
-    tipAmount: 7
+    tipAmount: 7,
+    // Seeded once from env vars if present, then fully admin-editable from
+    // here on (Global Settings tab) - env vars are just a convenience for
+    // first boot, not the source of truth after that.
+    upiVpa: process.env.UPI_VPA || "",
+    upiPayeeName: process.env.UPI_PAYEE_NAME || "",
+    // Branding - drives CSS custom properties at runtime (see app.js
+    // applyBranding()). Defaults match the original hardcoded theme, so
+    // nothing changes visually until an admin edits these.
+    theme: "dark",
+    colors: {
+      accent: "#d97706",
+      background: "#0a0a0a",
+      surface: "#111111",
+      text: "#f9fafb",
+      textMuted: "#888888",
+      secondary: "#22d3ee"
+    },
+    heroImageUrl: "",
+    logoUrl: "",
+    // Admin-added icon options beyond the built-in set (see Branding tab).
+    // Key -> image URL; menu items reference these by key just like the
+    // built-in CSS icon names.
+    customIcons: {},
+    // Shown in the home page footer - admin-editable from the Branding tab.
+    footer: {
+      tagline: "",
+      address: "",
+      phone: "",
+      email: "",
+      hours: ""
+    }
   });
 }
+
+const DEFAULT_BRANDING = {
+  theme: "dark",
+  colors: {
+    accent: "#d97706",
+    background: "#0a0a0a",
+    surface: "#111111",
+    text: "#f9fafb",
+    textMuted: "#888888",
+    secondary: "#22d3ee"
+  },
+  heroImageUrl: "",
+  logoUrl: ""
+};
 
 if (!fs.existsSync(ORDERS_FILE)) {
   writeJson(ORDERS_FILE, []);
 }
 
 // ---------------------------------------------------------------------------
-// Admin password (hashed on disk, never stored/shipped in plaintext)
+// User accounts (hashed passwords on disk, never plaintext)
 // ---------------------------------------------------------------------------
 
 function hashPassword(password, salt) {
   return crypto.scryptSync(password, salt, 64).toString("hex");
 }
 
-function bootstrapAdminAccount() {
-  if (fs.existsSync(ADMIN_FILE)) return;
+function verifyPassword(password, salt, hash) {
+  const attempt = hashPassword(String(password || ""), salt);
+  const a = Buffer.from(attempt, "hex");
+  const b = Buffer.from(hash, "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
-  const salt = crypto.randomBytes(16).toString("hex");
-  let password = process.env.ADMIN_PASSWORD;
+/**
+ * Minimum password standard, checked server-side regardless of what the
+ * client's strength meter shows (that meter is just UX guidance - this is
+ * the actual enforced rule). Requires 8+ characters and at least 3 of the 4
+ * character classes below.
+ */
+function passwordIssues(password) {
+  const issues = [];
+  const pw = String(password || "");
+  if (pw.length < 8) issues.push("Password must be at least 8 characters");
+
+  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/];
+  const classCount = classes.filter((re) => re.test(pw)).length;
+  if (classCount < 3) {
+    issues.push("Password must include at least 3 of: lowercase, uppercase, numbers, symbols");
+  }
+  return issues;
+}
+
+function bootstrapOwnerAccount() {
+  if (fs.existsSync(USERS_FILE)) return;
+
+  const username = process.env.OWNER_USERNAME || "owner";
+  // Falls back to the old ADMIN_PASSWORD env var so anyone upgrading from the
+  // single-password build doesn't have to change their launch command too.
+  let password = process.env.OWNER_PASSWORD || process.env.ADMIN_PASSWORD;
   let generated = false;
 
   if (!password) {
@@ -110,60 +218,179 @@ function bootstrapAdminAccount() {
     generated = true;
   }
 
-  writeJson(ADMIN_FILE, { salt, hash: hashPassword(password, salt) });
+  const salt = crypto.randomBytes(16).toString("hex");
+  const owner = {
+    id: 1,
+    username,
+    salt,
+    hash: hashPassword(password, salt),
+    role: "owner",
+    name: "Owner",
+    phone: null,
+    mustChangePassword: generated // force a password change if we had to generate one
+  };
+  writeJson(USERS_FILE, [owner]);
 
   if (generated) {
     console.log("=".repeat(60));
-    console.log("No ADMIN_PASSWORD was set - generated one for you:");
-    console.log(`  Admin password: ${password}`);
-    console.log("Save this now. Set ADMIN_PASSWORD env var to control it");
-    console.log("yourself and avoid this message on future first-runs.");
+    console.log("No OWNER_PASSWORD was set - generated one for you:");
+    console.log(`  Username: ${username}`);
+    console.log(`  Password: ${password}`);
+    console.log("Save this now. Set OWNER_USERNAME / OWNER_PASSWORD env vars");
+    console.log("yourself to avoid this message on future first-runs.");
     console.log("=".repeat(60));
   }
 }
 
-bootstrapAdminAccount();
+bootstrapOwnerAccount();
 
-function verifyAdminPassword(password) {
-  const admin = readJson(ADMIN_FILE, null);
-  if (!admin) return false;
-  const attemptHash = hashPassword(String(password || ""), admin.salt);
-  // Constant-time comparison to avoid leaking hash info via timing.
-  const a = Buffer.from(attemptHash, "hex");
-  const b = Buffer.from(admin.hash, "hex");
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+function findUserByUsername(username) {
+  const users = readJson(USERS_FILE, []);
+  return users.find((u) => u.username.toLowerCase() === String(username || "").toLowerCase());
+}
+
+function findUserById(id) {
+  const users = readJson(USERS_FILE, []);
+  return users.find((u) => u.id === id);
+}
+
+function createUser({ username, password, role, name, phone, mustChangePassword = false }) {
+  const users = readJson(USERS_FILE, []);
+  if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
+    throw new Error("That username is already taken");
+  }
+  const salt = crypto.randomBytes(16).toString("hex");
+  const nextId = users.length ? Math.max(...users.map((u) => u.id)) + 1 : 1;
+  const user = {
+    id: nextId,
+    username,
+    salt,
+    hash: hashPassword(password, salt),
+    role,
+    name: name || username,
+    phone: phone || null,
+    mustChangePassword
+  };
+  users.push(user);
+  writeJson(USERS_FILE, users);
+  usernameBloomFilter.add(username);
+  return user;
+}
+
+function publicUser(user) {
+  if (!user) return null;
+  const { salt, hash, ...rest } = user;
+  return rest;
+}
+
+/** Generates a random, readable temp password like "bx7k-qm2v" (meets the strength rule). */
+function generateTempPassword() {
+  const part = () => crypto.randomBytes(3).toString("hex");
+  return `${part()}-${part()}A9`; // guarantees a digit+letter mix so it always passes passwordIssues()
+}
+
+function setUserPassword(userId, newPassword, { mustChangePassword = false } = {}) {
+  const users = readJson(USERS_FILE, []);
+  const user = users.find((u) => u.id === userId);
+  if (!user) throw new Error("User not found");
+  const salt = crypto.randomBytes(16).toString("hex");
+  user.salt = salt;
+  user.hash = hashPassword(newPassword, salt);
+  user.mustChangePassword = mustChangePassword;
+  writeJson(USERS_FILE, users);
+  invalidateSessionsForUser(userId); // old password, old sessions - both stop working together
+  return user;
 }
 
 // ---------------------------------------------------------------------------
-// Sessions (in-memory) + login rate limiting
+// Username availability check, backed by a Bloom filter
+//
+// A Bloom filter answers "is this definitely NOT in the set?" extremely
+// cheaply - if it says no, we can skip hitting the user store entirely. If
+// it says "maybe" (which includes false positives), we fall back to an
+// actual lookup to get a definite answer. For this app's realistic user
+// count a plain lookup would honestly be fast enough on its own - this is
+// included because it was asked for, and it's a genuinely useful pattern
+// once a user store gets large enough that a lookup-per-keystroke matters.
 // ---------------------------------------------------------------------------
 
-const sessions = new Map(); // token -> expiresAt
-const loginAttempts = new Map(); // ip -> { count, lockUntil }
+class BloomFilter {
+  constructor(size = 8192, hashCount = 4) {
+    this.size = size;
+    this.hashCount = hashCount;
+    this.bits = new Uint8Array(size);
+  }
 
-function createSession() {
+  _positions(value) {
+    const str = String(value).toLowerCase();
+    // Two independent-ish hashes combined (Kirsch-Mitzenmacher technique) to
+    // cheaply derive `hashCount` bit positions from one pass over the string.
+    let h1 = 5381;
+    let h2 = 52711;
+    for (let i = 0; i < str.length; i++) {
+      const code = str.charCodeAt(i);
+      h1 = (h1 * 33 + code) >>> 0;
+      h2 = (h2 * 31 + code) >>> 0;
+    }
+    const positions = [];
+    for (let i = 0; i < this.hashCount; i++) {
+      positions.push((h1 + i * h2) % this.size);
+    }
+    return positions;
+  }
+
+  add(value) {
+    this._positions(value).forEach((pos) => {
+      this.bits[pos] = 1;
+    });
+  }
+
+  /** False means "definitely not present". True means "maybe" - verify with a real lookup. */
+  mightContain(value) {
+    return this._positions(value).every((pos) => this.bits[pos] === 1);
+  }
+}
+
+const usernameBloomFilter = new BloomFilter();
+readJson(USERS_FILE, []).forEach((u) => usernameBloomFilter.add(u.username));
+
+// ---------------------------------------------------------------------------
+// Sessions (in-memory) + auth rate limiting
+// ---------------------------------------------------------------------------
+
+const sessions = new Map(); // token -> { expiresAt, role, userId, name, phone }
+const authAttempts = new Map(); // ip -> { count, lockUntil }
+
+function createSession(payload) {
   const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, Date.now() + SESSION_TTL_MS);
+  sessions.set(token, { ...payload, expiresAt: Date.now() + SESSION_TTL_MS });
   return token;
 }
 
-function isSessionValid(token) {
-  if (!token) return false;
-  const expires = sessions.get(token);
-  if (!expires) return false;
-  if (Date.now() > expires) {
+function getSession(token) {
+  if (!token) return null;
+  const session = sessions.get(token);
+  if (!session) return null;
+  if (Date.now() > session.expiresAt) {
     sessions.delete(token);
-    return false;
+    return null;
   }
-  return true;
+  return session;
 }
 
 function destroySession(token) {
   sessions.delete(token);
 }
 
+/** Invalidates every active session for a user (e.g. after a password reset/change). */
+function invalidateSessionsForUser(userId) {
+  for (const [token, s] of sessions.entries()) {
+    if (s.userId === userId) sessions.delete(token);
+  }
+}
+
 function checkRateLimit(ip) {
-  const entry = loginAttempts.get(ip);
+  const entry = authAttempts.get(ip);
   if (!entry) return { allowed: true };
   if (entry.lockUntil && Date.now() < entry.lockUntil) {
     return { allowed: false, retryAfterMs: entry.lockUntil - Date.now() };
@@ -171,22 +398,22 @@ function checkRateLimit(ip) {
   return { allowed: true };
 }
 
-function recordLoginFailure(ip) {
-  const entry = loginAttempts.get(ip) || { count: 0, lockUntil: 0 };
+function recordAuthFailure(ip) {
+  const entry = authAttempts.get(ip) || { count: 0, lockUntil: 0 };
   entry.count += 1;
   if (entry.count >= 5) {
     entry.lockUntil = Date.now() + 60 * 1000; // 60s lockout after 5 failures
     entry.count = 0;
   }
-  loginAttempts.set(ip, entry);
+  authAttempts.set(ip, entry);
 }
 
-function recordLoginSuccess(ip) {
-  loginAttempts.delete(ip);
+function recordAuthSuccess(ip) {
+  authAttempts.delete(ip);
 }
 
 // ---------------------------------------------------------------------------
-// SSE (Server-Sent Events) so kitchen/admin screens update live
+// SSE (Server-Sent Events) so kitchen/admin/status screens update live
 // ---------------------------------------------------------------------------
 
 const sseClients = new Set();
@@ -265,17 +492,44 @@ function readBody(req, maxBytes = 1024 * 1024) {
   });
 }
 
-function requireAuth(req, res) {
+/** Returns the session for this request, or null. Never sends a response. */
+function currentSession(req) {
   const cookies = parseCookies(req);
-  if (!isSessionValid(cookies.sb_session)) {
+  return getSession(cookies.sb_session);
+}
+
+/** Requires ANY valid session (any role). Sends 401 and returns null if absent. */
+function requireSession(req, res) {
+  const session = currentSession(req);
+  if (!session) {
     sendJson(res, 401, { error: "Not authenticated" });
-    return false;
+    return null;
   }
-  return true;
+  return session;
+}
+
+/** Requires a session whose role is in allowedRoles. Sends 401/403 as appropriate. */
+function requireRole(req, res, allowedRoles) {
+  const session = currentSession(req);
+  if (!session) {
+    sendJson(res, 401, { error: "Not authenticated" });
+    return null;
+  }
+  if (!allowedRoles.includes(session.role)) {
+    sendJson(res, 403, { error: "Not allowed for this account type" });
+    return null;
+  }
+  return session;
 }
 
 function getClientIp(req) {
   return req.socket.remoteAddress || "unknown";
+}
+
+function normalizePhone(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return null;
+  return digits;
 }
 
 // ---------------------------------------------------------------------------
@@ -325,8 +579,10 @@ function computeOrder(items, method, serviceChargeActive, tipApplied) {
   const total = subtotal + cgst + sgst + serviceCharge + tipAmount;
 
   let paymentQrUrl = null;
-  if (method === "ONLINE" && UPI_VPA) {
-    const upiUrl = `upi://pay?pa=${encodeURIComponent(UPI_VPA)}&pn=${encodeURIComponent(UPI_PAYEE_NAME || config.shopName || "Store")}&am=${round2(total).toFixed(2)}&cu=INR`;
+  const upiVpa = config.upiVpa || UPI_VPA; // config is the source of truth; env only matters before first save
+  const upiPayeeName = config.upiPayeeName || UPI_PAYEE_NAME;
+  if (method === "ONLINE" && upiVpa) {
+    const upiUrl = `upi://pay?pa=${encodeURIComponent(upiVpa)}&pn=${encodeURIComponent(upiPayeeName || config.shopName || "Store")}&am=${round2(total).toFixed(2)}&cu=INR`;
     paymentQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiUrl)}`;
   }
 
@@ -340,6 +596,11 @@ function computeOrder(items, method, serviceChargeActive, tipApplied) {
     total: round2(total),
     paymentQrUrl
   };
+}
+
+function orderStatusOf(order) {
+  if (!order.items.length) return "RECEIVED";
+  return order.items.every((i) => i.isDone) ? "READY" : "PREPARING";
 }
 
 // ---------------------------------------------------------------------------
@@ -360,13 +621,280 @@ function matchRoute(method, pathname) {
   return null;
 }
 
+// --- Auth ---
+route("POST", /^\/api\/auth\/register\/?$/, async (req, res) => {
+  const ip = getClientIp(req);
+  const limit = checkRateLimit(ip);
+  if (!limit.allowed) {
+    return sendJson(res, 429, { error: `Too many attempts. Try again in ${Math.ceil(limit.retryAfterMs / 1000)}s.` });
+  }
+
+  const body = await readBody(req);
+  const username = String(body.username || "").trim();
+  const password = String(body.password || "");
+  const name = String(body.name || "").trim();
+  const phone = normalizePhone(body.phone);
+
+  if (username.length < 3) return sendJson(res, 400, { error: "Username must be at least 3 characters" });
+  const pwIssues = passwordIssues(password);
+  if (pwIssues.length) return sendJson(res, 400, { error: pwIssues[0] });
+  if (!phone) return sendJson(res, 400, { error: "A valid phone number is required" });
+
+  try {
+    // Public sign-up can only ever create a customer account - staff accounts
+    // are created by an admin/owner from the Admin panel (see /api/users),
+    // never self-assigned.
+    const user = createUser({ username, password, role: "customer", name, phone });
+    recordAuthSuccess(ip);
+    const token = createSession({ role: "customer", userId: user.id, name: user.name, phone: user.phone });
+    setSessionCookie(res, token);
+    sendJson(res, 201, { role: "customer", name: user.name, phone: user.phone });
+  } catch (e) {
+    recordAuthFailure(ip);
+    sendJson(res, 400, { error: e.message });
+  }
+});
+
+route("POST", /^\/api\/auth\/login\/?$/, async (req, res) => {
+  const ip = getClientIp(req);
+  const limit = checkRateLimit(ip);
+  if (!limit.allowed) {
+    return sendJson(res, 429, { error: `Too many attempts. Try again in ${Math.ceil(limit.retryAfterMs / 1000)}s.` });
+  }
+
+  const body = await readBody(req);
+  const user = findUserByUsername(body.username);
+
+  if (!user || !verifyPassword(body.password, user.salt, user.hash)) {
+    recordAuthFailure(ip);
+    return sendJson(res, 401, { error: "Invalid username or password" });
+  }
+
+  recordAuthSuccess(ip);
+  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone });
+  setSessionCookie(res, token);
+  sendJson(res, 200, { role: user.role, name: user.name, phone: user.phone, mustChangePassword: !!user.mustChangePassword });
+});
+
+route("GET", /^\/api\/auth\/check-username\/?$/, async (req, res, params, url) => {
+  const ip = getClientIp(req);
+  const limit = checkRateLimit(ip);
+  if (!limit.allowed) {
+    return sendJson(res, 429, { error: `Too many attempts. Try again in ${Math.ceil(limit.retryAfterMs / 1000)}s.` });
+  }
+
+  const username = (url.searchParams.get("username") || "").trim();
+  if (username.length < 3) return sendJson(res, 200, { available: false, reason: "too short" });
+
+  // Bloom filter first: if it says "definitely not present", we know for
+  // certain the username is available without touching the user store.
+  if (!usernameBloomFilter.mightContain(username)) {
+    return sendJson(res, 200, { available: true });
+  }
+  // Otherwise it's a "maybe" (could be a false positive) - confirm for real.
+  const taken = !!findUserByUsername(username);
+  sendJson(res, 200, { available: !taken });
+});
+
+route("POST", /^\/api\/auth\/change-password\/?$/, async (req, res) => {
+  const session = requireSession(req, res);
+  if (!session || session.userId == null) {
+    if (session) sendJson(res, 400, { error: "Guest sessions have no password to change" });
+    return;
+  }
+
+  const body = await readBody(req);
+  const user = findUserById(session.userId);
+  if (!user || !verifyPassword(body.currentPassword, user.salt, user.hash)) {
+    return sendJson(res, 401, { error: "Current password is incorrect" });
+  }
+
+  const pwIssues = passwordIssues(body.newPassword);
+  if (pwIssues.length) return sendJson(res, 400, { error: pwIssues[0] });
+
+  setUserPassword(user.id, body.newPassword, { mustChangePassword: false });
+  clearSessionCookie(res);
+  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone });
+  setSessionCookie(res, token);
+  sendJson(res, 200, { ok: true });
+});
+
+route("POST", /^\/api\/auth\/forgot-password\/?$/, async (req, res) => {
+  // Customer self-service reset: proving you know the account's username AND
+  // its phone number is treated as proof of ownership (there's no email/SMS
+  // gateway configured to do a "real" verification link/OTP). This mirrors
+  // the same trust model guest order-tracking already uses. Staff accounts
+  // don't get self-service reset - an owner/admin issues them a temp
+  // password instead (see POST /api/users/:id/reset-password).
+  const ip = getClientIp(req);
+  const limit = checkRateLimit(ip);
+  if (!limit.allowed) {
+    return sendJson(res, 429, { error: `Too many attempts. Try again in ${Math.ceil(limit.retryAfterMs / 1000)}s.` });
+  }
+
+  const body = await readBody(req);
+  const user = findUserByUsername(body.username);
+  const phone = normalizePhone(body.phone);
+
+  if (!user || user.role !== "customer" || !phone || user.phone !== phone) {
+    recordAuthFailure(ip);
+    // Deliberately vague - doesn't reveal whether the username exists.
+    return sendJson(res, 400, { error: "Username and phone number don't match a customer account" });
+  }
+
+  const pwIssues = passwordIssues(body.newPassword);
+  if (pwIssues.length) return sendJson(res, 400, { error: pwIssues[0] });
+
+  recordAuthSuccess(ip);
+  setUserPassword(user.id, body.newPassword, { mustChangePassword: false });
+  sendJson(res, 200, { ok: true });
+});
+
+route("POST", /^\/api\/auth\/guest\/?$/, async (req, res) => {
+  const ip = getClientIp(req);
+  const limit = checkRateLimit(ip);
+  if (!limit.allowed) {
+    return sendJson(res, 429, { error: `Too many attempts. Try again in ${Math.ceil(limit.retryAfterMs / 1000)}s.` });
+  }
+
+  const body = await readBody(req);
+  const phone = normalizePhone(body.phone);
+  if (!phone) {
+    recordAuthFailure(ip);
+    return sendJson(res, 400, { error: "Enter a valid phone number" });
+  }
+
+  recordAuthSuccess(ip);
+  const token = createSession({ role: "guest", userId: null, name: "Guest", phone });
+  setSessionCookie(res, token);
+  sendJson(res, 200, { role: "guest", name: "Guest", phone });
+});
+
+route("POST", /^\/api\/auth\/logout\/?$/, async (req, res) => {
+  const cookies = parseCookies(req);
+  destroySession(cookies.sb_session);
+  clearSessionCookie(res);
+  sendJson(res, 200, { ok: true });
+});
+
+route("GET", /^\/api\/auth\/session\/?$/, async (req, res) => {
+  const session = currentSession(req);
+  if (!session) return sendJson(res, 200, { authenticated: false });
+  const user = session.userId != null ? findUserById(session.userId) : null;
+  sendJson(res, 200, {
+    authenticated: true,
+    role: session.role,
+    name: session.name,
+    phone: session.phone,
+    userId: session.userId,
+    mustChangePassword: !!(user && user.mustChangePassword)
+  });
+});
+
+// --- Staff accounts (created by admin/owner only - no public sign-up for these roles) ---
+route("GET", /^\/api\/users\/?$/, async (req, res) => {
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  const users = readJson(USERS_FILE, []).filter((u) => STAFF_ROLES.includes(u.role));
+  sendJson(res, 200, users.map(publicUser));
+});
+
+route("POST", /^\/api\/users\/?$/, async (req, res) => {
+  const session = requireRole(req, res, MENU_ADMIN_ROLES);
+  if (!session) return;
+
+  const body = await readBody(req);
+  const username = String(body.username || "").trim();
+  const password = String(body.password || "");
+  const name = String(body.name || "").trim();
+  const role = String(body.role || "");
+
+  if (username.length < 3) return sendJson(res, 400, { error: "Username must be at least 3 characters" });
+  const pwIssues = passwordIssues(password);
+  if (pwIssues.length) return sendJson(res, 400, { error: pwIssues[0] });
+
+  // An admin can only create employees. Only the owner can create admins or
+  // other owners - this stops an admin account from elevating itself/others.
+  const allowedToCreate = session.role === "owner" ? ["employee", "admin", "owner"] : ["employee"];
+  if (!allowedToCreate.includes(role)) {
+    return sendJson(res, 403, { error: `Your account can't create a "${role}" account` });
+  }
+
+  try {
+    // Staff accounts start with mustChangePassword so the temp password an
+    // admin hands over only works once before the new hire sets their own.
+    const user = createUser({ username, password, role, name, mustChangePassword: true });
+    sendJson(res, 201, publicUser(user));
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+  }
+});
+
+function canManageTarget(session, targetUser) {
+  if (!targetUser) return false;
+  if (session.role === "owner") return true;
+  if (session.role === "admin") return targetUser.role === "employee";
+  return false;
+}
+
+route("POST", /^\/api\/users\/(?<id>\d+)\/reset-password\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MENU_ADMIN_ROLES);
+  if (!session) return;
+
+  const targetUser = findUserById(Number(params.id));
+  if (targetUser && targetUser.id === session.userId) {
+    // Resetting your own password here would invalidate your own session
+    // mid-action and hand you a temp password you'd have to dig out of the
+    // response - use POST /api/auth/change-password for your own account.
+    return sendJson(res, 400, { error: "Use your account settings to change your own password" });
+  }
+  if (!canManageTarget(session, targetUser)) {
+    return sendJson(res, 403, { error: "Your account can't reset that person's password" });
+  }
+
+  const tempPassword = generateTempPassword();
+  setUserPassword(targetUser.id, tempPassword, { mustChangePassword: true });
+  logAuditEvent(session, "reset_password", targetUser);
+  // The plaintext temp password is returned exactly once, here, for the
+  // admin to hand to the staff member - it's never stored or logged anywhere.
+  sendJson(res, 200, { tempPassword });
+});
+
+route("DELETE", /^\/api\/users\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MENU_ADMIN_ROLES);
+  if (!session) return;
+
+  const targetUser = findUserById(Number(params.id));
+  if (targetUser && targetUser.id === session.userId) {
+    return sendJson(res, 400, { error: "You can't remove your own account" });
+  }
+  if (!canManageTarget(session, targetUser)) {
+    return sendJson(res, 403, { error: "Your account can't remove that person" });
+  }
+
+  const users = readJson(USERS_FILE, []).filter((u) => u.id !== targetUser.id);
+  writeJson(USERS_FILE, users);
+  invalidateSessionsForUser(targetUser.id);
+  logAuditEvent(session, "remove_account", targetUser);
+  sendJson(res, 200, { ok: true });
+});
+
+route("GET", /^\/api\/audit-log\/?$/, async (req, res) => {
+  // Owner-only, intentionally - this exists specifically so an owner can
+  // see what admins have been doing to other accounts (password resets,
+  // removals). An admin being able to read/clear their own trail would
+  // defeat the point.
+  if (!requireRole(req, res, ["owner"])) return;
+  const log = readJson(AUDIT_LOG_FILE, []).slice().reverse();
+  sendJson(res, 200, log);
+});
+
 // --- Menu ---
 route("GET", /^\/api\/menu\/?$/, async (req, res) => {
   sendJson(res, 200, readJson(MENU_FILE, { sections: [], items: [] }));
 });
 
 route("POST", /^\/api\/menu\/?$/, async (req, res) => {
-  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
   const body = await readBody(req);
   const menu = readJson(MENU_FILE, { sections: [], items: [] });
   const name = String(body.name || "").trim();
@@ -388,7 +916,7 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
 });
 
 route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
   const body = await readBody(req);
   const menu = readJson(MENU_FILE, { sections: [], items: [] });
   const item = menu.items.find((i) => i.id === Number(params.id));
@@ -396,6 +924,13 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
 
   if (body.name !== undefined) item.name = String(body.name).trim();
   if (body.story !== undefined) item.story = String(body.story);
+  if (body.icon !== undefined) item.icon = String(body.icon);
+  if (body.section !== undefined) {
+    if (!menu.sections.some((s) => s.id === body.section)) {
+      return sendJson(res, 400, { error: "Unknown section" });
+    }
+    item.section = body.section;
+  }
   if (body.price !== undefined) {
     const price = Number(body.price);
     if (!Number.isFinite(price) || price <= 0) return sendJson(res, 400, { error: "Invalid price" });
@@ -406,7 +941,7 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
 });
 
 route("DELETE", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
   const menu = readJson(MENU_FILE, { sections: [], items: [] });
   const idx = menu.items.findIndex((i) => i.id === Number(params.id));
   if (idx === -1) return sendJson(res, 404, { error: "Item not found" });
@@ -421,31 +956,154 @@ route("GET", /^\/api\/config\/?$/, async (req, res) => {
 });
 
 route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
-  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
   const body = await readBody(req);
   const config = readJson(CONFIG_FILE, {});
-  const allowed = ["shopName", "tipEnabled", "tipAmount", "cgstRate", "sgstRate", "serviceChargeRate", "currency"];
+  const allowed = [
+    "shopName",
+    "tipEnabled",
+    "tipAmount",
+    "cgstRate",
+    "sgstRate",
+    "serviceChargeRate",
+    "currency",
+    "theme",
+    "heroImageUrl",
+    "logoUrl",
+    "upiVpa",
+    "upiPayeeName"
+  ];
   for (const key of allowed) {
     if (body[key] !== undefined) config[key] = body[key];
+  }
+  // Colors, footer, and customIcons are objects - merge individual keys
+  // instead of replacing the whole thing, so a partial update (e.g. just
+  // "accent", or just one new icon) doesn't wipe out the rest.
+  if (body.colors && typeof body.colors === "object") {
+    config.colors = { ...config.colors, ...body.colors };
+  }
+  if (body.footer && typeof body.footer === "object") {
+    config.footer = { ...config.footer, ...body.footer };
+  }
+  if (body.customIcons && typeof body.customIcons === "object") {
+    config.customIcons = { ...config.customIcons, ...body.customIcons };
   }
   writeJson(CONFIG_FILE, config);
   sendJson(res, 200, config);
 });
 
+route("DELETE", /^\/api\/config\/custom-icons\/(?<key>[\w-]+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  const config = readJson(CONFIG_FILE, {});
+  if (config.customIcons) delete config.customIcons[params.key];
+  writeJson(CONFIG_FILE, config);
+  sendJson(res, 200, config);
+});
+
+route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
+  // Resets ONLY the visual branding fields back to the original hardcoded
+  // look - shop name, tax rates, and footer/store-details are untouched.
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  const config = readJson(CONFIG_FILE, {});
+  config.theme = DEFAULT_BRANDING.theme;
+  config.colors = { ...DEFAULT_BRANDING.colors };
+  config.heroImageUrl = DEFAULT_BRANDING.heroImageUrl;
+  config.logoUrl = DEFAULT_BRANDING.logoUrl;
+  writeJson(CONFIG_FILE, config);
+  sendJson(res, 200, config);
+});
+
+// --- Branding profiles ("holiday themes" the admin can save and switch between) ---
+route("GET", /^\/api\/branding-profiles\/?$/, async (req, res) => {
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  sendJson(res, 200, readJson(BRANDING_PROFILES_FILE, {}));
+});
+
+route("POST", /^\/api\/branding-profiles\/?$/, async (req, res) => {
+  // Saves the CURRENT live branding (theme/colors/hero/logo) as a named,
+  // reusable profile - e.g. "Diwali", "Christmas" - to switch to later.
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  const body = await readBody(req);
+  const name = String(body.name || "").trim();
+  if (!name) return sendJson(res, 400, { error: "Profile name is required" });
+
+  const config = readJson(CONFIG_FILE, {});
+  const profiles = readJson(BRANDING_PROFILES_FILE, {});
+  profiles[name] = {
+    theme: config.theme,
+    colors: config.colors,
+    heroImageUrl: config.heroImageUrl,
+    logoUrl: config.logoUrl
+  };
+  writeJson(BRANDING_PROFILES_FILE, profiles);
+  sendJson(res, 201, profiles);
+});
+
+route("POST", /^\/api\/branding-profiles\/(?<name>[^/]+)\/activate\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  const profiles = readJson(BRANDING_PROFILES_FILE, {});
+  const name = decodeURIComponent(params.name);
+  const profile = profiles[name];
+  if (!profile) return sendJson(res, 404, { error: "Profile not found" });
+
+  const config = readJson(CONFIG_FILE, {});
+  config.theme = profile.theme;
+  config.colors = profile.colors;
+  config.heroImageUrl = profile.heroImageUrl;
+  config.logoUrl = profile.logoUrl;
+  writeJson(CONFIG_FILE, config);
+  sendJson(res, 200, config);
+});
+
+route("DELETE", /^\/api\/branding-profiles\/(?<name>[^/]+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  const profiles = readJson(BRANDING_PROFILES_FILE, {});
+  const name = decodeURIComponent(params.name);
+  delete profiles[name];
+  writeJson(BRANDING_PROFILES_FILE, profiles);
+  sendJson(res, 200, profiles);
+});
+
 // --- Orders ---
 route("GET", /^\/api\/orders\/?$/, async (req, res) => {
-  if (!requireAuth(req, res)) return;
+  // Full order list is for staff running the register/kitchen/admin views only.
+  if (!requireRole(req, res, KITCHEN_ROLES)) return;
   sendJson(res, 200, readJson(ORDERS_FILE, []));
 });
 
+route("GET", /^\/api\/orders\/mine\/?$/, async (req, res) => {
+  // A customer sees only orders tied to their account; a guest sees only
+  // orders tied to the phone number they logged in with - never anyone else's.
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+
+  const orders = readJson(ORDERS_FILE, []);
+  const mine = orders
+    .filter((o) => (session.role === "customer" ? o.customerId === session.userId : o.customerPhone === session.phone))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 10)
+    .map((o) => ({ ...o, status: orderStatusOf(o) }));
+
+  sendJson(res, 200, mine);
+});
+
 route("POST", /^\/api\/orders\/?$/, async (req, res) => {
-  // Placing an order is customer-facing (kiosk/counter), so it's intentionally
-  // not behind admin auth - but every price in it comes from the server menu.
+  // Placing an order needs SOME identity (customer login or guest phone) so
+  // it can be tracked afterwards - but no staff-only permissions are needed,
+  // so any logged-in role (including guest) may place one.
+  const session = requireSession(req, res);
+  if (!session) return;
+
   let body;
   try {
     body = await readBody(req);
   } catch (e) {
     return sendJson(res, 400, { error: e.message });
+  }
+
+  const phone = normalizePhone(body.phone || session.phone);
+  if (!phone) {
+    return sendJson(res, 400, { error: "A valid phone number is required to place an order" });
   }
 
   const method = body.method === "ONLINE" ? "ONLINE" : "COUNTER";
@@ -467,6 +1125,8 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     isPaid: method === "ONLINE", // still trust-based until a real payment webhook is wired up - see README
     tipApplied,
     serviceChargeActive,
+    customerId: session.role === "customer" ? session.userId : null,
+    customerPhone: phone,
     ...computed
   };
   orders.push(order);
@@ -476,7 +1136,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
 });
 
 route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => {
-  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, KITCHEN_ROLES)) return;
   const body = await readBody(req);
   const orders = readJson(ORDERS_FILE, []);
   const order = orders.find((o) => o.id === params.id);
@@ -499,8 +1159,10 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
 });
 
 route("GET", /^\/api\/orders\/stream\/?$/, async (req, res) => {
-  const cookies = parseCookies(req);
-  if (!isSessionValid(cookies.sb_session)) {
+  // Any signed-in role can listen (it only signals "something changed" -
+  // each client still fetches through the role-filtered endpoints above).
+  const session = currentSession(req);
+  if (!session) {
     res.writeHead(401);
     return res.end();
   }
@@ -512,38 +1174,6 @@ route("GET", /^\/api\/orders\/stream\/?$/, async (req, res) => {
   res.write("retry: 3000\n\n");
   sseClients.add(res);
   req.on("close", () => sseClients.delete(res));
-});
-
-// --- Admin auth ---
-route("POST", /^\/api\/admin\/login\/?$/, async (req, res) => {
-  const ip = getClientIp(req);
-  const limit = checkRateLimit(ip);
-  if (!limit.allowed) {
-    return sendJson(res, 429, { error: `Too many attempts. Try again in ${Math.ceil(limit.retryAfterMs / 1000)}s.` });
-  }
-
-  const body = await readBody(req);
-  if (verifyAdminPassword(body.password)) {
-    recordLoginSuccess(ip);
-    const token = createSession();
-    setSessionCookie(res, token);
-    sendJson(res, 200, { ok: true });
-  } else {
-    recordLoginFailure(ip);
-    sendJson(res, 401, { error: "Invalid password" });
-  }
-});
-
-route("POST", /^\/api\/admin\/logout\/?$/, async (req, res) => {
-  const cookies = parseCookies(req);
-  destroySession(cookies.sb_session);
-  clearSessionCookie(res);
-  sendJson(res, 200, { ok: true });
-});
-
-route("GET", /^\/api\/admin\/session\/?$/, async (req, res) => {
-  const cookies = parseCookies(req);
-  sendJson(res, 200, { authenticated: isSessionValid(cookies.sb_session) });
 });
 
 // ---------------------------------------------------------------------------
@@ -599,7 +1229,7 @@ const server = http.createServer(async (req, res) => {
     const match = matchRoute(req.method, pathname);
     if (!match) return sendJson(res, 404, { error: "Not found" });
     try {
-      await match.handler(req, res, match.params);
+      await match.handler(req, res, match.params, url);
     } catch (e) {
       sendJson(res, 500, { error: "Server error" });
     }
@@ -611,8 +1241,10 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Seven Bits Coffee server running at http://localhost:${PORT}`);
-  if (!UPI_VPA) {
-    console.log("Note: UPI_VPA is not set, so 'Pay Online' orders won't show a QR code.");
-    console.log("Set UPI_VPA and UPI_PAYEE_NAME env vars to enable it.");
+  const savedConfig = readJson(CONFIG_FILE, {});
+  if (!UPI_VPA && !savedConfig.upiVpa) {
+    console.log("Note: no UPI ID is set yet, so 'Pay Online' orders won't show a QR code.");
+    console.log("Set it from Admin > Global Settings > Payment Settings once logged in,");
+    console.log("or via the UPI_VPA/UPI_PAYEE_NAME env vars before first boot.");
   }
 });

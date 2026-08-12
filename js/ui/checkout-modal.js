@@ -11,9 +11,11 @@
  */
 import { CartSystem } from "../features/cart-logic.js";
 import { AdminConfig } from "../features/config-logic.js";
+import { AuthSystem } from "../features/auth-logic.js";
 
 export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApplied = false) {
     const config = await AdminConfig.loadSettings();
+    const session = await AuthSystem.getSession();
     const breakdown = CartSystem.calculateBreakdown(cartItems, config);
 
     let finalTotal = breakdown.total;
@@ -22,16 +24,16 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
 
     const modalHtml = `
     <div id="modal-overlay" class="modal-overlay">
-        <div class="modal-content" style="border: 2px solid #d97706; background: #111; color: #f9fafb; padding: 30px; width: 400px; font-family: 'Courier New', monospace;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid #d97706; padding-bottom: 10px; margin-top:0;">07 //<br> TRANSACTION SUMMARY</h2>
+        <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 400px; font-family: 'Courier New', monospace;">
+            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0;">07 //<br> TRANSACTION SUMMARY</h2>
 
             <div class="cart-items-list" style="max-height: 200px; overflow-y: auto; margin: 15px 0;">
                 ${cartItems
                     .map(
                         (item) => `
-                    <div class="cart-row" style="border-bottom: 1px dashed #222; padding: 5px 0; font-size: 9pt; display: flex; justify-content: space-between;">
-                        <span style="color: #d97706; font-weight: bold; width: 35px; display: inline-block;">${item.quantity}x</span>
-                        <span style="flex: 1; text-align: left;">${item.name} <span style="color: #666;">@\u20b9${item.price}</span></span>
+                    <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 5px 0; font-size: 9pt; display: flex; justify-content: space-between;">
+                        <span style="color: var(--color-accent); font-weight: bold; width: 35px; display: inline-block;">${item.quantity}x</span>
+                        <span style="flex: 1; text-align: left;">${item.name} <span style="color: var(--color-text-muted);">@\u20b9${item.price}</span></span>
                         <span style="font-weight: bold;">\u20b9${(item.price * item.quantity).toFixed(2)}</span>
                     </div>
                 `
@@ -39,22 +41,22 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                     .join("")}
             </div>
 
-            <div class="breakdown-window" style="background: #000; padding: 10px; border: 1px solid #222; margin-bottom: 20px;">
+            <div class="breakdown-window" style="background: var(--color-bg); padding: 10px; border: 1px solid var(--color-border); margin-bottom: 20px;">
                 <div class="calc-row" style="display: flex; justify-content: space-between; margin-bottom: 5px;">SUBTOTAL: <span>\u20b9${breakdown.subtotal.toFixed(2)}</span></div>
-                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: #888;">CGST (${(config.cgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.cgst.toFixed(2)}</span></div>
-                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: #888;">SGST (${(config.sgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.sgst.toFixed(2)}</span></div>
+                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">CGST (${(config.cgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.cgst.toFixed(2)}</span></div>
+                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">SGST (${(config.sgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.sgst.toFixed(2)}</span></div>
 
                 ${
                     serviceChargeActive
                         ? `
-                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: #888;">SERVICE CHARGE (${(config.serviceChargeRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.serviceCharge.toFixed(2)}</span></div>`
+                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">SERVICE CHARGE (${(config.serviceChargeRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.serviceCharge.toFixed(2)}</span></div>`
                         : ""
                 }
 
                 ${
                     config.tipEnabled
                         ? `
-                <div class="calc-row tip-row" style="color: #d97706; border: 1px dashed #d97706; padding: 5px; margin: 10px 0; display: flex; justify-content: space-between; align-items: center;">
+                <div class="calc-row tip-row" style="color: var(--color-accent); border: 1px dashed var(--color-accent); padding: 5px; margin: 10px 0; display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-size: 9pt;">GINGER_TIP (\u20b9${config.tipAmount}):</span>
                     <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
                         <input type="checkbox" ${tipApplied ? "checked" : ""} onchange="window.toggleTip(this.checked)">
@@ -64,25 +66,31 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                         : ""
                 }
 
-                <div class="calc-row total-row" style="display: flex; justify-content: space-between; border-top: 1px solid #d97706; padding-top: 10px; margin-top: 5px; font-weight:bold; font-size: 1.2rem; color: #d97706;">
+                <div class="calc-row total-row" style="display: flex; justify-content: space-between; border-top: 1px solid var(--color-accent); padding-top: 10px; margin-top: 5px; font-weight:bold; font-size: 1.2rem; color: var(--color-accent);">
                     TOTAL CACHE: <span>\u20b9${finalTotal.toFixed(2)}</span>
                 </div>
             </div>
 
-            <div id="checkout-error" style="color:#f87171; font-size: 8pt; min-height: 12px; margin-bottom: 10px;"></div>
+            <div id="checkout-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin-bottom: 10px;"></div>
 
-            <div class="payment-options" style="display: grid; gap: 10px;">
-                <button id="btn-pay-cash" class="btn-pay" onclick="window.startCheckout('COUNTER')" style="background: #d97706; color: black; border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">PAY CASH</button>
-                <button id="btn-pay-online" class="btn-pay" style="background: #22d3ee; color: black; border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;" onclick="window.startCheckout('ONLINE')">PAY ONLINE (UPI)</button>
+            <div style="margin-bottom: 15px;">
+                <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">ORDER TRACKING PHONE:</label>
+                <input id="checkout-phone" type="tel" value="${session.phone || ""}" ${session.role === "customer" ? "readonly" : ""}
+                    placeholder="PHONE NUMBER" style="width: 100%; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:${session.role === "customer" ? "var(--color-text-muted)" : "var(--color-text)"}; padding: 10px; font-family: inherit;" />
             </div>
 
-            <button class="btn-close" onclick="window.closeModal()" style="margin-top: 15px; width: 100%; background: #333; color: white; border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">BACK</button>
+            <div class="payment-options" style="display: grid; gap: 10px;">
+                <button id="btn-pay-cash" class="btn-pay" onclick="window.startCheckout('COUNTER')" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">PAY CASH</button>
+                <button id="btn-pay-online" class="btn-pay" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;" onclick="window.startCheckout('ONLINE')">PAY ONLINE (UPI)</button>
+            </div>
+
+            <button class="btn-close" onclick="window.closeModal()" style="margin-top: 15px; width: 100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">BACK</button>
 
             ${
                 serviceChargeActive
                     ? `
             <div style="text-align: center; margin-top: 15px;">
-                <button onclick="window.removeServiceCharge()" style="background:none; border:none; color:#333; font-size: 7pt; cursor:pointer; text-decoration: underline; font-family: inherit;">
+                <button onclick="window.removeServiceCharge()" style="background:none; border:none; color:var(--color-border); font-size: 7pt; cursor:pointer; text-decoration: underline; font-family: inherit;">
                     Opt-out of Service Charge
                 </button>
             </div>`
@@ -111,20 +119,20 @@ export function renderPaymentConfirmation(order, method) {
     overlay.style.zIndex = "4000";
 
     overlay.innerHTML = `
-        <div class="modal-content" style="text-align: center; background: black; padding: 30px; border: 2px solid #d97706;">
-            <h2 style="color: #d97706; font-size: 1.2rem; font-family: 'Courier New', monospace;">${isOnline ? "UPI GATEWAY" : "COUNTER READY"}</h2>
-            <p style="font-family: 'Courier New', monospace; color: #888; font-size: 9pt;">ORDER #${order.id} &middot; TOTAL: \u20b9${order.total.toFixed(2)}</p>
+        <div class="modal-content" style="text-align: center; background: var(--color-surface); padding: 30px; border: 2px solid var(--color-accent);">
+            <h2 style="color: var(--color-accent); font-size: 1.2rem; font-family: 'Courier New', monospace;">${isOnline ? "UPI GATEWAY" : "COUNTER READY"}</h2>
+            <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt;">ORDER #${order.id} &middot; TOTAL: \u20b9${order.total.toFixed(2)}</p>
 
             ${
                 isOnline
                     ? order.paymentQrUrl
-                        ? `<div style="background:white; padding:10px; margin:20px auto; width:150px; border: 4px solid #d97706;"><img src="${order.paymentQrUrl}" alt="UPI QR"></div>`
-                        : `<p style="margin:30px 0; font-family: 'Courier New', monospace; color: white;">Online payment isn't configured on this till yet - please pay at the counter.</p>`
-                    : `<p style="margin:30px 0; font-family: 'Courier New', monospace; color: white;">PAYMENT PENDING AT COUNTER.</p>`
+                        ? `<div style="background:white; padding:10px; margin:20px auto; width:150px; border: 4px solid var(--color-accent);"><img src="${order.paymentQrUrl}" alt="UPI QR"></div>`
+                        : `<p style="margin:30px 0; font-family: 'Courier New', monospace; color: var(--color-text);">Online payment isn't configured on this till yet - please pay at the counter.</p>`
+                    : `<p style="margin:30px 0; font-family: 'Courier New', monospace; color: var(--color-text);">PAYMENT PENDING AT COUNTER.</p>`
             }
 
             <div style="display: grid; gap: 15px; margin-top: 20px;">
-                <button class="btn-primary" style="background: #d97706; color: black; border: 2px solid black; padding: 15px; font-weight: bold; cursor: pointer; font-family: 'Courier New', monospace; box-shadow: 4px 4px 0px #000;" onclick="window.finalizeAndPrint()">PRINT &amp; DONE</button>
+                <button class="btn-primary" style="background: var(--color-accent); color: var(--color-accent-contrast); border: 2px solid black; padding: 15px; font-weight: bold; cursor: pointer; font-family: 'Courier New', monospace; box-shadow: 4px 4px 0px var(--color-bg);" onclick="window.finalizeAndPrint()">PRINT &amp; DONE</button>
             </div>
         </div>
     `;
