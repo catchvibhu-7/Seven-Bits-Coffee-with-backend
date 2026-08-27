@@ -6,7 +6,7 @@
  * (a loss doesn't post to the leaderboard - it's not a meaningful "score"),
  * rewarding speed: 500 minus 5 per second elapsed, floored at 10.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
+import { submitScoreWithCelebration } from "../features/game-fx.js";
 
 const COLS = 9;
 const ROWS = 9;
@@ -192,9 +192,13 @@ export const MinesweeperGame = {
         });
         if (won) {
             const score = Math.max(10, 500 - this.elapsed * 5);
-            await ArcadeSystem.submitScore("minesweeper", score);
-            if (this.onScoreSubmitted) this.onScoreSubmitted();
             this.render(`YOU WIN! - SCORE: ${score}`);
+            const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "minesweeper", score);
+            if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+            if (newHighScore) {
+                const msgEl = this.root.querySelector("#mine-message");
+                if (msgEl) msgEl.textContent = `NEW HIGH SCORE! - SCORE: ${score}`;
+            }
         } else {
             this.render("BOOM! GAME OVER");
         }

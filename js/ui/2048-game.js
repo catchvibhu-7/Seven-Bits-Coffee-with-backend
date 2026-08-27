@@ -7,7 +7,7 @@
  * implementations. Pure DOM, tile colors ramp from a dim accent tone up to
  * the full accent and then cyan for the highest tiles.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
+import { submitScoreWithCelebration } from "../features/game-fx.js";
 
 const SIZE = 4;
 const TILE_COLORS = { 2: "#3a2a1a", 4: "#4a3520", 8: "#8a5a20", 16: "#a8691f", 32: "#c77a1f", 64: "#d97706", 128: "#e08a1f", 256: "#e89d2f", 512: "#f0b03f", 1024: "#f8c34f", 2048: "#22d3ee" };
@@ -179,9 +179,13 @@ export const Game2048 = {
 
     async endGame() {
         this.gameOver = true;
-        await ArcadeSystem.submitScore("2048", this.score);
-        if (this.onScoreSubmitted) this.onScoreSubmitted();
         this.render(`GAME OVER - SCORE: ${this.score}`);
+        const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "2048", this.score);
+        if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        if (newHighScore) {
+            const msgEl = this.root.querySelector("#g2048-message");
+            if (msgEl) msgEl.textContent = `NEW HIGH SCORE! - SCORE: ${this.score}`;
+        }
     },
 
     onExit: () => {},

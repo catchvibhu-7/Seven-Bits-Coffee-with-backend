@@ -2639,7 +2639,7 @@ route("POST", /^\/api\/arcade\/scores\/?$/, async (req, res) => {
   const KNOWN_GAMES = ["tetris", "tictactoe", "snake", "pong", "memory", "simon", "minesweeper", "2048", "breakout", "flappy", "invaders", "connectfour", "checkers"];
   if (!KNOWN_GAMES.includes(game)) return sendJson(res, 400, { error: "Unknown game" });
   const score = parseInt(body.score, 10);
-  if (!Number.isFinite(score) || score < 0 || score > 1000000) {
+  if (!Number.isFinite(score) || score <= 0 || score > 1000000) {
     return sendJson(res, 400, { error: "Invalid score" });
   }
   const scores = readJson(ARCADE_SCORES_FILE, []);

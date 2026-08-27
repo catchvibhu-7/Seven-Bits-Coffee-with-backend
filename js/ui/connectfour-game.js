@@ -10,6 +10,7 @@
  *    same shared-arcade-SSE pattern as Tic-Tac-Toe.
  */
 import { ArcadeSystem } from "../features/arcade-logic.js";
+import { submitScoreWithCelebration } from "../features/game-fx.js";
 
 const ROWS = 6;
 const COLS = 7;
@@ -100,6 +101,10 @@ export const ConnectFourGame = {
     matchId: null,
     pollTimer: null,
     onScoreSubmitted: null,
+    // Same "longest win streak" scoring as Tic-Tac-Toe - see that file's
+    // comment for why a per-game score doesn't make sense for a win/loss game.
+    winStreak: 0,
+    processedResultFor: null,
 
     mount(root) {
         this.root = root;
@@ -191,10 +196,15 @@ export const ConnectFourGame = {
 
     async finishBotGame(winner) {
         this.botTurn = false;
-        const message = winner === "draw" ? "DRAW!" : winner === "R" ? "YOU WIN!" : "BOT WINS!";
+        let message;
+        let endingStreak = 0;
         if (winner === "R") {
-            await ArcadeSystem.submitScore("connectfour", 1);
-            if (this.onScoreSubmitted) this.onScoreSubmitted();
+            this.winStreak++;
+            message = `YOU WIN! - WIN STREAK: ${this.winStreak}`;
+        } else {
+            endingStreak = this.winStreak;
+            this.winStreak = 0;
+            message = winner === "draw" ? "DRAW!" : endingStreak > 0 ? `BOT WINS! - STREAK ENDED AT ${endingStreak}` : "BOT WINS!";
         }
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">CONNECT FOUR - VS BOT</h3>
@@ -207,11 +217,17 @@ export const ConnectFourGame = {
         `;
         this.root.querySelector("#c4-again").addEventListener("click", () => this.startBotGame());
         this.root.querySelector("#c4-back").addEventListener("click", () => this.renderModeSelect());
+
+        if (endingStreak > 0) {
+            const { submitted } = await submitScoreWithCelebration(this.root, "connectfour", endingStreak);
+            if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        }
     },
 
     // ------------------------------------------------------------ ONLINE
     async startOnlineQueue() {
         this.mode = "online";
+        this.processedResultFor = null;
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:16px;">CONNECT FOUR - FINDING AN OPPONENT...</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted);">Waiting for another player at the store to queue up.</p>
@@ -267,11 +283,22 @@ export const ConnectFourGame = {
         const mySymbol = match.you === 0 ? "R" : "Y";
         const isMyTurn = !match.winner && match.turn === match.you;
         const opponentName = match.names[match.you === 0 ? 1 : 0];
+        const isFreshResult = !!match.winner && this.processedResultFor !== match.id;
+        if (isFreshResult) this.processedResultFor = match.id;
+
+        let endingStreak = 0;
+        if (isFreshResult) {
+            if (match.winner === mySymbol) this.winStreak++;
+            else {
+                endingStreak = this.winStreak;
+                this.winStreak = 0;
+            }
+        }
 
         let message;
         if (match.winner === "draw") message = "DRAW!";
-        else if (match.winner === mySymbol) message = "YOU WIN!";
-        else if (match.winner) message = "YOU LOSE!";
+        else if (match.winner === mySymbol) message = `YOU WIN! - WIN STREAK: ${this.winStreak}`;
+        else if (match.winner) message = endingStreak > 0 ? `YOU LOSE! - STREAK ENDED AT ${endingStreak}` : "YOU LOSE!";
         else message = isMyTurn ? "Your move" : `Waiting for ${opponentName}...`;
 
         this.root.innerHTML = `
@@ -290,9 +317,9 @@ export const ConnectFourGame = {
             });
         }
         if (match.winner) {
-            if (match.winner === mySymbol) {
-                ArcadeSystem.submitScore("connectfour", 1).then(() => {
-                    if (this.onScoreSubmitted) this.onScoreSubmitted();
+            if (isFreshResult && endingStreak > 0) {
+                submitScoreWithCelebration(this.root, "connectfour", endingStreak).then(({ submitted }) => {
+                    if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
                 });
             }
             this.root.querySelector("#c4-again")?.addEventListener("click", () => {

@@ -6,7 +6,7 @@
  * beat. Pure DOM (no canvas), so colors just use CSS vars directly. Score
  * rewards fewer moves: 300 minus 10 per move, floored at 10.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
+import { submitScoreWithCelebration } from "../features/game-fx.js";
 
 const SYMBOLS = ["☕", "🍩", "🥐", "🍪", "🧁", "🍰"]; // 6 pairs = 12 cards
 
@@ -100,9 +100,15 @@ export const MemoryGame = {
 
     async finishGame() {
         const score = Math.max(10, 300 - this.moves * 10);
-        await ArcadeSystem.submitScore("memory", score);
-        if (this.onScoreSubmitted) this.onScoreSubmitted();
+        // Render first (full innerHTML rebuild), THEN submit/celebrate - fireConfetti
+        // appends an overlay to this.root, and a later render() would wipe it out.
         this.render(`SOLVED IN ${this.moves} MOVES - SCORE: ${score}`);
+        const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "memory", score);
+        if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        if (newHighScore) {
+            const msgEl = this.root.querySelector("#mm-message");
+            if (msgEl) msgEl.textContent = `NEW HIGH SCORE! - SOLVED IN ${this.moves} MOVES - SCORE: ${score}`;
+        }
     },
 
     onExit: () => {},

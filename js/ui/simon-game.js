@@ -7,7 +7,7 @@
  * fixed hues, since a memory game needs 4 clearly distinct pads more than
  * it needs full theme purity).
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
+import { submitScoreWithCelebration } from "../features/game-fx.js";
 
 const PADS = [
     { key: 0, bg: "var(--color-accent)" },
@@ -105,10 +105,14 @@ export const SimonGame = {
     async endGame() {
         this.accepting = false;
         const roundsCompleted = this.sequence.length - 1;
-        await ArcadeSystem.submitScore("simon", roundsCompleted);
-        if (this.onScoreSubmitted) this.onScoreSubmitted();
         this.render(`GAME OVER - REACHED ROUND ${this.sequence.length}`);
         this.root.querySelector("#simon-again").style.display = "";
+        const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "simon", roundsCompleted);
+        if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        if (newHighScore) {
+            const msgEl = this.root.querySelector("#simon-message");
+            if (msgEl) msgEl.textContent = `NEW HIGH SCORE! - REACHED ROUND ${this.sequence.length}`;
+        }
     },
 
     onExit: () => {},

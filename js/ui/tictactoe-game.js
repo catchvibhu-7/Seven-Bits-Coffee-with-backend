@@ -14,6 +14,7 @@
  *    itself).
  */
 import { ArcadeSystem } from "../features/arcade-logic.js";
+import { submitScoreWithCelebration } from "../features/game-fx.js";
 
 const LINES = [
     [0, 1, 2], [3, 4, 5], [6, 7, 8],
@@ -73,6 +74,12 @@ export const TicTacToeGame = {
     matchId: null,
     pollTimer: null,
     onScoreSubmitted: null,
+    // Tic-Tac-Toe's leaderboard tracks longest win streak, not a per-game
+    // score (every game here is worth exactly 1 win, so "high score" would
+    // just mean "played the most games") - streak persists across bot AND
+    // online games within the same arcade visit, resets on a loss or draw.
+    winStreak: 0,
+    processedResultFor: null,
 
     mount(root) {
         this.root = root;
@@ -160,10 +167,15 @@ export const TicTacToeGame = {
 
     async finishBotGame(winner) {
         this.botTurn = false;
-        const message = winner === "draw" ? "DRAW!" : winner === "X" ? "YOU WIN!" : "BOT WINS!";
+        let message;
+        let endingStreak = 0;
         if (winner === "X") {
-            await ArcadeSystem.submitScore("tictactoe", 1);
-            if (this.onScoreSubmitted) this.onScoreSubmitted();
+            this.winStreak++;
+            message = `YOU WIN! - WIN STREAK: ${this.winStreak}`;
+        } else {
+            endingStreak = this.winStreak;
+            this.winStreak = 0;
+            message = winner === "draw" ? "DRAW!" : endingStreak > 0 ? `BOT WINS! - STREAK ENDED AT ${endingStreak}` : "BOT WINS!";
         }
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">TIC-TAC-TOE - VS BOT</h3>
@@ -176,11 +188,17 @@ export const TicTacToeGame = {
         `;
         this.root.querySelector("#ttt-again").addEventListener("click", () => this.startBotGame());
         this.root.querySelector("#ttt-back").addEventListener("click", () => this.renderModeSelect());
+
+        if (endingStreak > 0) {
+            const { submitted } = await submitScoreWithCelebration(this.root, "tictactoe", endingStreak);
+            if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        }
     },
 
     // ------------------------------------------------------------ ONLINE
     async startOnlineQueue() {
         this.mode = "online";
+        this.processedResultFor = null;
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:16px;">TIC-TAC-TOE - FINDING AN OPPONENT...</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted);">Waiting for another player at the store to queue up.</p>
@@ -241,11 +259,26 @@ export const TicTacToeGame = {
         const mySymbol = match.you === 0 ? "X" : "O";
         const isMyTurn = !match.winner && match.turn === match.you;
         const opponentName = match.names[match.you === 0 ? 1 : 0];
+        // A win/loss/draw only changes the streak the FIRST time this match's
+        // result is rendered - onArcadeChanged() can call renderMatch() again
+        // for the same finished match (e.g. another arcade event fires while
+        // this tab is still sitting on the game-over screen).
+        const isFreshResult = !!match.winner && this.processedResultFor !== match.id;
+        if (isFreshResult) this.processedResultFor = match.id;
+
+        let endingStreak = 0;
+        if (isFreshResult) {
+            if (match.winner === mySymbol) this.winStreak++;
+            else {
+                endingStreak = this.winStreak;
+                this.winStreak = 0;
+            }
+        }
 
         let message;
         if (match.winner === "draw") message = "DRAW!";
-        else if (match.winner === mySymbol) message = "YOU WIN!";
-        else if (match.winner) message = "YOU LOSE!";
+        else if (match.winner === mySymbol) message = `YOU WIN! - WIN STREAK: ${this.winStreak}`;
+        else if (match.winner) message = endingStreak > 0 ? `YOU LOSE! - STREAK ENDED AT ${endingStreak}` : "YOU LOSE!";
         else message = isMyTurn ? "Your move" : `Waiting for ${opponentName}...`;
 
         this.root.innerHTML = `
@@ -264,9 +297,9 @@ export const TicTacToeGame = {
             });
         }
         if (match.winner) {
-            if (match.winner === mySymbol) {
-                ArcadeSystem.submitScore("tictactoe", 1).then(() => {
-                    if (this.onScoreSubmitted) this.onScoreSubmitted();
+            if (isFreshResult && endingStreak > 0) {
+                submitScoreWithCelebration(this.root, "tictactoe", endingStreak).then(({ submitted }) => {
+                    if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
                 });
             }
             this.root.querySelector("#ttt-again")?.addEventListener("click", () => {

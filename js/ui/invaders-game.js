@@ -8,8 +8,8 @@
  * read as distinctly "yours" vs "incoming" at a glance more than they
  * need to be on-brand.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
 import { themeColor } from "../features/theme-colors.js";
+import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
 
 const WIDTH = 320;
 const HEIGHT = 400;
@@ -37,6 +37,7 @@ export const InvadersGame = {
     score: 0,
     lives: 3,
     gameOver: false,
+    ready: false,
     keys: null,
     touchLeft: false,
     touchRight: false,
@@ -134,6 +135,7 @@ export const InvadersGame = {
         this.score = 0;
         this.lives = 3;
         this.gameOver = false;
+        this.ready = false;
         this.enemies = [];
         for (let r = 0; r < ENEMY_ROWS; r++) {
             for (let c = 0; c < ENEMY_COLS; c++) {
@@ -144,11 +146,15 @@ export const InvadersGame = {
         this.root.querySelector("#inv-again").style.display = "none";
         this.updateHud();
         if (this.rafId) cancelAnimationFrame(this.rafId);
-        this.loop();
+        this.draw();
+        runCountdown(this.root, () => {
+            this.ready = true;
+            this.loop();
+        });
     },
 
     fire() {
-        if (this.gameOver) return;
+        if (this.gameOver || !this.ready) return;
         if (this.playerBullets.length >= 3) return; // small rate limit
         this.playerBullets.push({ x: this.playerX + PLAYER_W / 2, y: PLAYER_Y });
     },
@@ -249,9 +255,10 @@ export const InvadersGame = {
     async endGame(won) {
         this.gameOver = true;
         if (this.rafId) cancelAnimationFrame(this.rafId);
-        await ArcadeSystem.submitScore("invaders", this.score);
-        if (this.onScoreSubmitted) this.onScoreSubmitted();
-        this.root.querySelector("#inv-message").textContent = won ? `WAVE CLEARED! - SCORE: ${this.score}` : `GAME OVER - SCORE: ${this.score}`;
+        const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "invaders", this.score);
+        if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        const base = won ? `WAVE CLEARED! - SCORE: ${this.score}` : `GAME OVER - SCORE: ${this.score}`;
+        this.root.querySelector("#inv-message").textContent = newHighScore ? `NEW HIGH SCORE! ${base}` : base;
         this.root.querySelector("#inv-again").style.display = "";
     },
 

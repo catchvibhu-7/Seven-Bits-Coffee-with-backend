@@ -8,8 +8,8 @@
  * theme accent (read via themeColor() since canvas can't resolve CSS vars
  * itself); food uses the secondary/cyan theme color for contrast.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
 import { themeColor } from "../features/theme-colors.js";
+import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
 
 const COLS = 18;
 const ROWS = 18;
@@ -84,7 +84,7 @@ export const SnakeGame = {
         this.placeFood();
         this.updateScore();
         this.draw();
-        this.startTimer();
+        runCountdown(this.root, () => this.startTimer());
     },
 
     startTimer() {
@@ -170,9 +170,11 @@ export const SnakeGame = {
     async endGame() {
         this.gameOver = true;
         this.stopTimer();
-        await ArcadeSystem.submitScore("snake", this.score);
-        if (this.onScoreSubmitted) this.onScoreSubmitted();
-        this.root.querySelector("#snake-message").textContent = `GAME OVER - SCORE: ${this.score}`;
+        const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "snake", this.score);
+        if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        this.root.querySelector("#snake-message").textContent = newHighScore
+            ? `NEW HIGH SCORE! - ${this.score}`
+            : `GAME OVER - SCORE: ${this.score}`;
         this.root.querySelector("#snake-again").style.display = "";
     },
 

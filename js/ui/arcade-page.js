@@ -149,7 +149,7 @@ const THUMBS = {
 };
 
 const GAME_DEFS = {
-    tictactoe: { name: "TIC-TAC-TOE", module: TicTacToeGame, scoreLabel: "WINS" },
+    tictactoe: { name: "TIC-TAC-TOE", module: TicTacToeGame, scoreLabel: "BEST WIN STREAK" },
     tetris: { name: "TETRIS", module: TetrisGame, scoreLabel: "HIGH SCORES" },
     snake: { name: "SNAKE", module: SnakeGame, scoreLabel: "HIGH SCORES" },
     pong: { name: "PONG", module: PongGame, scoreLabel: "HIGH SCORES" },
@@ -160,8 +160,8 @@ const GAME_DEFS = {
     breakout: { name: "BREAKOUT", module: BreakoutGame, scoreLabel: "HIGH SCORES" },
     flappy: { name: "FLAPPY BIT", module: FlappyGame, scoreLabel: "HIGH SCORES" },
     invaders: { name: "SPACE INVADERS", module: InvadersGame, scoreLabel: "HIGH SCORES" },
-    connectfour: { name: "CONNECT FOUR", module: ConnectFourGame, scoreLabel: "WINS" },
-    checkers: { name: "CHECKERS", module: CheckersGame, scoreLabel: "WINS" }
+    connectfour: { name: "CONNECT FOUR", module: ConnectFourGame, scoreLabel: "BEST WIN STREAK" },
+    checkers: { name: "CHECKERS", module: CheckersGame, scoreLabel: "BEST WIN STREAK" }
 };
 
 export const ArcadePage = {

@@ -12,6 +12,7 @@
  * selectable only if it appears as a "from" in that list.
  */
 import { ArcadeSystem } from "../features/arcade-logic.js";
+import { submitScoreWithCelebration } from "../features/game-fx.js";
 
 const SIZE = 8;
 
@@ -34,6 +35,9 @@ export const CheckersGame = {
     selected: null,
     lastMatch: null,
     onScoreSubmitted: null,
+    // Same "longest win streak" scoring as Tic-Tac-Toe/Connect Four.
+    winStreak: 0,
+    processedResultFor: null,
 
     mount(root) {
         this.root = root;
@@ -77,6 +81,7 @@ export const CheckersGame = {
     },
 
     async startQueue() {
+        this.processedResultFor = null;
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:16px;">CHECKERS - FINDING AN OPPONENT...</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted);">Waiting for another player at the store to queue up.</p>
@@ -134,10 +139,22 @@ export const CheckersGame = {
         const isMyTurn = !match.winner && match.turn === myIndex;
         const opponentName = match.names[myIndex === 0 ? 1 : 0];
         const myColorLabel = myIndex === 0 ? "orange" : "white";
+        const isFreshResult = !!match.winner && this.processedResultFor !== match.id;
+        if (isFreshResult) this.processedResultFor = match.id;
+
+        const iWon = match.winner === String(myIndex);
+        let endingStreak = 0;
+        if (isFreshResult) {
+            if (iWon) this.winStreak++;
+            else {
+                endingStreak = this.winStreak;
+                this.winStreak = 0;
+            }
+        }
 
         let message;
         if (match.winner) {
-            message = match.winner === String(myIndex) ? "YOU WIN!" : "YOU LOSE!";
+            message = iWon ? `YOU WIN! - WIN STREAK: ${this.winStreak}` : endingStreak > 0 ? `YOU LOSE! - STREAK ENDED AT ${endingStreak}` : "YOU LOSE!";
         } else {
             message = isMyTurn ? "Your move" : `Waiting for ${opponentName}...`;
         }
@@ -197,9 +214,9 @@ export const CheckersGame = {
             this.renderIntro();
         });
 
-        if (match.winner && match.winner === String(myIndex)) {
-            ArcadeSystem.submitScore("checkers", 1).then(() => {
-                if (this.onScoreSubmitted) this.onScoreSubmitted();
+        if (isFreshResult && endingStreak > 0) {
+            submitScoreWithCelebration(this.root, "checkers", endingStreak).then(({ submitted }) => {
+                if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
             });
         }
     },

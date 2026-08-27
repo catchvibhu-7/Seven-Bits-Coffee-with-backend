@@ -6,8 +6,8 @@
  * Colors read live from the theme via themeColor() (canvas can't resolve
  * CSS vars itself): bird = accent, pipes = cyan.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
 import { themeColor } from "../features/theme-colors.js";
+import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
 
 const WIDTH = 300;
 const HEIGHT = 400;
@@ -30,6 +30,7 @@ export const FlappyGame = {
     frame: 0,
     score: 0,
     gameOver: false,
+    ready: false,
     rafId: null,
     clickHandler: null,
     touchHandler: null,
@@ -94,15 +95,20 @@ export const FlappyGame = {
         this.frame = 0;
         this.score = 0;
         this.gameOver = false;
+        this.ready = false;
         this.root.querySelector("#flap-message").textContent = "Click/tap or press Space to flap.";
         this.root.querySelector("#flap-again").style.display = "none";
         this.updateScore();
         if (this.rafId) cancelAnimationFrame(this.rafId);
-        this.loop();
+        this.draw();
+        runCountdown(this.root, () => {
+            this.ready = true;
+            this.loop();
+        });
     },
 
     flap() {
-        if (this.gameOver) return;
+        if (this.gameOver || !this.ready) return;
         this.birdVY = FLAP_VELOCITY;
     },
 
@@ -168,9 +174,11 @@ export const FlappyGame = {
     async endGame() {
         this.gameOver = true;
         if (this.rafId) cancelAnimationFrame(this.rafId);
-        await ArcadeSystem.submitScore("flappy", this.score);
-        if (this.onScoreSubmitted) this.onScoreSubmitted();
-        this.root.querySelector("#flap-message").textContent = `GAME OVER - SCORE: ${this.score}`;
+        const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "flappy", this.score);
+        if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        this.root.querySelector("#flap-message").textContent = newHighScore
+            ? `NEW HIGH SCORE! - ${this.score}`
+            : `GAME OVER - SCORE: ${this.score}`;
         this.root.querySelector("#flap-again").style.display = "";
     },
 

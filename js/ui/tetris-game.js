@@ -15,8 +15,8 @@
  * "on brand". Making every piece the same accent color would look tidy but
  * make the game harder to read.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
 import { themeColor } from "../features/theme-colors.js";
+import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
 
 const COLS = 10;
 const ROWS = 20;
@@ -55,6 +55,7 @@ export const TetrisGame = {
     level: 1,
     dropTimer: null,
     gameOver: false,
+    ready: false,
     keyHandler: null,
 
     mount(root) {
@@ -113,12 +114,16 @@ export const TetrisGame = {
         this.lines = 0;
         this.level = 1;
         this.gameOver = false;
+        this.ready = false;
         this.root.querySelector("#tetris-message").textContent = "";
         this.root.querySelector("#tetris-again").style.display = "none";
         this.spawnPiece();
         this.updateStats();
         this.draw();
-        this.startDropTimer();
+        runCountdown(this.root, () => {
+            this.ready = true;
+            this.startDropTimer();
+        });
     },
 
     randomPiece() {
@@ -203,7 +208,7 @@ export const TetrisGame = {
     },
 
     tryMove(dx, dy) {
-        if (this.gameOver) return;
+        if (this.gameOver || !this.ready) return;
         if (!this.collides(this.piece.shape, this.px + dx, this.py + dy)) {
             this.px += dx;
             this.py += dy;
@@ -212,7 +217,7 @@ export const TetrisGame = {
     },
 
     softDrop() {
-        if (this.gameOver) return;
+        if (this.gameOver || !this.ready) return;
         if (!this.collides(this.piece.shape, this.px, this.py + 1)) {
             this.py++;
             this.score += 1;
@@ -224,7 +229,7 @@ export const TetrisGame = {
     },
 
     hardDrop() {
-        if (this.gameOver) return;
+        if (this.gameOver || !this.ready) return;
         let dropped = 0;
         while (!this.collides(this.piece.shape, this.px, this.py + 1)) {
             this.py++;
@@ -237,7 +242,7 @@ export const TetrisGame = {
     },
 
     rotate() {
-        if (this.gameOver) return;
+        if (this.gameOver || !this.ready) return;
         const rotated = rotateClockwise(this.piece.shape);
         // Naive wall-kick: try the rotation as-is, then nudged left/right by
         // up to 2 cells - covers the common cases without full SRS.
@@ -295,9 +300,11 @@ export const TetrisGame = {
     async endGame() {
         this.gameOver = true;
         this.stopDropTimer();
-        await ArcadeSystem.submitScore("tetris", this.score);
-        if (this.onScoreSubmitted) this.onScoreSubmitted();
-        this.root.querySelector("#tetris-message").textContent = `GAME OVER - SCORE: ${this.score}`;
+        const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "tetris", this.score);
+        if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        this.root.querySelector("#tetris-message").textContent = newHighScore
+            ? `NEW HIGH SCORE! - ${this.score}`
+            : `GAME OVER - SCORE: ${this.score}`;
         this.root.querySelector("#tetris-again").style.display = "";
     },
 

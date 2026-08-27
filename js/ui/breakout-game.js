@@ -6,8 +6,8 @@
  * same physics style. Colors read live from the theme via themeColor()
  * (canvas can't resolve CSS vars itself): paddle = accent, bricks = cyan.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
 import { themeColor } from "../features/theme-colors.js";
+import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
 
 const WIDTH = 320;
 const HEIGHT = 400;
@@ -19,6 +19,24 @@ const BRICK_COLS = 8;
 const BRICK_H = 16;
 const BRICK_GAP = 3;
 const BRICK_TOP = 30;
+const SENSITIVITY_KEY = "sb-arcade-breakout-sensitivity";
+
+function loadSensitivity() {
+    try {
+        const stored = parseInt(localStorage.getItem(SENSITIVITY_KEY), 10);
+        return Number.isFinite(stored) && stored >= 2 && stored <= 10 ? stored : 5;
+    } catch (e) {
+        return 5;
+    }
+}
+
+function saveSensitivity(value) {
+    try {
+        localStorage.setItem(SENSITIVITY_KEY, String(value));
+    } catch (e) {
+        // Private-browsing/storage-blocked - the slider still works for this session.
+    }
+}
 
 export const BreakoutGame = {
     root: null,
@@ -39,9 +57,11 @@ export const BreakoutGame = {
     keyDownHandler: null,
     keyUpHandler: null,
     colors: null,
+    paddleSpeed: 5,
 
     mount(root) {
         this.root = root;
+        this.paddleSpeed = loadSensitivity();
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">BREAKOUT</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="brk-score" style="color:var(--color-accent);">0</strong></p>
@@ -49,6 +69,11 @@ export const BreakoutGame = {
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; max-width:200px; margin:10px auto 0;">
                 <button id="brk-left" class="admin-btn">←</button>
                 <button id="brk-right" class="admin-btn">→</button>
+            </div>
+            <div style="max-width:280px; margin:14px auto 0; display:flex; align-items:center; gap:8px; font-size:8pt; color:var(--color-text-muted);">
+                <span>PADDLE SPEED</span>
+                <input type="range" id="brk-sensitivity" min="2" max="10" step="1" value="${this.paddleSpeed}" style="flex:1;">
+                <strong id="brk-sensitivity-val" style="color:var(--color-accent); min-width:1.4em; text-align:right;">${this.paddleSpeed}</strong>
             </div>
             <p id="brk-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
@@ -59,6 +84,11 @@ export const BreakoutGame = {
         `;
         this.canvas = this.root.querySelector("#brk-canvas");
         this.ctx = this.canvas.getContext("2d");
+        this.root.querySelector("#brk-sensitivity").addEventListener("input", (e) => {
+            this.paddleSpeed = parseInt(e.target.value, 10);
+            this.root.querySelector("#brk-sensitivity-val").textContent = this.paddleSpeed;
+            saveSensitivity(this.paddleSpeed);
+        });
         this.colors = {
             bg: themeColor("--color-bg", "#0a0a0a"),
             paddle: themeColor("--color-accent", "#d97706"),
@@ -128,7 +158,8 @@ export const BreakoutGame = {
         this.root.querySelector("#brk-again").style.display = "none";
         this.updateScore();
         if (this.rafId) cancelAnimationFrame(this.rafId);
-        this.loop();
+        this.draw();
+        runCountdown(this.root, () => this.loop());
     },
 
     brickWidth() {
@@ -143,9 +174,8 @@ export const BreakoutGame = {
     },
 
     update() {
-        const speed = 5;
-        if (this.keys.ArrowLeft || this.touchLeft) this.paddleX -= speed;
-        if (this.keys.ArrowRight || this.touchRight) this.paddleX += speed;
+        if (this.keys.ArrowLeft || this.touchLeft) this.paddleX -= this.paddleSpeed;
+        if (this.keys.ArrowRight || this.touchRight) this.paddleX += this.paddleSpeed;
         this.paddleX = Math.max(0, Math.min(WIDTH - PADDLE_W, this.paddleX));
 
         this.ballX += this.ballVX;
@@ -225,9 +255,10 @@ export const BreakoutGame = {
     async endGame(won) {
         this.gameOver = true;
         if (this.rafId) cancelAnimationFrame(this.rafId);
-        await ArcadeSystem.submitScore("breakout", this.score);
-        if (this.onScoreSubmitted) this.onScoreSubmitted();
-        this.root.querySelector("#brk-message").textContent = won ? `YOU CLEARED THE BOARD! - SCORE: ${this.score}` : `GAME OVER - SCORE: ${this.score}`;
+        const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "breakout", this.score);
+        if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        const base = won ? `YOU CLEARED THE BOARD! - SCORE: ${this.score}` : `GAME OVER - SCORE: ${this.score}`;
+        this.root.querySelector("#brk-message").textContent = newHighScore ? `NEW HIGH SCORE! ${base}` : base;
         this.root.querySelector("#brk-again").style.display = "";
     },
 

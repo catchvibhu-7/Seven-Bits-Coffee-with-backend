@@ -10,13 +10,31 @@
  * Colors are read live from the theme (themeColor(), since canvas can't
  * resolve CSS vars itself): player paddle = accent, AI paddle = cyan.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
 import { themeColor } from "../features/theme-colors.js";
+import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
 
 const WIDTH = 400;
 const HEIGHT = 280;
 const PADDLE_W = 8;
 const PADDLE_H = 60;
+const SENSITIVITY_KEY = "sb-arcade-pong-sensitivity";
+
+function loadSensitivity() {
+    try {
+        const stored = parseInt(localStorage.getItem(SENSITIVITY_KEY), 10);
+        return Number.isFinite(stored) && stored >= 2 && stored <= 10 ? stored : 5;
+    } catch (e) {
+        return 5;
+    }
+}
+
+function saveSensitivity(value) {
+    try {
+        localStorage.setItem(SENSITIVITY_KEY, String(value));
+    } catch (e) {
+        // Private-browsing/storage-blocked - the slider still works for this session.
+    }
+}
 
 export const PongGame = {
     root: null,
@@ -37,9 +55,11 @@ export const PongGame = {
     keyDownHandler: null,
     keyUpHandler: null,
     colors: null,
+    paddleSpeed: 5,
 
     mount(root) {
         this.root = root;
+        this.paddleSpeed = loadSensitivity();
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">PONG</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">RALLY: <strong id="pong-score" style="color:var(--color-accent);">0</strong></p>
@@ -47,6 +67,11 @@ export const PongGame = {
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; max-width:200px; margin:10px auto 0;">
                 <button id="pong-up" class="admin-btn">↑</button>
                 <button id="pong-down" class="admin-btn">↓</button>
+            </div>
+            <div style="max-width:280px; margin:14px auto 0; display:flex; align-items:center; gap:8px; font-size:8pt; color:var(--color-text-muted);">
+                <span>PADDLE SPEED</span>
+                <input type="range" id="pong-sensitivity" min="2" max="10" step="1" value="${this.paddleSpeed}" style="flex:1;">
+                <strong id="pong-sensitivity-val" style="color:var(--color-accent); min-width:1.4em; text-align:right;">${this.paddleSpeed}</strong>
             </div>
             <p id="pong-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
@@ -57,6 +82,11 @@ export const PongGame = {
         `;
         this.canvas = this.root.querySelector("#pong-canvas");
         this.ctx = this.canvas.getContext("2d");
+        this.root.querySelector("#pong-sensitivity").addEventListener("input", (e) => {
+            this.paddleSpeed = parseInt(e.target.value, 10);
+            this.root.querySelector("#pong-sensitivity-val").textContent = this.paddleSpeed;
+            saveSensitivity(this.paddleSpeed);
+        });
         this.colors = {
             bg: themeColor("--color-bg", "#0a0a0a"),
             border: themeColor("--color-border", "#333333"),
@@ -125,7 +155,8 @@ export const PongGame = {
         this.resetBall(1);
         this.updateScore();
         if (this.rafId) cancelAnimationFrame(this.rafId);
-        this.loop();
+        this.draw();
+        runCountdown(this.root, () => this.loop());
     },
 
     resetBall(direction) {
@@ -145,9 +176,8 @@ export const PongGame = {
     },
 
     update() {
-        const paddleSpeed = 5;
-        if (this.keys.ArrowUp || this.touchUp) this.playerY -= paddleSpeed;
-        if (this.keys.ArrowDown || this.touchDown) this.playerY += paddleSpeed;
+        if (this.keys.ArrowUp || this.touchUp) this.playerY -= this.paddleSpeed;
+        if (this.keys.ArrowDown || this.touchDown) this.playerY += this.paddleSpeed;
         this.playerY = Math.max(0, Math.min(HEIGHT - PADDLE_H, this.playerY));
 
         // Simple AI: chase the ball's y at a capped speed - fast enough to
@@ -224,9 +254,11 @@ export const PongGame = {
     async endGame() {
         this.gameOver = true;
         if (this.rafId) cancelAnimationFrame(this.rafId);
-        await ArcadeSystem.submitScore("pong", this.score);
-        if (this.onScoreSubmitted) this.onScoreSubmitted();
-        this.root.querySelector("#pong-message").textContent = `GAME OVER - RALLY: ${this.score}`;
+        const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "pong", this.score);
+        if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
+        this.root.querySelector("#pong-message").textContent = newHighScore
+            ? `NEW HIGH SCORE! - RALLY: ${this.score}`
+            : `GAME OVER - RALLY: ${this.score}`;
         this.root.querySelector("#pong-again").style.display = "";
     },
 
