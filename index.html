@@ -33,17 +33,37 @@
         <title>Seven Bits Coffee // Hazaribagh</title>
     </head>
     <body>
+        <!-- APP SHELL: for a customer/guest (or anyone logged out), #staff-rail
+             stays display:none below and this wrapper is visually a no-op -
+             the customer experience is byte-for-byte what it was before this
+             wrapper existed. Once a staff (employee/manager/admin/owner)
+             session is active, js/ui/staff-shell.js shows #staff-rail (rail
+             layout) or restyles .system-nav into a top-bar (top-bar layout)
+             instead - see StaffShell in staff-shell.js for the switch. -->
+        <div id="app-shell" style="display:flex; min-height:100vh;">
+            <aside id="staff-rail" class="staff-rail" style="display:none;"></aside>
+            <div id="app-main" style="flex:1; min-width:0; display:flex; flex-direction:column;">
+
         <!-- SYSTEM NAVIGATION: Persistent header for page switching -->
         <nav class="system-nav">
             <img id="site-logo" src="" alt="" style="display:none; height: 28px; margin-right: 8px; align-self: center;" />
             <button onclick="showPage('home')">HOME</button>
             <button onclick="showPage('menu')">MENU</button>
             <button onclick="showPage('arcade')">ARCADE</button>
-            <button id="nav-kitchen" onclick="showPage('kitchen')" style="display:none;">ORDERS</button>
-            <button id="nav-admin" onclick="showPage('admin')" style="display:none;">ADMIN</button>
-            <button id="nav-timeclock" onclick="window.handleTimeclockClick()" style="display:none; margin-left:auto;"></button>
+            <!-- ORDERS/ADMIN/Clock-In-Out used to live here, but anyone who
+                 could ever see any of them (KITCHEN_ROLES and its
+                 PAYROLL_ROLES subset) always has the staff shell active
+                 instead (js/ui/staff-shell.js hides or replaces this nav for
+                 that session) - this customer nav is never visible to them
+                 anymore, so those buttons moved into the shell rather than
+                 staying here as unreachable dead markup. -->
             <button id="nav-account" onclick="window.handleAccountClick()" style="margin-left:auto;">LOGIN</button>
         </nav>
+
+        <!-- PAGE: STAFF HOME (new dashboard for employee/manager/admin/owner -
+             see js/ui/staff-home.js. Customers/guests never see this page;
+             their home page is #page-home below, unchanged.) -->
+        <div id="page-staff-home" class="page"></div>
 
         <!-- PAGE: HOME (Landing section with hero logo and story) -->
         <div id="page-home" class="page active">
@@ -215,6 +235,10 @@
                 <div id="admin-tab-content"></div>
             </div>
         </div>
+
+            </div>
+        </div>
+        <!-- /APP SHELL -->
 
         <!-- Randomizes which icon the walking cat is "holding" each time its
              15s walk-and-tumble animation loop restarts. Needs to run after

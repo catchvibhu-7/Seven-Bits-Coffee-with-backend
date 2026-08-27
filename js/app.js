@@ -18,6 +18,8 @@ import { TableSessionsSystem } from "./features/table-sessions-logic.js";
 import { renderTableModal, renderTableBillModal } from "./ui/table-modal.js";
 import { SoundSystem } from "./features/sound-logic.js";
 import { NotificationSystem } from "./features/notification-logic.js";
+import { StaffShell } from "./ui/staff-shell.js";
+import { renderStaffHome } from "./ui/staff-home.js";
 
 // --- System State ---
 let cart = [];
@@ -52,6 +54,7 @@ async function loadCombos() {
 
 async function refreshSession() {
     session = await AuthSystem.getSession();
+    updateStaffShellForSession();
     updateNavForSession();
     if (TRACKING_ROLES.includes(session.role)) {
         await FavoritesSystem.load();
@@ -62,23 +65,31 @@ async function refreshSession() {
 }
 
 /**
- * Shows/hides the Kitchen and Admin nav tabs based on role, and updates the
- * account button's label - purely visual, the server enforces the real
- * access control on every request regardless of what the nav shows.
+ * Swaps in the staff shell (left rail or top bar - js/ui/staff-shell.js) for
+ * KITCHEN_ROLES sessions, or restores the untouched customer nav otherwise.
+ * Customers/guests, and anyone not logged in, never see the shell - this is
+ * the one place that decision gets made, on every session refresh (login,
+ * logout, and initial page load).
+ */
+function updateStaffShellForSession() {
+    const currentPageId = document.querySelector(".page.active")?.id.replace("page-", "") || null;
+    if (KITCHEN_ROLES.includes(session.role)) {
+        StaffShell.show(session, currentPageId);
+    } else {
+        StaffShell.hide();
+    }
+}
+
+/**
+ * Updates the customer nav's account button label - purely visual, the
+ * server enforces the real access control on every request regardless of
+ * what the nav shows. (The Kitchen/Admin tabs and Clock In/Out that used to
+ * be handled here moved into the staff shell - see updateStaffShellForSession()
+ * above - since anyone who could ever see them always has that shell active
+ * instead of this customer nav.)
  */
 function updateNavForSession() {
-    const kitchenTab = document.getElementById("nav-kitchen");
-    const adminTab = document.getElementById("nav-admin");
     const accountBtn = document.getElementById("nav-account");
-
-    if (kitchenTab) kitchenTab.style.display = KITCHEN_ROLES.includes(session.role) ? "" : "none";
-    if (adminTab) {
-        adminTab.style.display = MANAGER_UP_ROLES.includes(session.role) ? "" : "none";
-        // Same page underneath (see admin-portal.js's role-aware tab list) -
-        // the label just reflects that a manager gets a scoped subset, not
-        // the full Admin panel.
-        adminTab.textContent = session.role === "manager" ? "DASHBOARD" : "ADMIN";
-    }
 
     if (accountBtn) {
         if (session.authenticated) {
@@ -192,8 +203,12 @@ window.applyBranding = (config) => {
  * accounts. Backs the payroll system's hourly-rate calculations with real
  * timestamps instead of manually-guessed hours.
  */
+window.updateTimeclockWidget = updateTimeclockWidget; // staff-shell.js calls this after every re-render, since its innerHTML rebuild wipes whatever this last populated
 async function updateTimeclockWidget() {
-    const btn = document.getElementById("nav-timeclock");
+    // Lives inside the staff shell (js/ui/staff-shell.js), not the customer
+    // nav - anyone who can see this (PAYROLL_ROLES) is always a KITCHEN_ROLES
+    // member too, so they always have the shell active.
+    const btn = document.getElementById("staff-timeclock-btn");
     if (!btn) return;
 
     if (!PAYROLL_ROLES.includes(session.role)) {
@@ -211,7 +226,7 @@ async function updateTimeclockWidget() {
 }
 
 window.handleTimeclockClick = async () => {
-    const btn = document.getElementById("nav-timeclock");
+    const btn = document.getElementById("staff-timeclock-btn");
     const clockedIn = btn.dataset.clockedIn === "1";
     try {
         if (clockedIn) {
@@ -232,7 +247,11 @@ window.handleAccountClick = () => {
         renderAccountMenu();
     } else {
         renderLoginModal(
-            (loginResult) => afterLoginSuccess(loginResult, () => window.showPage("home")),
+            // refreshSession() (inside afterLoginSuccess) has already run by
+            // the time this runs, so `session.role` here is the freshly
+            // logged-in one, not stale - a staff login lands on the new
+            // staff dashboard instead of the customer home page.
+            (loginResult) => afterLoginSuccess(loginResult, () => window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home")),
             { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
         );
     }
@@ -308,6 +327,7 @@ function doLogout() {
         window.showPage("home");
     });
 }
+window.staffLogout = doLogout; // the staff shell's own LOGOUT button (js/ui/staff-shell.js) reuses this exact flow
 
 /**
  * Small toast used to confirm actions like "Settings saved" - several admin
@@ -348,7 +368,7 @@ window.setViewMode = (mode) => {
 };
 
 window.showPage = async (pageId) => {
-    const needsKitchenRole = pageId === "kitchen" || pageId === "orders";
+    const needsKitchenRole = pageId === "kitchen" || pageId === "orders" || pageId === "staff-home";
     const needsAdminRole = pageId === "admin";
 
     if (needsKitchenRole || needsAdminRole) {
@@ -385,6 +405,17 @@ window.showPage = async (pageId) => {
         }
     });
 
+    // Keep the staff shell's highlighted tab in sync no matter what
+    // triggered this navigation (its own nav buttons, or e.g. staff-home's
+    // "NEW ORDER" button calling showPage('menu') directly).
+    if (KITCHEN_ROLES.includes(session.role)) {
+        StaffShell.setActiveFromPageId(pageId);
+        StaffShell.render();
+    }
+
+    if (pageId === "staff-home") {
+        await renderStaffHome(session);
+    }
     if (pageId === "admin") {
         const module = await import("./ui/admin-portal.js");
         await module.AdminPortal.init();
@@ -1659,6 +1690,7 @@ window.pickFromHome = (itemId) => {
  */
 (async () => {
     document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
+    StaffShell.captureCustomerNav(); // before refreshSession() can possibly swap it out for an already-logged-in staff session
     await loadMenu();
     await loadCombos();
     await CustomizationSystem.loadOptions();
@@ -1667,5 +1699,5 @@ window.pickFromHome = (itemId) => {
     window.applyBranding(config);
     window.renderFooter(config);
     window.initSearchBar();
-    window.showPage("home");
+    window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home");
 })();
