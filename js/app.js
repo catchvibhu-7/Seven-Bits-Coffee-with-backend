@@ -406,9 +406,9 @@ window.showPage = async (pageId) => {
         await refreshOrderStatusWidget();
         if (TRACKING_ROLES.includes(session.role)) ensureOrdersStream();
     }
-    if (pageId === "games") {
-        const module = await ensureGamesPageLoaded();
-        await module.GamesPage.init();
+    if (pageId === "arcade") {
+        const module = await ensureArcadePageLoaded();
+        await module.ArcadePage.init();
         ensureOrdersStream();
     }
 };
@@ -490,10 +490,10 @@ async function refreshOrderStatusWidget() {
  * (kitchen screen, admin view) picks up changes made anywhere else without
  * needing a manual refresh.
  */
-let gamesPageModule = null;
-async function ensureGamesPageLoaded() {
-    if (!gamesPageModule) gamesPageModule = await import("./ui/games-page.js");
-    return gamesPageModule;
+let arcadePageModule = null;
+async function ensureArcadePageLoaded() {
+    if (!arcadePageModule) arcadePageModule = await import("./ui/arcade-page.js");
+    return arcadePageModule;
 }
 
 function ensureOrdersStream() {
@@ -511,9 +511,9 @@ function ensureOrdersStream() {
             }
         },
         () => {
-            const gamesPage = document.getElementById("page-games");
-            if (gamesPage && gamesPage.classList.contains("active") && gamesPageModule) {
-                gamesPageModule.GamesPage.onArcadeChanged();
+            const arcadePage = document.getElementById("page-arcade");
+            if (arcadePage && arcadePage.classList.contains("active") && arcadePageModule) {
+                arcadePageModule.ArcadePage.onArcadeChanged();
             }
         }
     );

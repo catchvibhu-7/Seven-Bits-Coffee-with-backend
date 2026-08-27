@@ -275,6 +275,7 @@ export const TetrisGame = {
         this.gameOver = true;
         this.stopDropTimer();
         await ArcadeSystem.submitScore("tetris", this.score);
+        if (this.onScoreSubmitted) this.onScoreSubmitted();
         const overlay = document.createElement("div");
         overlay.style.cssText = "text-align:center; margin-top:16px;";
         overlay.innerHTML = `
@@ -290,5 +291,6 @@ export const TetrisGame = {
         });
     },
 
-    onExit: () => {}
+    onExit: () => {},
+    onScoreSubmitted: null
 };

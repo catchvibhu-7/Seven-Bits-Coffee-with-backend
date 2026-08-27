@@ -1394,3 +1394,84 @@ header {
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 12" shape-rendering="crispEdges"><path d="M2 2h1v1H2zM5 2h1v1H5zM2 3h4v4H2zM1 4h1v3H1zM6 4h1v3H6zM2 7h1v1H2zM5 7h1v1H5zM6 5h2v1H6zM8 4h1v1H8zM9 3h1v1H9zM10 2h1v1H10z" fill="%23d97706"/></svg>');
     background-size: contain;
 }
+
+/* ==========================================================================
+   ARCADE (in-store GAMES tab) - card grid echoes .menu-grid's visual
+   language (same card chrome, same icon-above-name layout) so it reads as
+   part of the same app instead of a bolted-on mini-site.
+   ========================================================================== */
+.arcade-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 16px;
+    padding: 10px 0 20px;
+}
+
+.arcade-card {
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 4px;
+    padding: 20px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.arcade-card:hover {
+    transform: scale(1.03);
+    background: #1a1a1a;
+}
+
+.arcade-card .arcade-thumb {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+}
+
+.arcade-card .arcade-card-name {
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+    color: var(--color-text);
+}
+
+/* Play layout: game area + leaderboard sidebar. Stacked on narrow screens
+   (a phone in someone's hand is the primary in-store device) since there's
+   no spare width for a side-by-side split there; once the viewport is wide
+   enough to actually fit both without squeezing the game, they sit side by
+   side instead of leaving that width unused. */
+.arcade-play-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.arcade-game-area {
+    width: 100%;
+    min-width: 0; /* lets canvas/grid children shrink instead of overflowing their column */
+}
+
+.arcade-sidebar {
+    width: 100%;
+}
+
+@media (min-width: 820px) {
+    .arcade-play-layout {
+        flex-direction: row;
+    }
+    .arcade-game-area {
+        flex: 2 1 auto;
+    }
+    .arcade-sidebar {
+        flex: 1 1 240px;
+        max-width: 280px;
+        position: sticky;
+        top: 20px;
+    }
+}

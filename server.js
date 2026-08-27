@@ -192,7 +192,7 @@ if (!fs.existsSync(CONFIG_FILE)) {
       pointsPerRupeeSpent: 0.1, // e.g. 0.1 = 1 point per Rs.10 spent
       rupeeValuePerPoint: 0.5 // e.g. 0.5 = each point is worth Rs.0.50 off
     },
-    // In-store arcade (GAMES tab) - a customer/guest unlocks it for
+    // In-store arcade (ARCADE tab) - a customer/guest unlocks it for
     // sessionHours after placing an order, admin-editable from Global
     // Settings. This is deliberately in-store only: there's no reason to
     // let someone play from home just because they ordered once.
@@ -2576,7 +2576,7 @@ route("POST", /^\/api\/coupons\/validate\/?$/, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Arcade (GAMES tab) - in-store only. A customer/guest unlocks it for
+// Arcade (ARCADE nav tab) - in-store only. A customer/guest unlocks it for
 // config.arcade.sessionHours after placing an order (see arcadeAccessInfo).
 // Tic-Tac-Toe match state is in-memory, not persisted - a server restart
 // mid-match just ends it, an acceptable trade for a "something to do while
@@ -2636,7 +2636,7 @@ route("POST", /^\/api\/arcade\/scores\/?$/, async (req, res) => {
   if (!access.allowed) return sendJson(res, 403, { error: access.reason });
   const body = await readBody(req);
   const game = String(body.game || "");
-  if (!["tetris", "tictactoe"].includes(game)) return sendJson(res, 400, { error: "Unknown game" });
+  if (!["tetris", "tictactoe", "snake", "pong"].includes(game)) return sendJson(res, 400, { error: "Unknown game" });
   const score = parseInt(body.score, 10);
   if (!Number.isFinite(score) || score < 0 || score > 1000000) {
     return sendJson(res, 400, { error: "Invalid score" });

@@ -1,5 +1,5 @@
 /**
- * SEVEN BITS COFFEE - ARCADE (GAMES tab) LOGIC
+ * SEVEN BITS COFFEE - ARCADE TAB LOGIC
  * Location: /js/features/arcade-logic.js
  *
  * In-store only: access is unlocked for a limited window after placing an

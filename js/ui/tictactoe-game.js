@@ -72,6 +72,7 @@ export const TicTacToeGame = {
     board: null,
     matchId: null,
     pollTimer: null,
+    onScoreSubmitted: null,
 
     mount(root) {
         this.root = root;
@@ -160,7 +161,10 @@ export const TicTacToeGame = {
     async finishBotGame(winner) {
         this.botTurn = false;
         const message = winner === "draw" ? "DRAW!" : winner === "X" ? "YOU WIN!" : "BOT WINS!";
-        if (winner === "X") await ArcadeSystem.submitScore("tictactoe", 1);
+        if (winner === "X") {
+            await ArcadeSystem.submitScore("tictactoe", 1);
+            if (this.onScoreSubmitted) this.onScoreSubmitted();
+        }
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">TIC-TAC-TOE - VS BOT</h3>
             <p style="text-align:center; font-size:1.1rem; color:var(--color-accent); margin-bottom:16px;">${message}</p>
@@ -260,7 +264,11 @@ export const TicTacToeGame = {
             });
         }
         if (match.winner) {
-            if (match.winner === mySymbol) ArcadeSystem.submitScore("tictactoe", 1);
+            if (match.winner === mySymbol) {
+                ArcadeSystem.submitScore("tictactoe", 1).then(() => {
+                    if (this.onScoreSubmitted) this.onScoreSubmitted();
+                });
+            }
             this.root.querySelector("#ttt-again")?.addEventListener("click", () => {
                 this.matchId = null;
                 this.startOnlineQueue();
