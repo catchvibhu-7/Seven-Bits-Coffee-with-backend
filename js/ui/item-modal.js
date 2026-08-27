@@ -14,7 +14,7 @@ const BUILT_IN_ICONS = [
  * @param {Array} options.sections - [{id, title}]
  * @param {object} [options.customIcons] - {key: imageUrl} from Branding settings
  * @param {object} [options.item] - existing item to edit, or omit to add new
- * @param {(payload: object) => Promise<void>} options.onSave - called with {name, price, section, icon, story, promoDiscount}
+ * @param {(payload: object) => Promise<void>} options.onSave - called with {name, price, section, icon, story, promoDiscount, imageUrl}
  */
 export function renderItemModal({ sections, customIcons = {}, item = null, onSave }) {
     document.getElementById("item-modal-overlay")?.remove();
@@ -54,6 +54,10 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
             </select>
             <div id="im-icon-preview" style="display:flex; align-items:center; gap:8px; margin: -6px 0 12px; font-size:7pt; color:var(--color-text-muted);"></div>
 
+            <label style="font-size: 7pt; color: var(--color-text-muted);">PHOTO URL (optional - shown instead of the icon when set)</label>
+            <input id="im-image-url" type="text" placeholder="https://..." value="${item?.imageUrl || ""}" style="${fieldStyle}" />
+            <div id="im-image-preview" style="margin: -6px 0 12px;"></div>
+
             <label style="font-size: 7pt; color: var(--color-text-muted);">DESCRIPTION</label>
             <textarea id="im-story" rows="2" style="${fieldStyle} resize: vertical;">${item ? item.story || "" : ""}</textarea>
 
@@ -85,6 +89,14 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
     document.getElementById("im-icon").addEventListener("change", updateIconPreview);
     updateIconPreview();
 
+    function updateImagePreview() {
+        const url = document.getElementById("im-image-url").value.trim();
+        const preview = document.getElementById("im-image-preview");
+        preview.innerHTML = url ? `<img src="${url}" style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--color-border);" onerror="this.style.display='none'" />` : "";
+    }
+    document.getElementById("im-image-url").addEventListener("input", updateImagePreview);
+    updateImagePreview();
+
     document.getElementById("im-promo-type").addEventListener("change", (e) => {
         document.getElementById("im-promo-value").style.display = e.target.value ? "" : "none";
     });
@@ -100,6 +112,7 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
         const section = document.getElementById("im-section").value;
         const icon = document.getElementById("im-icon").value;
         const story = document.getElementById("im-story").value.trim();
+        const imageUrl = document.getElementById("im-image-url").value.trim();
         const promoType = document.getElementById("im-promo-type").value;
         const promoValue = Number(document.getElementById("im-promo-value").value);
 
@@ -111,7 +124,7 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
         const promoDiscount = promoType ? { type: promoType, value: promoValue } : null;
 
         try {
-            await onSave({ name, price, section, icon, story, promoDiscount });
+            await onSave({ name, price, section, icon, story, promoDiscount, imageUrl: imageUrl || null });
             overlay.remove();
         } catch (e) {
             errorEl.textContent = e.message || "Could not save item";

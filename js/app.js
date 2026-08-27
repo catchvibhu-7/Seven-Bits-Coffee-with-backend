@@ -889,6 +889,16 @@ function iconMarkup(iconKey) {
     return `<span class="icon icon-${iconKey}"></span>`;
 }
 
+/** A menu item's own photo (item.imageUrl, set from Admin > Menu Items)
+ *  takes priority over its icon - icons are a placeholder for items that
+ *  don't have a real photo yet, not meant to be shown alongside one. */
+function itemImageMarkup(item) {
+    if (item.imageUrl) {
+        return `<img src="${item.imageUrl}" alt="" class="menu-item-photo" style="width:56px; height:56px; object-fit:cover; border-radius:6px; flex-shrink:0;" />`;
+    }
+    return iconMarkup(item.icon);
+}
+
 function renderMenu(filterQuery = "") {
     const root = document.getElementById("menu-root");
     if (!root) return;
@@ -1041,7 +1051,7 @@ function renderMenu(filterQuery = "") {
             itemEl.className = "menu-item";
             if (isUnavailable) itemEl.style.opacity = "0.45";
             itemEl.innerHTML = `
-                ${iconMarkup(item.icon)}
+                ${itemImageMarkup(item)}
                 <div class="info">
                     <div class="name">${favButton}${item.name}${isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
@@ -1533,7 +1543,7 @@ function renderPopularPicks() {
         .map(
             (item, i) => `
         <div class="popular-pick-card" style="transition-delay: ${i * 60}ms;" onclick="window.pickFromHome(${item.id})">
-            ${iconMarkup(item.icon)}
+            ${itemImageMarkup(item)}
             <div class="name">${item.name}</div>
             <div class="price">\u20b9${item.price}</div>
         </div>

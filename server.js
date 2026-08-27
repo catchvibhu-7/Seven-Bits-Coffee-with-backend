@@ -1854,6 +1854,9 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
   if (body.promoDiscount && !sanitizePromoDiscount(body.promoDiscount)) {
     return sendJson(res, 400, { error: "Invalid promo discount" });
   }
+  if (body.imageUrl && String(body.imageUrl).length > 8000) {
+    return sendJson(res, 400, { error: "Image URL is too long" });
+  }
 
   const nextId = menu.items.length ? Math.max(...menu.items.map((i) => i.id)) + 1 : 1;
   const item = {
@@ -1862,6 +1865,7 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
     name,
     price,
     icon: body.icon || "espresso",
+    imageUrl: body.imageUrl ? String(body.imageUrl).trim() : null,
     story: body.story || "",
     promoDiscount: sanitizePromoDiscount(body.promoDiscount)
   };
@@ -1880,6 +1884,12 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
   if (body.name !== undefined) item.name = String(body.name).trim();
   if (body.story !== undefined) item.story = String(body.story);
   if (body.icon !== undefined) item.icon = String(body.icon);
+  if (body.imageUrl !== undefined) {
+    if (body.imageUrl && String(body.imageUrl).length > 8000) {
+      return sendJson(res, 400, { error: "Image URL is too long" });
+    }
+    item.imageUrl = body.imageUrl ? String(body.imageUrl).trim() : null;
+  }
   if (body.section !== undefined) {
     if (!menu.sections.some((s) => s.id === body.section)) {
       return sendJson(res, 400, { error: "Unknown section" });

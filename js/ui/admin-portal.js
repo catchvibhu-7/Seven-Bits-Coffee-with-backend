@@ -557,9 +557,11 @@ export const AdminPortal = {
         const pendingRequestItems = this.menu.items.filter((i) => (i.disableRequests || []).length > 0);
 
         const iconHtml = (item) =>
-            customIcons[item.icon]
-                ? `<img src="${customIcons[item.icon]}" style="width:22px; height:22px; object-fit:contain;" />`
-                : `<span class="icon icon-${item.icon}" style="display:inline-block; width:22px; height:22px;"></span>`;
+            item.imageUrl
+                ? `<img src="${item.imageUrl}" style="width:22px; height:22px; object-fit:cover; border-radius:4px;" />`
+                : customIcons[item.icon]
+                  ? `<img src="${customIcons[item.icon]}" style="width:22px; height:22px; object-fit:contain;" />`
+                  : `<span class="icon icon-${item.icon}" style="display:inline-block; width:22px; height:22px;"></span>`;
 
         const rowHtml = (item) => {
             if (item.deleted) {
