@@ -83,8 +83,8 @@ export const TicTacToeGame = {
 
     unmount() {
         this.stopPolling();
-        if (this.matchId) ArcadeSystem.leaveMatch(this.matchId);
-        ArcadeSystem.cancelQueue();
+        if (this.matchId) ArcadeSystem.leaveMatch("tictactoe", this.matchId);
+        ArcadeSystem.cancelQueue("tictactoe");
         this.matchId = null;
         this.mode = null;
     },
@@ -190,12 +190,12 @@ export const TicTacToeGame = {
         `;
         this.root.querySelector("#ttt-cancel").addEventListener("click", async () => {
             this.stopPolling();
-            await ArcadeSystem.cancelQueue();
+            await ArcadeSystem.cancelQueue("tictactoe");
             this.renderModeSelect();
         });
 
         try {
-            const result = await ArcadeSystem.queueTicTacToe();
+            const result = await ArcadeSystem.queueMatch("tictactoe");
             if (result.status === "matched") {
                 this.matchId = result.matchId;
                 await this.refreshMatch();
@@ -221,15 +221,15 @@ export const TicTacToeGame = {
         // if we're already matched it just returns that match instead of
         // queueing again, which is what makes this a safe way to poll.
         try {
-            const result = await ArcadeSystem.queueTicTacToe();
-            return result.status === "matched" ? await ArcadeSystem.fetchMatch(result.matchId) : null;
+            const result = await ArcadeSystem.queueMatch("tictactoe");
+            return result.status === "matched" ? await ArcadeSystem.fetchMatch("tictactoe", result.matchId) : null;
         } catch (e) {
             return null;
         }
     },
 
     async refreshMatch() {
-        const match = await ArcadeSystem.fetchMatch(this.matchId);
+        const match = await ArcadeSystem.fetchMatch("tictactoe", this.matchId);
         if (match) this.renderMatch(match);
     },
 
@@ -282,14 +282,14 @@ export const TicTacToeGame = {
             // fetch resolves, and onArcadeChanged() should see we've already
             // left rather than refetching a match that's about to be deleted.
             this.matchId = null;
-            if (leavingMatchId) await ArcadeSystem.leaveMatch(leavingMatchId);
+            if (leavingMatchId) await ArcadeSystem.leaveMatch("tictactoe", leavingMatchId);
             this.renderModeSelect();
         });
     },
 
     async handleOnlineCellClick(cell) {
         try {
-            const match = await ArcadeSystem.makeMove(this.matchId, cell);
+            const match = await ArcadeSystem.makeMove("tictactoe", this.matchId, { cell });
             this.renderMatch(match);
         } catch (e) {
             await this.refreshMatch();

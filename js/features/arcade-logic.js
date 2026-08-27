@@ -29,36 +29,39 @@ export const ArcadeSystem = {
         return res.ok;
     },
 
-    async queueTicTacToe() {
-        const res = await fetch("/api/arcade/tictactoe/queue", { method: "POST", credentials: "include" });
+    /** Generic across every online-match game (tictactoe, connectfour,
+     *  checkers) - each shares the same queue/match/move/leave shape
+     *  server-side, just under /api/arcade/<game>/... */
+    async queueMatch(game) {
+        const res = await fetch(`/api/arcade/${game}/queue`, { method: "POST", credentials: "include" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not join the queue");
         return data;
     },
 
-    async cancelQueue() {
-        await fetch("/api/arcade/tictactoe/cancel", { method: "POST", credentials: "include" });
+    async cancelQueue(game) {
+        await fetch(`/api/arcade/${game}/cancel`, { method: "POST", credentials: "include" });
     },
 
-    async fetchMatch(matchId) {
-        const res = await fetch(`/api/arcade/tictactoe/${encodeURIComponent(matchId)}`, { credentials: "include" });
+    async fetchMatch(game, matchId) {
+        const res = await fetch(`/api/arcade/${game}/${encodeURIComponent(matchId)}`, { credentials: "include" });
         if (!res.ok) return null;
         return res.json();
     },
 
-    async makeMove(matchId, cell) {
-        const res = await fetch(`/api/arcade/tictactoe/${encodeURIComponent(matchId)}/move`, {
+    async makeMove(game, matchId, movePayload) {
+        const res = await fetch(`/api/arcade/${game}/${encodeURIComponent(matchId)}/move`, {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cell })
+            body: JSON.stringify(movePayload)
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Invalid move");
         return data;
     },
 
-    async leaveMatch(matchId) {
-        await fetch(`/api/arcade/tictactoe/${encodeURIComponent(matchId)}/leave`, { method: "POST", credentials: "include" });
+    async leaveMatch(game, matchId) {
+        await fetch(`/api/arcade/${game}/${encodeURIComponent(matchId)}/leave`, { method: "POST", credentials: "include" });
     }
 };

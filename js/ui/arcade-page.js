@@ -14,6 +14,15 @@ import { TicTacToeGame } from "./tictactoe-game.js";
 import { TetrisGame } from "./tetris-game.js";
 import { SnakeGame } from "./snake-game.js";
 import { PongGame } from "./pong-game.js";
+import { MemoryGame } from "./memory-game.js";
+import { SimonGame } from "./simon-game.js";
+import { MinesweeperGame } from "./minesweeper-game.js";
+import { Game2048 } from "./2048-game.js";
+import { BreakoutGame } from "./breakout-game.js";
+import { FlappyGame } from "./flappy-game.js";
+import { InvadersGame } from "./invaders-game.js";
+import { ConnectFourGame } from "./connectfour-game.js";
+import { CheckersGame } from "./checkers-game.js";
 
 function escapeHtml(str) {
     return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -49,9 +58,9 @@ const THUMBS = {
         </svg>`,
     snake: `
         <svg viewBox="0 0 64 64" class="arcade-thumb">
-            <path d="M10 50 L10 30 L30 30 L30 14 L46 14" fill="none" stroke="#22c55e" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
-            <circle cx="50" cy="14" r="7" fill="#22c55e" />
-            <circle cx="52" cy="12" r="1.6" fill="#052e14" />
+            <path d="M10 50 L10 30 L30 30 L30 14 L46 14" fill="none" stroke="var(--color-accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="50" cy="14" r="7" fill="var(--color-accent)" />
+            <circle cx="52" cy="12" r="1.6" fill="#000" />
         </svg>`,
     pong: `
         <svg viewBox="0 0 64 64" class="arcade-thumb">
@@ -59,6 +68,83 @@ const THUMBS = {
             <rect x="6" y="20" width="6" height="20" fill="var(--color-accent)" />
             <rect x="52" y="24" width="6" height="20" fill="var(--color-cyan)" />
             <circle cx="32" cy="32" r="4" fill="var(--color-text)" />
+        </svg>`,
+    memory: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <rect x="6" y="14" width="22" height="30" rx="3" fill="var(--color-accent)" />
+            <rect x="36" y="14" width="22" height="30" rx="3" fill="var(--color-surface)" stroke="var(--color-border)" stroke-width="2" />
+            <text x="47" y="34" font-size="16" text-anchor="middle" fill="var(--color-text)">☕</text>
+        </svg>`,
+    simon: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <path d="M32 32 L32 6 A26 26 0 0 1 55 19 Z" fill="var(--color-accent)" />
+            <path d="M32 32 L55 19 A26 26 0 0 1 55 45 Z" fill="var(--color-cyan)" />
+            <path d="M32 32 L55 45 A26 26 0 0 1 9 45 Z" fill="#22c55e" />
+            <path d="M32 32 L9 45 A26 26 0 0 1 32 6 Z" fill="#a855f7" />
+            <circle cx="32" cy="32" r="6" fill="var(--color-bg)" />
+        </svg>`,
+    minesweeper: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <g stroke="var(--color-border)" stroke-width="1.5">
+                <rect x="6" y="6" width="52" height="52" fill="none" />
+                <line x1="23" y1="6" x2="23" y2="58" /><line x1="40" y1="6" x2="40" y2="58" />
+                <line x1="6" y1="23" x2="58" y2="23" /><line x1="6" y1="40" x2="58" y2="40" />
+            </g>
+            <text x="14" y="19" font-size="11" fill="#3b82f6">1</text>
+            <text x="48" y="53" font-size="14" text-anchor="middle">🚩</text>
+            <text x="31" y="36" font-size="14" text-anchor="middle">💣</text>
+        </svg>`,
+    "2048": `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <rect x="6" y="6" width="24" height="24" rx="3" fill="#4a3520" />
+            <rect x="34" y="6" width="24" height="24" rx="3" fill="var(--color-accent)" />
+            <rect x="6" y="34" width="24" height="24" rx="3" fill="var(--color-cyan)" />
+            <rect x="34" y="34" width="24" height="24" rx="3" fill="#8a5a20" />
+            <text x="18" y="22" font-size="10" text-anchor="middle" fill="var(--color-text-muted)">2</text>
+            <text x="46" y="22" font-size="10" text-anchor="middle" fill="#000">64</text>
+            <text x="18" y="50" font-size="10" text-anchor="middle" fill="#000">2048</text>
+            <text x="46" y="50" font-size="10" text-anchor="middle" fill="var(--color-text-muted)">8</text>
+        </svg>`,
+    breakout: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <rect x="6" y="8" width="12" height="7" fill="var(--color-cyan)" /><rect x="20" y="8" width="12" height="7" fill="var(--color-cyan)" /><rect x="34" y="8" width="12" height="7" fill="var(--color-cyan)" /><rect x="48" y="8" width="10" height="7" fill="var(--color-cyan)" />
+            <rect x="6" y="17" width="12" height="7" fill="var(--color-cyan)" opacity="0.7" /><rect x="20" y="17" width="12" height="7" fill="var(--color-cyan)" opacity="0.7" /><rect x="34" y="17" width="12" height="7" fill="var(--color-cyan)" opacity="0.7" /><rect x="48" y="17" width="10" height="7" fill="var(--color-cyan)" opacity="0.7" />
+            <circle cx="32" cy="40" r="4" fill="var(--color-text)" />
+            <rect x="22" y="52" width="20" height="6" rx="2" fill="var(--color-accent)" />
+        </svg>`,
+    flappy: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <rect x="4" y="4" width="10" height="24" fill="var(--color-cyan)" />
+            <rect x="4" y="40" width="10" height="20" fill="var(--color-cyan)" />
+            <rect x="50" y="4" width="10" height="14" fill="var(--color-cyan)" />
+            <rect x="50" y="30" width="10" height="30" fill="var(--color-cyan)" />
+            <circle cx="32" cy="30" r="8" fill="var(--color-accent)" />
+        </svg>`,
+    invaders: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <g fill="var(--color-cyan)">
+                <rect x="8" y="10" width="10" height="8" /><rect x="22" y="10" width="10" height="8" /><rect x="36" y="10" width="10" height="8" />
+                <rect x="15" y="20" width="10" height="8" /><rect x="29" y="20" width="10" height="8" />
+            </g>
+            <rect x="26" y="44" width="12" height="6" fill="var(--color-accent)" />
+            <rect x="30" y="38" width="4" height="8" fill="var(--color-accent)" />
+        </svg>`,
+    connectfour: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <rect x="4" y="4" width="56" height="48" rx="4" fill="var(--color-cyan)" />
+            <circle cx="16" cy="16" r="6" fill="var(--color-bg)" /><circle cx="32" cy="16" r="6" fill="var(--color-accent)" /><circle cx="48" cy="16" r="6" fill="var(--color-bg)" />
+            <circle cx="16" cy="32" r="6" fill="var(--color-accent)" /><circle cx="32" cy="32" r="6" fill="var(--color-text)" /><circle cx="48" cy="32" r="6" fill="var(--color-bg)" />
+            <circle cx="16" cy="44" r="6" fill="var(--color-text)" /><circle cx="32" cy="44" r="6" fill="var(--color-accent)" /><circle cx="48" cy="44" r="6" fill="var(--color-text)" />
+        </svg>`,
+    checkers: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <g>
+                <rect x="4" y="4" width="14" height="14" fill="var(--color-surface)" /><rect x="18" y="4" width="14" height="14" fill="var(--color-bg)" /><rect x="32" y="4" width="14" height="14" fill="var(--color-surface)" /><rect x="46" y="4" width="14" height="14" fill="var(--color-bg)" />
+                <rect x="4" y="18" width="14" height="14" fill="var(--color-bg)" /><rect x="18" y="18" width="14" height="14" fill="var(--color-surface)" /><rect x="32" y="18" width="14" height="14" fill="var(--color-bg)" /><rect x="46" y="18" width="14" height="14" fill="var(--color-surface)" />
+                <rect x="4" y="32" width="14" height="14" fill="var(--color-surface)" /><rect x="18" y="32" width="14" height="14" fill="var(--color-bg)" /><rect x="32" y="32" width="14" height="14" fill="var(--color-surface)" /><rect x="46" y="32" width="14" height="14" fill="var(--color-bg)" />
+            </g>
+            <circle cx="11" cy="11" r="5" fill="var(--color-accent)" /><circle cx="39" cy="11" r="5" fill="var(--color-accent)" />
+            <circle cx="25" cy="39" r="5" fill="var(--color-text)" /><circle cx="53" cy="39" r="5" fill="var(--color-text)" />
         </svg>`
 };
 
@@ -66,7 +152,16 @@ const GAME_DEFS = {
     tictactoe: { name: "TIC-TAC-TOE", module: TicTacToeGame, scoreLabel: "WINS" },
     tetris: { name: "TETRIS", module: TetrisGame, scoreLabel: "HIGH SCORES" },
     snake: { name: "SNAKE", module: SnakeGame, scoreLabel: "HIGH SCORES" },
-    pong: { name: "PONG", module: PongGame, scoreLabel: "HIGH SCORES" }
+    pong: { name: "PONG", module: PongGame, scoreLabel: "HIGH SCORES" },
+    memory: { name: "MEMORY MATCH", module: MemoryGame, scoreLabel: "HIGH SCORES" },
+    simon: { name: "SIMON SAYS", module: SimonGame, scoreLabel: "ROUNDS REACHED" },
+    minesweeper: { name: "MINESWEEPER", module: MinesweeperGame, scoreLabel: "HIGH SCORES" },
+    "2048": { name: "2048", module: Game2048, scoreLabel: "HIGH SCORES" },
+    breakout: { name: "BREAKOUT", module: BreakoutGame, scoreLabel: "HIGH SCORES" },
+    flappy: { name: "FLAPPY BIT", module: FlappyGame, scoreLabel: "HIGH SCORES" },
+    invaders: { name: "SPACE INVADERS", module: InvadersGame, scoreLabel: "HIGH SCORES" },
+    connectfour: { name: "CONNECT FOUR", module: ConnectFourGame, scoreLabel: "WINS" },
+    checkers: { name: "CHECKERS", module: CheckersGame, scoreLabel: "WINS" }
 };
 
 export const ArcadePage = {
@@ -168,9 +263,12 @@ export const ArcadePage = {
         `;
     },
 
-    /** Called by app.js's SSE handler when the "arcade" event fires (a
-     *  Tic-Tac-Toe match was created or a move was made). */
+    /** Called by app.js's SSE handler when the "arcade" event fires (an
+     *  online match was created or a move was made in one of the
+     *  matchmade games). */
     onArcadeChanged() {
         if (this.activeGame === "tictactoe") TicTacToeGame.onArcadeChanged();
+        else if (this.activeGame === "connectfour") ConnectFourGame.onArcadeChanged();
+        else if (this.activeGame === "checkers") CheckersGame.onArcadeChanged();
     }
 };
