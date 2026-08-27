@@ -95,7 +95,7 @@ export const MinesweeperGame = {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">MINESWEEPER</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">TIME: <strong id="mine-timer" style="color:var(--color-accent);">${this.elapsed}</strong>s &middot; MINES: ${MINES}</p>
-            <div style="display:grid; grid-template-columns:repeat(${COLS},1fr); gap:2px; max-width:270px; margin:0 auto; background:var(--color-border);">
+            <div class="arcade-board" style="display:grid; grid-template-columns:repeat(${COLS},1fr); gap:2px; background:var(--color-border);">
                 ${this.board
                     .map((c, i) => {
                         let content = "";

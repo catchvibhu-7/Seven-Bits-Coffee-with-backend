@@ -95,7 +95,7 @@ function cellStyle() {
 
 function gridHtml(board, disabled) {
     return `
-        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; max-width:280px; margin:0 auto;">
+        <div class="arcade-board" style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px;">
             ${board
                 .map(
                     (cell, i) => `

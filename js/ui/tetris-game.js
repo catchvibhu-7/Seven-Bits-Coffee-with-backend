@@ -62,19 +62,21 @@ export const TetrisGame = {
         this.root = root;
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">TETRIS</h3>
-            <div style="display:flex; justify-content:space-between; max-width:${COLS * CELL}px; margin:0 auto 8px; font-size:9pt; color:var(--color-text-muted);">
+            <div style="display:flex; justify-content:space-between; max-width:320px; margin:0 auto 8px; font-size:9pt; color:var(--color-text-muted);">
                 <span>SCORE: <strong id="tetris-score" style="color:var(--color-accent);">0</strong></span>
                 <span>LEVEL: <strong id="tetris-level" style="color:var(--color-accent);">1</strong></span>
             </div>
-            <canvas id="tetris-canvas" width="${COLS * CELL}" height="${ROWS * CELL}" style="display:block; margin:0 auto; background:var(--color-bg); border:1px solid var(--color-border); max-width:100%; height:auto;"></canvas>
-            <div id="tetris-touch-controls" style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px; max-width:${COLS * CELL}px; margin:10px auto 0;">
+            <div class="arcade-canvas-wrap">
+                <canvas id="tetris-canvas" width="${COLS * CELL}" height="${ROWS * CELL}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
+            </div>
+            <div id="tetris-touch-controls" style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px; max-width:320px; margin:10px auto 0;">
                 <button id="tt-left" class="admin-btn">←</button>
                 <button id="tt-rotate" class="admin-btn">↻</button>
                 <button id="tt-right" class="admin-btn">→</button>
                 <button id="tt-down" class="admin-btn">↓</button>
             </div>
             <p id="tetris-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
-            <div style="display:grid; gap:10px; max-width:${COLS * CELL}px; margin:8px auto 0;">
+            <div style="display:grid; gap:10px; max-width:320px; margin:8px auto 0;">
                 <button id="tetris-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
                 <button id="tetris-back" class="admin-btn">BACK</button>
             </div>

@@ -1441,21 +1441,27 @@ header {
 }
 
 /* Play layout: game switcher/tips + game area + leaderboard sidebar.
-   Stacked on narrow screens (a phone in someone's hand is the primary
-   in-store device) with just the game and leaderboard - the switcher panel
-   is a wide-screen convenience, not worth the vertical space it'd cost on a
-   phone, so the game stays the largest thing on screen there. At the wide
-   breakpoint this becomes a fixed-width 3-column grid rather than a flex
-   row that stretches the game column to fill the viewport - the actual
-   game content (a canvas or a small DOM grid) never gets wider than ~480px
-   regardless of screen width, so letting that column grow just left a sea
-   of empty padding on either side of it. Centering the fixed-width grid
-   instead means leftover width becomes page margin outside the component,
-   not dead space inside it. */
+   The 3-column desktop grid only kicks in when the viewport is BOTH wide
+   enough AND landscape-ish (min-aspect-ratio) - width alone isn't enough,
+   since a tall/portrait window (a rotated monitor, or just a narrower
+   un-maximized browser) can easily be 900-1100px wide while still being the
+   "vertical" case: cramming 3 columns into it left the game column mostly
+   empty above a small centered canvas. In that "vertical" case (which also
+   covers actual phones) it collapses to one column, game on top, and the
+   game itself grows to use the real estate instead of just sitting at a
+   fixed small size in the middle of a wide box (see .arcade-canvas-wrap and
+   .arcade-board below - the canvas/DOM-grid children scale into whatever
+   height this container is given).
+   On the wide-landscape side, the 3 columns use minmax() rather than a
+   single small fixed width so a genuinely huge monitor lets them grow a
+   bit too, rather than leaving the same fixed ~980px block centered in a
+   sea of margin regardless of screen size. */
 .arcade-play-layout {
     display: grid;
     grid-template-columns: 1fr;
     gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
 }
 
 .arcade-switcher {
@@ -1465,16 +1471,46 @@ header {
 .arcade-game-area {
     width: 100%;
     min-width: 0; /* lets canvas/grid children shrink instead of overflowing their column */
+    display: flex;
+    flex-direction: column;
+    min-height: max(360px, calc(100dvh - 260px));
+}
+
+/* Every game's last element is its PLAY AGAIN/BACK (or equivalent) button
+   row, or a trailing instructions line - pushing it to the bottom of the
+   now-tall game area means the extra room .arcade-canvas-wrap/.arcade-board
+   don't soak up still gets used instead of sitting empty between the
+   controls and the page below. !important because that element almost
+   always carries its own small inline margin-top (e.g. "margin-top:8px"
+   for a bit of breathing room from the row above it), which otherwise wins
+   over any class-based rule regardless of specificity. */
+.arcade-game-area > *:last-child {
+    margin-top: auto !important;
+}
+
+/* Every game centers its internal rows (board, controls, buttons) with the
+   max-width + margin:0 auto idiom, which assumed a plain block parent.
+   Now that .arcade-game-area is itself a flex column, a flex item with
+   margin:auto set opts OUT of the default stretch-to-fill behavior and
+   shrinks to its content's width instead (a CSS Box Alignment quirk, not
+   flexbox-specific) - every one of those rows collapsed to a sliver until
+   this rule forces them back to full width so their own max-width still
+   does the actual constraining. */
+.arcade-game-area > div {
+    width: 100%;
 }
 
 .arcade-sidebar {
     width: 100%;
 }
 
-@media (min-width: 820px) {
+@media (min-width: 820px) and (min-aspect-ratio: 1/1) {
     .arcade-play-layout {
-        grid-template-columns: 190px minmax(0, 480px) 260px;
-        justify-content: center;
+        /* The outer two columns use 1fr (not a fixed/minmax-only track) so
+           they actually grow to absorb leftover width up to the 1400px cap
+           above - a wide monitor's extra space becomes a bigger switcher/
+           leaderboard instead of just more margin outside the component. */
+        grid-template-columns: minmax(200px, 1fr) minmax(0, 620px) minmax(260px, 1fr);
         align-items: start;
     }
     .arcade-switcher {
@@ -1485,12 +1521,74 @@ header {
         top: 20px;
     }
     .arcade-game-area {
-        max-width: 480px;
+        max-width: 620px;
         margin: 0 auto;
+        min-height: 0; /* the fixed-size desktop game doesn't need to stretch */
     }
     .arcade-sidebar {
         position: sticky;
         top: 20px;
+    }
+}
+
+/* Wraps a <canvas>-based game's canvas so it can grow to fill the "vertical"
+   layout's tall .arcade-game-area instead of sitting at a fixed pixel size
+   with empty space above/below it. Only the wrapper flexes; the canvas
+   keeps its native width/height attributes (so game logic/hit-testing is
+   unaffected) and is scaled up or down purely via CSS display size. */
+.arcade-canvas-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.arcade-canvas-wrap canvas {
+    /* width/height:auto only ever SHRINKS a canvas via max-width/max-height -
+       it never grows one past its native pixel size, since auto sizing for a
+       replaced element resolves to its intrinsic dimensions. Explicit 100%
+       plus object-fit:contain is what actually lets it scale up to fill the
+       flex wrapper's height while keeping its aspect ratio (letterboxed on
+       the cross axis rather than distorted). */
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    /* These games draw blocky shapes, not photos - scaling up several times
+       over (a 360px Snake board can end up past 900px tall on a big
+       portrait screen) would otherwise blur through the browser's default
+       bilinear smoothing instead of just looking chunkier. */
+    image-rendering: pixelated;
+}
+
+@media (min-width: 820px) and (min-aspect-ratio: 1/1) {
+    .arcade-canvas-wrap {
+        /* Desktop landscape keeps the canvas at its native pixel size
+           (upscaling it to fill a 620px column would blur crisp pixel art) -
+           only the "vertical" layout above stretches it, where there's
+           genuine spare height and no wider column to compare it against. */
+        flex: 0 0 auto;
+    }
+    .arcade-canvas-wrap canvas {
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 100%;
+    }
+}
+
+/* Same idea for the DOM-grid games (2048, Minesweeper, Memory, Tic-Tac-Toe,
+   Connect Four, Checkers, Simon) - each renders its own grid/board with this
+   class instead of a hardcoded inline max-width, so it can grow on a tall
+   viewport too. min() keeps it from overflowing a narrow phone. */
+.arcade-board {
+    max-width: min(94vw, 440px);
+    margin: 0 auto;
+}
+
+@media (min-width: 820px) and (min-aspect-ratio: 1/1) {
+    .arcade-board {
+        max-width: 320px;
     }
 }
 

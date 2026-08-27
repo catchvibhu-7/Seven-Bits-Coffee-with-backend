@@ -75,7 +75,9 @@ export const PongGame = {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">PONG</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">RALLY: <strong id="pong-score" style="color:var(--color-accent);">0</strong></p>
-            <canvas id="pong-canvas" width="${WIDTH}" height="${HEIGHT}" style="display:block; margin:0 auto; background:var(--color-bg); border:1px solid var(--color-border); max-width:100%; height:auto;"></canvas>
+            <div class="arcade-canvas-wrap">
+                <canvas id="pong-canvas" width="${WIDTH}" height="${HEIGHT}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
+            </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; max-width:200px; margin:10px auto 0;">
                 <button id="pong-up" class="admin-btn">↑</button>
                 <button id="pong-down" class="admin-btn">↓</button>
