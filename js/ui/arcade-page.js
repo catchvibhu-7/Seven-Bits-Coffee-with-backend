@@ -148,6 +148,22 @@ const THUMBS = {
         </svg>`
 };
 
+const TIPS = {
+    tictactoe: "The bot isn't unbeatable - watch for a chance to set up two winning lines at once (a fork) so it can't block both.",
+    tetris: "Space bar hard-drops the current piece instantly for a small score bonus.",
+    snake: "Speed ramps up the more you eat. Try EASY mode below the board if HARD feels unfair.",
+    pong: "Drag the paddle-speed slider to match your own reflexes - there's no shame in turning it down.",
+    memory: "Fewer moves means a higher score - try to lock in a pair's position in your head as you flip it.",
+    simon: "Watch the whole sequence before tapping anything back - rushing is what causes most mistakes.",
+    minesweeper: "A revealed number tells you exactly how many mines touch that cell - use it to rule out safe neighbors.",
+    "2048": "Pick one corner to favor and keep pushing tiles toward it - mixing directions scatters your big numbers.",
+    breakout: "Where the ball hits your paddle changes its bounce angle - aim for the edges to steer around bricks.",
+    flappy: "Small, steady taps beat one big flap - find a rhythm instead of reacting to each pipe.",
+    invaders: "Keep moving sideways while you shoot - a still target is an easy one.",
+    connectfour: "Controlling the center column gives you the most ways to eventually connect four.",
+    checkers: "Captures are forced - if one's available on your turn, you have to take it."
+};
+
 const GAME_DEFS = {
     tictactoe: { name: "TIC-TAC-TOE", module: TicTacToeGame, scoreLabel: "BEST WIN STREAK" },
     tetris: { name: "TETRIS", module: TetrisGame, scoreLabel: "HIGH SCORES" },
@@ -218,9 +234,18 @@ export const ArcadePage = {
     launchGame(gameKey) {
         const def = GAME_DEFS[gameKey];
         if (!def) return;
+        // The switcher panel can call this while a different game is already
+        // mounted (jumping straight from one game to another) - unmount it
+        // first so its timers/rAF loop/document key listeners don't keep
+        // running in the background, and so an online match gets left
+        // properly instead of orphaned.
+        if (this.activeGame && this.activeGame !== gameKey && GAME_DEFS[this.activeGame]) {
+            GAME_DEFS[this.activeGame].module.unmount();
+        }
         this.activeGame = gameKey;
         this.root.innerHTML = `
             <div class="arcade-play-layout">
+                <div class="arcade-switcher" id="arcade-switcher"></div>
                 <div class="arcade-game-area" id="arcade-game-area"></div>
                 <div class="arcade-sidebar" id="arcade-sidebar"></div>
             </div>
@@ -233,8 +258,43 @@ export const ArcadePage = {
         };
         def.module.onScoreSubmitted = () => this.renderSidebar(gameKey);
 
+        this.renderSwitcher(gameKey);
         this.renderSidebar(gameKey);
         def.module.mount(gameArea);
+    },
+
+    /** Desktop-only panel (hidden on narrow screens, see .arcade-switcher in
+     *  theme.css) - a quick way to jump straight to another game without
+     *  backing out to the card grid, plus a short tip for whatever's active. */
+    renderSwitcher(gameKey) {
+        const switcher = this.root.querySelector("#arcade-switcher");
+        if (!switcher) return;
+        const others = Object.entries(GAME_DEFS).filter(([key]) => key !== gameKey);
+        switcher.innerHTML = `
+            <div class="arcade-switcher-games">
+                ${others
+                    .map(
+                        ([key, def]) => `
+                    <button class="arcade-switch-btn" data-game="${key}">
+                        ${THUMBS[key]}
+                        <span>${def.name}</span>
+                    </button>
+                `
+                    )
+                    .join("")}
+            </div>
+            ${
+                TIPS[gameKey]
+                    ? `<div class="arcade-tip-box">
+                        <div class="arcade-tip-label">TIP</div>
+                        <div class="arcade-tip-text">${escapeHtml(TIPS[gameKey])}</div>
+                    </div>`
+                    : ""
+            }
+        `;
+        switcher.querySelectorAll(".arcade-switch-btn").forEach((btn) => {
+            btn.addEventListener("click", () => this.launchGame(btn.dataset.game));
+        });
     },
 
     async renderSidebar(gameKey) {

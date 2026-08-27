@@ -1440,16 +1440,26 @@ header {
     color: var(--color-text);
 }
 
-/* Play layout: game area + leaderboard sidebar. Stacked on narrow screens
-   (a phone in someone's hand is the primary in-store device) since there's
-   no spare width for a side-by-side split there; once the viewport is wide
-   enough to actually fit both without squeezing the game, they sit side by
-   side instead of leaving that width unused. */
+/* Play layout: game switcher/tips + game area + leaderboard sidebar.
+   Stacked on narrow screens (a phone in someone's hand is the primary
+   in-store device) with just the game and leaderboard - the switcher panel
+   is a wide-screen convenience, not worth the vertical space it'd cost on a
+   phone, so the game stays the largest thing on screen there. At the wide
+   breakpoint this becomes a fixed-width 3-column grid rather than a flex
+   row that stretches the game column to fill the viewport - the actual
+   game content (a canvas or a small DOM grid) never gets wider than ~480px
+   regardless of screen width, so letting that column grow just left a sea
+   of empty padding on either side of it. Centering the fixed-width grid
+   instead means leftover width becomes page margin outside the component,
+   not dead space inside it. */
 .arcade-play-layout {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 20px;
-    align-items: flex-start;
+}
+
+.arcade-switcher {
+    display: none;
 }
 
 .arcade-game-area {
@@ -1463,15 +1473,76 @@ header {
 
 @media (min-width: 820px) {
     .arcade-play-layout {
-        flex-direction: row;
+        grid-template-columns: 190px minmax(0, 480px) 260px;
+        justify-content: center;
+        align-items: start;
     }
-    .arcade-game-area {
-        flex: 2 1 auto;
-    }
-    .arcade-sidebar {
-        flex: 1 1 240px;
-        max-width: 280px;
+    .arcade-switcher {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
         position: sticky;
         top: 20px;
     }
+    .arcade-game-area {
+        max-width: 480px;
+        margin: 0 auto;
+    }
+    .arcade-sidebar {
+        position: sticky;
+        top: 20px;
+    }
+}
+
+.arcade-switcher-games {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.arcade-switch-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    cursor: pointer;
+    text-align: left;
+    font-family: "Courier New", monospace;
+    font-size: 7.5pt;
+    color: var(--color-text);
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.arcade-switch-btn:hover {
+    border-color: var(--color-accent);
+    background: #1a1a1a;
+}
+
+.arcade-switch-btn .arcade-thumb {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.arcade-tip-box {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 12px;
+}
+
+.arcade-tip-label {
+    font-size: 7pt;
+    letter-spacing: 1px;
+    color: var(--color-accent);
+    margin-bottom: 6px;
+}
+
+.arcade-tip-text {
+    font-size: 8pt;
+    color: var(--color-text-muted);
+    line-height: 1.4;
 }
