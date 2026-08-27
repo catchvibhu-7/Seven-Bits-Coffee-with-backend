@@ -38,12 +38,14 @@ function cartRowHtml(item, index) {
     const hasNotes = !item.isCombo && !!item.notes;
     const hasBreakdown = detailLines.length > 0 || hasNotes;
     const breakdownId = `cart-breakdown-${index}`;
+    const onPromo = !item.isCombo && item.promoDiscount && item.originalPrice > item.price;
 
+    const promoTagHtml = onPromo ? `<span style="font-size:7pt; color:var(--color-accent);">PROMO</span>` : "";
     const tagHtml = item.isCombo
         ? `<span style="font-size:7pt; color:var(--color-accent);">COMBO DEAL</span>`
         : hasBreakdown
-          ? `<span onclick="const el=document.getElementById('${breakdownId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" style="font-size:7pt; color:var(--color-accent); cursor:pointer; text-decoration:underline;">CUSTOMIZED</span>`
-          : "";
+          ? `${promoTagHtml}<span onclick="const el=document.getElementById('${breakdownId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" style="font-size:7pt; color:var(--color-accent); cursor:pointer; text-decoration:underline;">CUSTOMIZED</span>`
+          : promoTagHtml;
 
     const breakdownHtml = hasBreakdown
         ? `
@@ -58,9 +60,13 @@ function cartRowHtml(item, index) {
         </div>`
         : "";
 
+    const unitPriceHtml = onPromo
+        ? `<span style="color: var(--color-text-muted); text-decoration:line-through;">\u20b9${item.originalPrice.toFixed(2)}</span> <span style="color: var(--color-accent);">\u20b9${item.price.toFixed(2)}</span>`
+        : `<span style="color: var(--color-text-muted);">@\u20b9${item.price.toFixed(2)}</span>`;
+
     return `
         <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 7px 0; font-size: 9pt;">
-            <div>${escapeHtml(item.name)} <span style="color: var(--color-text-muted);">@\u20b9${item.price.toFixed(2)}</span></div>
+            <div>${escapeHtml(item.name)} ${unitPriceHtml}</div>
             <div style="display:flex; justify-content: space-between; align-items:center; margin-top:5px;">
                 <div style="display:flex; align-items:center; gap:6px;">
                     <strong>\u20b9${lineTotal}</strong>
@@ -106,6 +112,11 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
 
             <div class="breakdown-window" style="background: var(--color-bg); padding: 10px; border: 1px solid var(--color-border); margin-bottom: 20px;">
                 <div class="calc-row" style="display: flex; justify-content: space-between; margin-bottom: 5px;">SUBTOTAL: <span>\u20b9${breakdown.subtotal.toFixed(2)}</span></div>
+                ${
+                    breakdown.promoDiscountTotal > 0
+                        ? `<div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-accent);">PROMO SAVINGS: <span>-\u20b9${breakdown.promoDiscountTotal.toFixed(2)}</span></div>`
+                        : ""
+                }
                 <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">CGST (${(config.cgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.cgst.toFixed(2)}</span></div>
                 <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">SGST (${(config.sgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.sgst.toFixed(2)}</span></div>
 
@@ -147,6 +158,10 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                     placeholder="PHONE NUMBER" style="width: 100%; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:${session.role === "customer" ? "var(--color-text-muted)" : "var(--color-text)"}; padding: 10px; font-family: inherit;" />
             </div>
 
+            ${
+                breakdown.hasPromoItem
+                    ? `<p style="font-size: 7pt; color: var(--color-text-muted); margin: 0 0 15px;">Coupon codes can't be combined with promotional items in this cart.</p>`
+                    : `
             <div style="margin-bottom: 15px; display:flex; gap:8px; align-items:flex-end;">
                 <div style="flex:1;">
                     <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">PROMO CODE</label>
@@ -155,6 +170,9 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                 <button id="checkout-apply-coupon" class="admin-btn" style="padding:11px 14px;">APPLY</button>
             </div>
             <p id="checkout-coupon-msg" style="font-size: 7pt; margin: -10px 0 12px; min-height: 10px;"></p>
+            <button id="checkout-show-coupons" type="button" style="background:none; border:none; color:var(--color-text-muted); font-size: 7pt; cursor:pointer; text-decoration: underline; font-family: inherit; padding:0; margin: -8px 0 12px; display:block;">SHOW AVAILABLE CODES</button>
+            <div id="checkout-public-coupons" style="display:none; margin: -8px 0 12px; font-size:7pt; color:var(--color-text-muted);"></div>`
+            }
 
             ${
                 canUseLoyalty
@@ -270,6 +288,27 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
         recomputeCheckoutTotal();
     });
 
+    document.getElementById("checkout-show-coupons")?.addEventListener("click", async () => {
+        const listEl = document.getElementById("checkout-public-coupons");
+        if (!listEl) return;
+        if (listEl.style.display !== "none") {
+            listEl.style.display = "none";
+            return;
+        }
+        listEl.style.display = "block";
+        listEl.innerHTML = "Loading...";
+        const res = await fetch("/api/coupons/public", { credentials: "include" });
+        const coupons = res.ok ? await res.json() : [];
+        listEl.innerHTML = coupons.length
+            ? coupons
+                  .map(
+                      (c) =>
+                          `<div style="cursor:pointer; padding:3px 0; text-decoration:underline;" onclick="document.getElementById('checkout-coupon-code').value='${c.code}'">${c.code} - ${c.type === "percent" ? `${c.value}% off` : `₹${c.value} off`}</div>`
+                  )
+                  .join("")
+            : "No public codes available right now.";
+    });
+
     document.getElementById("checkout-apply-points")?.addEventListener("click", () => {
         const requested = Math.max(0, Math.min(session.loyaltyPoints, parseInt(document.getElementById("checkout-redeem-points").value, 10) || 0));
         const remaining = Math.max(0, breakdown.subtotal - window.__checkoutDiscount.couponAmount);
@@ -315,7 +354,7 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
         overlay.innerHTML = `
             <div class="modal-content" style="text-align: center; background: var(--color-surface); padding: 30px; border: 2px solid var(--color-accent);">
                 <h2 style="color: var(--color-accent); font-size: 1.2rem; font-family: 'Courier New', monospace;">ORDER CONFIRMED</h2>
-                <p style="font-family: 'Courier New', monospace; color: var(--color-text); font-size: 11pt; margin: 16px 0 4px;">ORDER #${order.id}</p>
+                <p style="font-family: 'Courier New', monospace; color: var(--color-text); font-size: 11pt; margin: 16px 0 4px;">ORDER #${order.orderNumber || order.id}</p>
                 <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt; margin: 0 0 20px;">
                     ${order.isPaid ? "AMOUNT PAID" : "AMOUNT DUE"}: \u20b9${order.total.toFixed(2)}
                 </p>
@@ -337,7 +376,7 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
     overlay.innerHTML = `
         <div class="modal-content" style="text-align: center; background: var(--color-surface); padding: 30px; border: 2px solid var(--color-accent);">
             <h2 style="color: var(--color-accent); font-size: 1.2rem; font-family: 'Courier New', monospace;">${isOnline ? "UPI GATEWAY" : "COUNTER READY"}</h2>
-            <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt;">ORDER #${order.id} &middot; TOTAL: \u20b9${order.total.toFixed(2)}</p>
+            <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt;">ORDER #${order.orderNumber || order.id} &middot; TOTAL: \u20b9${order.total.toFixed(2)}</p>
 
             ${
                 isOnline

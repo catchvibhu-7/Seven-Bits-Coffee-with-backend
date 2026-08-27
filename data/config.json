@@ -36,6 +36,10 @@
     "adminHelp": {
       "fontSize": 8,
       "color": "#ffffff"
+    },
+    "adminLabels": {
+      "fontSize": 8,
+      "color": "#ffffff"
     }
   }
 }

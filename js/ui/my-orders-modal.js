@@ -23,7 +23,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
                   (order) => `
             <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 10px 0; font-size: 9pt;">
                 <div style="display:flex; justify-content: space-between;">
-                    <span>#${order.id} <span style="color:var(--color-text-muted); font-size:7pt;">${new Date(order.createdAt).toLocaleDateString()}</span></span>
+                    <span>#${order.orderNumber || order.id} <span style="color:var(--color-text-muted); font-size:7pt;">${new Date(order.createdAt).toLocaleDateString()}</span></span>
                     <span style="font-weight:bold;">\u20b9${order.total.toFixed(2)}</span>
                 </div>
                 <div style="font-size:8pt; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>

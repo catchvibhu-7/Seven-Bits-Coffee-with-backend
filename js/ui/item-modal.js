@@ -14,7 +14,7 @@ const BUILT_IN_ICONS = [
  * @param {Array} options.sections - [{id, title}]
  * @param {object} [options.customIcons] - {key: imageUrl} from Branding settings
  * @param {object} [options.item] - existing item to edit, or omit to add new
- * @param {(payload: object) => Promise<void>} options.onSave - called with {name, price, section, icon, story}
+ * @param {(payload: object) => Promise<void>} options.onSave - called with {name, price, section, icon, story, promoDiscount}
  */
 export function renderItemModal({ sections, customIcons = {}, item = null, onSave }) {
     document.getElementById("item-modal-overlay")?.remove();
@@ -57,6 +57,14 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
             <label style="font-size: 7pt; color: var(--color-text-muted);">DESCRIPTION</label>
             <textarea id="im-story" rows="2" style="${fieldStyle} resize: vertical;">${item ? item.story || "" : ""}</textarea>
 
+            <label style="font-size: 7pt; color: var(--color-text-muted);">PROMOTION</label>
+            <select id="im-promo-type" style="${fieldStyle}">
+                <option value="" ${!item?.promoDiscount ? "selected" : ""}>NO PROMOTION</option>
+                <option value="percent" ${item?.promoDiscount?.type === "percent" ? "selected" : ""}>% OFF</option>
+                <option value="flat" ${item?.promoDiscount?.type === "flat" ? "selected" : ""}>₹ OFF (FLAT)</option>
+            </select>
+            <input id="im-promo-value" type="number" min="0.01" step="0.01" placeholder="Discount value" value="${item?.promoDiscount?.value ?? ""}" style="${fieldStyle} ${item?.promoDiscount ? "" : "display:none;"}" />
+
             <div style="display: grid; gap: 10px; margin-top: 10px;">
                 <button id="im-save" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">${isEdit ? "SAVE CHANGES" : "ADD ITEM"}</button>
                 <button id="im-cancel" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CANCEL</button>
@@ -77,6 +85,10 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
     document.getElementById("im-icon").addEventListener("change", updateIconPreview);
     updateIconPreview();
 
+    document.getElementById("im-promo-type").addEventListener("change", (e) => {
+        document.getElementById("im-promo-value").style.display = e.target.value ? "" : "none";
+    });
+
     document.getElementById("im-cancel").addEventListener("click", () => overlay.remove());
 
     document.getElementById("im-save").addEventListener("click", async () => {
@@ -88,12 +100,18 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
         const section = document.getElementById("im-section").value;
         const icon = document.getElementById("im-icon").value;
         const story = document.getElementById("im-story").value.trim();
+        const promoType = document.getElementById("im-promo-type").value;
+        const promoValue = Number(document.getElementById("im-promo-value").value);
 
         if (!name) return (errorEl.textContent = "Name is required.");
         if (!Number.isFinite(price) || price <= 0) return (errorEl.textContent = "Enter a valid price.");
+        if (promoType && (!Number.isFinite(promoValue) || promoValue <= 0)) return (errorEl.textContent = "Enter a valid promo value.");
+        if (promoType === "percent" && promoValue > 100) return (errorEl.textContent = "Percent discount can't exceed 100.");
+
+        const promoDiscount = promoType ? { type: promoType, value: promoValue } : null;
 
         try {
-            await onSave({ name, price, section, icon, story });
+            await onSave({ name, price, section, icon, story, promoDiscount });
             overlay.remove();
         } catch (e) {
             errorEl.textContent = e.message || "Could not save item";

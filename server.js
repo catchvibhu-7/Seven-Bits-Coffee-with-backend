@@ -633,6 +633,48 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
+// Customer/staff-facing display number, separate from `id` (the internal
+// primary key). Format: SB + YYMMDD + a 2-digit per-day counter that resets
+// at midnight because it's derived from today's date prefix, e.g. SB26082401,
+// SB26082402. Safe without locking: server.js handles one request at a time
+// and this runs synchronously between the readJson/writeJson in the order
+// creation route, so two orders can never see the same existing count.
+function generateOrderNumber(existingOrders) {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const datePrefix = `SB${yy}${mm}${dd}`;
+  const todayCount = existingOrders.filter((o) => o.orderNumber && o.orderNumber.startsWith(datePrefix)).length;
+  return `${datePrefix}${String(todayCount + 1).padStart(2, "0")}`;
+}
+
+// Validates a menu item's promo-discount payload, returning null for "no
+// promo" (including invalid input, so a bad request just drops the promo
+// rather than saving garbage). percent is capped at 100; flat just needs to
+// be a positive rupee amount - the price is clamped to a floor of 0
+// wherever promoUnitPrice() is used regardless.
+function sanitizePromoDiscount(input) {
+  if (!input) return null;
+  const type = input.type === "flat" ? "flat" : input.type === "percent" ? "percent" : null;
+  const value = Number(input.value);
+  if (!type || !Number.isFinite(value) || value <= 0) return null;
+  if (type === "percent" && value > 100) return null;
+  return { type, value };
+}
+
+// A menu item "on promotion" auto-applies its discount to the item's base
+// price for every line ordering it - no coupon code needed, and mutually
+// exclusive with coupons (enforced in computeOrder). Customization price
+// deltas (size/milk/extras) are added on top of the discounted base, not
+// discounted themselves.
+function promoUnitPrice(product) {
+  const promo = product.promoDiscount;
+  if (!promo) return product.price;
+  const discounted = promo.type === "percent" ? product.price * (1 - promo.value / 100) : product.price - promo.value;
+  return round2(Math.max(0, discounted));
+}
+
 // ---------------------------------------------------------------------------
 // Order customization catalog (server-authoritative - client only picks keys,
 // every price delta and label comes from here so a tampered client can't
@@ -746,11 +788,14 @@ function resolveComboLine(requested, menu, combos) {
     const allocatedUnitTotal = isLast ? round2(combo.price - allocatedSoFar) : round2(combo.price * share);
     allocatedSoFar += allocatedUnitTotal;
 
+    const comboUnitPrice = round2(allocatedUnitTotal / c.qty);
     lines.push({
       id: c.product.id,
       name: c.product.name,
       basePrice: c.product.price,
-      price: round2(allocatedUnitTotal / c.qty), // per-unit price after combo discount, never client-supplied
+      price: comboUnitPrice, // per-unit price after combo discount, never client-supplied
+      originalPrice: comboUnitPrice, // combos aren't eligible for item-level promos, so there's no separate "original"
+      promoDiscount: null,
       quantity: c.qty * quantity,
       station: getStation(c.product),
       isDone: false,
@@ -787,13 +832,19 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
     if (product.available === false) continue; // item was taken off the menu - never trust client to skip it itself
 
     const custom = resolveCustomization(requested.customization, product);
-    const unitPrice = product.price + custom.priceDelta; // authoritative: base price from server menu + server-priced customizations
+    // authoritative: promo-discounted base price (or plain base price if no
+    // promo) + server-priced customizations - customization deltas are
+    // added on top of the discount, not discounted themselves.
+    const unitPrice = promoUnitPrice(product) + custom.priceDelta;
+    const originalUnitPrice = product.price + custom.priceDelta;
 
     resolvedItems.push({
       id: product.id,
       name: product.name,
       basePrice: product.price,
       price: round2(unitPrice), // unit price including customization, never trusted from client
+      originalPrice: round2(originalUnitPrice), // pre-promo unit price, for showing the discount in the UI
+      promoDiscount: product.promoDiscount || null,
       quantity,
       station: getStation(product),
       isDone: false,
@@ -811,9 +862,17 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
   }
 
   const subtotal = resolvedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const promoDiscountTotal = round2(resolvedItems.reduce((sum, i) => sum + ((i.originalPrice ?? i.price) - i.price) * i.quantity, 0));
 
   // Coupon discount - server re-validates the code against the live catalog
   // and current subtotal; a client can never dictate the discount amount.
+  // Mutually exclusive with item-level promos: a cart with any
+  // promo-discounted line can't also redeem a coupon, so the two discount
+  // mechanisms never stack.
+  const hasPromoItem = resolvedItems.some((i) => i.promoDiscount);
+  if (couponCode && hasPromoItem) {
+    throw new Error("Coupon codes can't be combined with promotional items in your cart");
+  }
   const coupons = readJson(COUPONS_FILE, []);
   const coupon = couponCode ? findValidCoupon(couponCode, coupons) : null;
   const couponDiscount = coupon ? computeCouponDiscount(coupon, subtotal) : 0;
@@ -867,6 +926,7 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
   return {
     items: resolvedItems,
     subtotal: round2(subtotal),
+    promoDiscountTotal,
     couponCode: coupon ? coupon.code : null,
     couponId: coupon ? coupon.id : null,
     discountAmount,
@@ -1791,9 +1851,20 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
   if (!menu.sections.some((s) => s.id === section)) {
     return sendJson(res, 400, { error: "Unknown section" });
   }
+  if (body.promoDiscount && !sanitizePromoDiscount(body.promoDiscount)) {
+    return sendJson(res, 400, { error: "Invalid promo discount" });
+  }
 
   const nextId = menu.items.length ? Math.max(...menu.items.map((i) => i.id)) + 1 : 1;
-  const item = { id: nextId, section, name, price, icon: body.icon || "espresso", story: body.story || "" };
+  const item = {
+    id: nextId,
+    section,
+    name,
+    price,
+    icon: body.icon || "espresso",
+    story: body.story || "",
+    promoDiscount: sanitizePromoDiscount(body.promoDiscount)
+  };
   menu.items.push(item);
   writeJson(MENU_FILE, menu);
   sendJson(res, 201, item);
@@ -1826,6 +1897,15 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
   }
   if (body.deleted !== undefined) {
     item.deleted = Boolean(body.deleted); // restoring a soft-deleted item
+  }
+  if (body.promoDiscount !== undefined) {
+    if (body.promoDiscount === null) {
+      item.promoDiscount = null;
+    } else {
+      const sanitized = sanitizePromoDiscount(body.promoDiscount);
+      if (!sanitized) return sendJson(res, 400, { error: "Invalid promo discount" });
+      item.promoDiscount = sanitized;
+    }
   }
   writeJson(MENU_FILE, menu);
   sendJson(res, 200, item);
@@ -2173,6 +2253,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   const staffMarkedPaid = KITCHEN_ROLES.includes(session.role) && body.markPaidNow === true;
   const order = {
     id: `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+    orderNumber: generateOrderNumber(orders),
     createdAt: new Date().toISOString(),
     method,
     isPaid: method === "ONLINE" || staffMarkedPaid, // still trust-based until a real payment webhook is wired up - see README
@@ -2309,8 +2390,22 @@ function computeCouponDiscount(coupon, subtotal) {
 }
 
 route("GET", /^\/api\/coupons\/?$/, async (req, res) => {
+  // Manager/owner only - returns everything, including private/stopped/
+  // exhausted codes. The public listing below is a separate, filtered route.
   if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
   sendJson(res, 200, readJson(COUPONS_FILE, []));
+});
+
+/** Lets a customer self-serve the list of codes worth trying at checkout.
+ *  Private coupons and anything inactive/exhausted never appear here - do
+ *  NOT reuse the manager-only GET /api/coupons above for this. */
+route("GET", /^\/api\/coupons\/public\/?$/, async (req, res) => {
+  if (!requireSession(req, res)) return;
+  const coupons = readJson(COUPONS_FILE, [])
+    .filter((c) => c.active && !c.private)
+    .filter((c) => c.usageLimit === null || c.usedCount < c.usageLimit)
+    .map((c) => ({ code: c.code, type: c.type, value: c.value }));
+  sendJson(res, 200, coupons);
 });
 
 route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
@@ -2338,6 +2433,7 @@ route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
     usageLimit,
     usedCount: 0,
     active: true,
+    private: !!body.private, // default false = public, listed in GET /api/coupons/public
     createdBy: session.name,
     createdAt: new Date().toISOString()
   };
@@ -2354,6 +2450,7 @@ route("PATCH", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
   if (!coupon) return sendJson(res, 404, { error: "Coupon not found" });
 
   if (body.active !== undefined) coupon.active = Boolean(body.active);
+  if (body.private !== undefined) coupon.private = Boolean(body.private);
   writeJson(COUPONS_FILE, coupons);
   sendJson(res, 200, coupon);
 });

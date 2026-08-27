@@ -578,7 +578,11 @@ export const AdminPortal = {
             <tr style="${item.available === false ? "opacity:0.5;" : ""}">
                 <td>${iconHtml(item)}</td>
                 <td>${escapeHtmlAttr(item.name)}${item.available === false ? ' <span style="color:var(--color-danger); font-size:7pt;">UNAVAILABLE</span>' : ""}</td>
-                <td>\u20b9${item.price}</td>
+                <td>\u20b9${item.price}${
+                    item.promoDiscount
+                        ? `<br><span style="color: var(--color-accent); font-size: 7pt;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `\u20b9${item.promoDiscount.value} OFF`}</span>`
+                        : ""
+                }</td>
                 <td style="text-align:right;">
                     <button class="admin-btn" data-edit="${item.id}">EDIT</button>
                     <button class="admin-btn" data-toggle-available="${item.id}">${item.available === false ? "MARK AVAILABLE" : "MARK UNAVAILABLE"}</button>
@@ -1018,11 +1022,15 @@ export const AdminPortal = {
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
                     <input type="text" id="coupon-limit" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
                 </div>
+                <label style="display:flex; align-items:center; gap:5px; font-size: 8pt; cursor:pointer;">
+                    <input type="checkbox" id="coupon-private" style="width:auto;" />
+                    PRIVATE
+                </label>
                 <button class="admin-btn-primary" id="coupon-add">+ ADD COUPON</button>
             </div>
             <p id="coupon-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
             <table class="admin-table">
-                <thead><tr><th>CODE</th><th>DISCOUNT</th><th>USAGE</th><th>STATUS</th><th style="text-align:right;">ACTION</th></tr></thead>
+                <thead><tr><th>CODE</th><th>DISCOUNT</th><th>VISIBILITY</th><th>USAGE</th><th>STATUS</th><th style="text-align:right;">ACTION</th></tr></thead>
                 <tbody>
                     ${
                         coupons.length
@@ -1032,17 +1040,19 @@ export const AdminPortal = {
                         <tr>
                             <td><strong>${escapeHtmlAttr(c.code)}</strong></td>
                             <td>${c.type === "percent" ? `${c.value}% off` : `\u20b9${c.value} off`}</td>
+                            <td style="font-size:8pt; color:var(--color-text-muted);">${c.private ? "PRIVATE" : "PUBLIC"}</td>
                             <td>${c.usedCount} / ${c.usageLimit === null ? "\u221e (until stopped)" : c.usageLimit}</td>
                             <td style="color:${c.active ? "var(--color-success)" : "var(--color-text-muted)"};">${c.active ? "ACTIVE" : "STOPPED"}</td>
                             <td style="text-align:right;">
                                 <button class="admin-btn" data-toggle-coupon="${c.id}">${c.active ? "STOP" : "RESUME"}</button>
+                                <button class="admin-btn" data-toggle-private="${c.id}">${c.private ? "MAKE PUBLIC" : "MAKE PRIVATE"}</button>
                                 <button class="admin-btn admin-btn-danger" data-delete-coupon="${c.id}">DELETE</button>
                             </td>
                         </tr>
                     `
                                   )
                                   .join("")
-                            : `<tr><td colspan="5" style="text-align:center; color:var(--color-text-muted); padding:20px;">No coupons yet.</td></tr>`
+                            : `<tr><td colspan="6" style="text-align:center; color:var(--color-text-muted); padding:20px;">No coupons yet.</td></tr>`
                     }
                 </tbody>
             </table>
@@ -1075,13 +1085,14 @@ export const AdminPortal = {
             const value = Number(document.getElementById("coupon-value").value);
             const limitRaw = document.getElementById("coupon-limit").value.trim();
             const usageLimit = limitRaw === "" ? null : parseInt(limitRaw, 10);
+            const isPrivate = document.getElementById("coupon-private").checked;
 
             try {
                 const res = await fetch("/api/coupons", {
                     method: "POST",
                     credentials: "include",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ code, type, value, usageLimit })
+                    body: JSON.stringify({ code, type, value, usageLimit, private: isPrivate })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || "Could not add coupon");
@@ -1103,6 +1114,19 @@ export const AdminPortal = {
                 });
                 await this.renderDiscountsLoyalty(root);
                 ok(coupon.active ? "Coupon stopped" : "Coupon resumed");
+            })
+        );
+        root.querySelectorAll("[data-toggle-private]").forEach((btn) =>
+            btn.addEventListener("click", async () => {
+                const coupon = coupons.find((c) => c.id === Number(btn.dataset.togglePrivate));
+                await fetch(`/api/coupons/${coupon.id}`, {
+                    method: "PATCH",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ private: !coupon.private })
+                });
+                await this.renderDiscountsLoyalty(root);
+                ok(coupon.private ? "Coupon made public" : "Coupon made private");
             })
         );
         root.querySelectorAll("[data-delete-coupon]").forEach((btn) =>
@@ -1293,7 +1317,7 @@ export const AdminPortal = {
                           const customerLabel = o.customerName ? `${escapeHtmlAttr(o.customerName)} (${o.customerPhone || "-"})` : o.customerPhone || "-";
                           return `
                         <tr class="order-history-row ${o.id === this.orderHistorySelectedId ? "active" : ""}" data-order-id="${o.id}" style="cursor:pointer;">
-                            <td>#${o.id}</td>
+                            <td>#${o.orderNumber || o.id}</td>
                             <td style="font-size:8pt;">${new Date(o.createdAt).toLocaleString()}</td>
                             <td style="font-size:8pt;">${customerLabel}</td>
                             <td>\u20b9${o.total.toFixed(2)}</td>
@@ -1348,7 +1372,7 @@ export const AdminPortal = {
             detailRoot.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
                     <div>
-                        <h3 style="margin:0; font-size:11pt;">#${order.id}</h3>
+                        <h3 style="margin:0; font-size:11pt;">#${order.orderNumber || order.id}</h3>
                         <div style="font-size:8pt; color:var(--color-text-muted);">${new Date(order.createdAt).toLocaleString()}</div>
                     </div>
                     <span style="font-size:8pt; color:${complete ? "var(--color-success)" : "var(--color-cyan)"};">${complete ? "COMPLETED" : "ACTIVE"}</span>
@@ -1373,6 +1397,8 @@ export const AdminPortal = {
                         .join("")}
                 </div>
                 <div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Subtotal</span><span>\u20b9${order.subtotal.toFixed(2)}</span></div>
+                ${order.promoDiscountTotal ? `<div style="font-size:8pt; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Promo Savings</span><span>-\u20b9${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
+                ${order.discountAmount ? `<div style="font-size:8pt; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Discount${order.couponCode ? ` (${escapeHtmlAttr(order.couponCode)})` : ""}</span><span>-\u20b9${order.discountAmount.toFixed(2)}</span></div>` : ""}
                 <div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>CGST + SGST</span><span>\u20b9${(order.cgst + order.sgst).toFixed(2)}</span></div>
                 ${order.serviceCharge ? `<div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Service Charge</span><span>\u20b9${order.serviceCharge.toFixed(2)}</span></div>` : ""}
                 ${order.tipAmount ? `<div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Tip</span><span>\u20b9${order.tipAmount.toFixed(2)}</span></div>` : ""}

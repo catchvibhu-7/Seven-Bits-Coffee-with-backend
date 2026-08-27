@@ -3,6 +3,7 @@
  * Location: /js/app.js
  */
 import { KitchenSystem } from "./features/kitchen-logic.js";
+import { discountedBasePrice } from "./features/cart-logic.js";
 import { AuthSystem } from "./features/auth-logic.js";
 import { AdminConfig } from "./features/config-logic.js";
 import { PayrollSystem } from "./features/payroll-logic.js";
@@ -15,6 +16,7 @@ import { FavoritesSystem } from "./features/favorites-logic.js";
 import { renderMyOrdersModal } from "./ui/my-orders-modal.js";
 import { TableSessionsSystem } from "./features/table-sessions-logic.js";
 import { renderTableModal, renderTableBillModal } from "./ui/table-modal.js";
+import { SoundSystem } from "./features/sound-logic.js";
 
 // --- System State ---
 let cart = [];
@@ -29,6 +31,7 @@ let ordersStream = null; // SSE connection, opened once after the first authenti
 let session = { authenticated: false, role: null, name: null, phone: null }; // current login state
 let favoritesFilterActive = false;
 let comboData = [];
+let lastSeenOrderStatuses = {}; // orderId -> last status seen by refreshOrderStatusWidget, so the ready chime fires once per transition, not on every poll
 
 const KITCHEN_ROLES = ["employee", "manager", "admin", "owner"];
 const ADMIN_ROLES = ["admin", "owner"]; // full Admin panel (Branding, unrestricted staff)
@@ -440,12 +443,25 @@ async function refreshOrderStatusWidget() {
     const order = activeOrder;
     const statusColor = order.status === "READY" ? "var(--color-success)" : order.status === "PREPARING" ? "var(--color-cyan)" : "var(--color-accent)";
 
+    // Only chime on the moment an order becomes READY (not on every poll
+    // while it stays READY, and not for an order that was already READY the
+    // first time we ever saw it - e.g. a page refresh after pickup was
+    // already announced).
+    const previousStatus = lastSeenOrderStatuses[order.id];
+    if (order.status === "READY" && previousStatus && previousStatus !== "READY") {
+        SoundSystem.playReadyChime();
+    }
+    lastSeenOrderStatuses[order.id] = order.status;
+
     section.style.display = "block";
     root.innerHTML = `
         <div class="status-card" style="border:1px solid var(--color-accent); padding:15px; font-family:'Courier New',monospace;">
             <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                <span>#${order.id}</span>
-                <span style="color:${statusColor}; font-weight:bold;">${order.status}</span>
+                <span>#${order.orderNumber || order.id}</span>
+                <span style="display:flex; align-items:center; gap:8px;">
+                    <button onclick="window.toggleOrderSound(this)" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;">${SoundSystem.isMuted() ? "\u{1F507}" : "\u{1F50A}"}</button>
+                    <span style="color:${statusColor}; font-weight:bold;">${order.status}</span>
+                </span>
             </div>
             <div style="font-size:9pt; color:var(--color-text-muted);">${order.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")}</div>
             <div style="font-size:9pt; margin-top:8px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 \u20b9${order.total.toFixed(2)}</div>
@@ -535,7 +551,9 @@ function addCartLine(product, custom) {
             ...product,
             cartKey,
             quantity: custom.quantity,
-            price: CustomizationSystem.estimateUnitPrice(product.price, custom),
+            price: CustomizationSystem.estimateUnitPrice(discountedBasePrice(product), custom),
+            originalPrice: CustomizationSystem.estimateUnitPrice(product.price, custom),
+            promoDiscount: product.promoDiscount || null,
             size: sizeOpt ? sizeOpt.key : null,
             sizeLabel: sizeOpt ? sizeOpt.label : null,
             sizePriceDelta: sizeOpt ? sizeOpt.priceDelta : 0,
@@ -644,7 +662,7 @@ window.printBill = (order) => {
         <body onload="window.print(); window.close();">
             <div class="center">
                 <h3>SEVEN BITS COFFEE</h3>
-                <p style="font-size: 8pt;">Hazaribagh, Jharkhand<br>#${order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
+                <p style="font-size: 8pt;">Hazaribagh, Jharkhand<br>#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
                 ${order.tableNumber ? `<p style="font-size: 10pt; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
             </div>
             <div class="hr"></div>
@@ -665,6 +683,7 @@ window.printBill = (order) => {
                 .join("")}
             <div class="hr"></div>
             <div class="row">SUBTOTAL: <span>\u20b9${order.subtotal.toFixed(2)}</span></div>
+            ${order.promoDiscountTotal > 0 ? `<div class="row">PROMO SAVINGS: <span>-\u20b9${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
             ${order.discountAmount > 0 ? `<div class="row">DISCOUNT${order.couponCode ? ` (${escapeHtml(order.couponCode)})` : ""}: <span>-\u20b9${order.discountAmount.toFixed(2)}</span></div>` : ""}
             <div class="row">TAX (CGST+SGST): <span>\u20b9${(order.cgst + order.sgst).toFixed(2)}</span></div>
             ${order.serviceChargeActive ? `<div class="row">SVC CHG: <span>\u20b9${order.serviceCharge.toFixed(2)}</span></div>` : ""}
@@ -692,7 +711,7 @@ window.printKOT = (order) => {
         <body onload="window.print(); window.close();">
             <div class="header">
                 <h2>KITCHEN TICKET</h2>
-                <p>#${order.id} | TYPE: ${order.method}</p>
+                <p>#${order.orderNumber || order.id} | TYPE: ${order.method}</p>
                 ${order.tableNumber ? `<p style="font-size:16pt; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
             </div>
             ${order.items
@@ -1012,19 +1031,25 @@ function renderMenu(filterQuery = "") {
             const wrapperEl = document.createElement("div");
             wrapperEl.className = "menu-item-wrapper";
 
+            const promoPrice = discountedBasePrice(item);
+            const onPromo = item.promoDiscount && promoPrice < item.price;
+            const priceHTML = onPromo
+                ? `<span style="text-decoration:line-through; color:var(--color-text-muted); font-size:0.8em;">\u20b9${item.price}</span> \u20b9${promoPrice.toFixed(2)}`
+                : `\u20b9${item.price}`;
+
             const itemEl = document.createElement("div");
             itemEl.className = "menu-item";
             if (isUnavailable) itemEl.style.opacity = "0.45";
             itemEl.innerHTML = `
                 ${iconMarkup(item.icon)}
                 <div class="info">
-                    <div class="name">${favButton}${item.name}${isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : ""}</div>
+                    <div class="name">${favButton}${item.name}${isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
                     ${isUnavailable ? "" : `<button class="btn-customize-link" onclick="window.openCustomize(${item.id})" style="background:none; border:none; color:var(--color-accent); text-decoration:underline; font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;">+ CUSTOMIZE (SIZE/MILK/EXTRAS)</button>`}
                     ${staffRequestHtml}
                 </div>
                 <div class="item-controls">
-                    <div class="price-fixed">\u20b9${item.price}</div>
+                    <div class="price-fixed">${priceHTML}</div>
                     <div class="action-fixed">${quickControlsHTML}</div>
                 </div>
             `;
@@ -1312,7 +1337,7 @@ function renderKitchen() {
 
             ticket.innerHTML = `
             <div class="kot-header">
-                <span>#${order.id}</span>
+                <span>#${order.orderNumber || order.id}</span>
                 <span style="float:right;">${paidStatus}</span>
             </div>
             ${order.tableNumber ? `<div style="font-size:9pt; font-weight:bold; color:var(--color-accent); margin-bottom:4px;">TABLE ${escapeHtml(order.tableNumber)}</div>` : ""}
@@ -1363,7 +1388,7 @@ window.markCompleted = async (orderId) => {
     const order = KitchenSystem.orders.find((o) => o.id === orderId);
 
     if (order) {
-        let msg = `Order #${orderId}: `;
+        let msg = `Order #${order.orderNumber || orderId}: `;
         const allDone = order.items.every((i) => i.isDone);
 
         if (allDone) {
@@ -1383,6 +1408,12 @@ window.markCompleted = async (orderId) => {
  * UI HELPERS & MODALS
  */
 window.closeModal = () => document.getElementById("modal-overlay")?.remove();
+window.toggleOrderSound = (btn) => {
+    const muted = !SoundSystem.isMuted();
+    SoundSystem.setMuted(muted);
+    btn.textContent = muted ? "\u{1F507}" : "\u{1F50A}";
+    btn.title = muted ? "Unmute order-ready sound" : "Mute order-ready sound";
+};
 /**
  * Both of these used to closeModal() then re-trigger the cart bar's click
  * handler to reopen it - which itself awaits refreshSession() first. That
@@ -1563,6 +1594,7 @@ window.pickFromHome = (itemId) => {
  * BOOT
  */
 (async () => {
+    document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
     await loadMenu();
     await loadCombos();
     await CustomizationSystem.loadOptions();
