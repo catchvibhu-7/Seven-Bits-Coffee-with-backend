@@ -25,7 +25,7 @@ function starsHtml(order) {
             </div>
             <div style="display:none;" class="mo-comment-row">
                 <input type="text" class="mo-comment-input" placeholder="Add a comment (optional)" maxlength="500" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px; font-family:inherit; font-size:8pt; margin:6px 0;" />
-                <button class="mo-feedback-submit admin-btn" style="font-size:7pt;">SUBMIT RATING</button>
+                <button class="mo-feedback-submit admin-btn" style="font-size:7pt; width:100%; box-sizing:border-box; margin:0; text-align:center;">SUBMIT RATING</button>
             </div>
         </div>
     `;

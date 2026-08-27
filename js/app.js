@@ -421,6 +421,12 @@ window.showPage = async (pageId) => {
  * don't show this section at all, rather than an empty/prompt state taking
  * up space on every visit.
  */
+function soundIconSvg(muted) {
+    return muted
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>`
+        : `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03z"/><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
+}
+
 async function refreshOrderStatusWidget() {
     const section = document.getElementById("order-status-section");
     const root = document.getElementById("order-status-root");
@@ -475,7 +481,7 @@ async function refreshOrderStatusWidget() {
                 <span>#${order.orderNumber || order.id}</span>
                 <span style="display:flex; align-items:center; gap:8px;">
                     ${notifyPromptHtml}
-                    <button onclick="window.toggleOrderSound(this)" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;">${SoundSystem.isMuted() ? "\u{1F507}" : "\u{1F50A}"}</button>
+                    <button onclick="window.toggleOrderSound(this)" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-accent); opacity:${SoundSystem.isMuted() ? "0.5" : "1"}; padding:0;">${soundIconSvg(SoundSystem.isMuted())}</button>
                     <span style="color:${statusColor}; font-weight:bold;">${order.status}</span>
                 </span>
             </div>
@@ -1115,8 +1121,16 @@ function renderMenu(filterQuery = "") {
     if (cartBar) cartBar.style.display = cart.length > 0 ? "flex" : "none";
 }
 
-window.toggleFavoritesFilter = (checked) => {
-    favoritesFilterActive = checked;
+function paintFavoritesFilterStar() {
+    const star = document.getElementById("favorites-filter-star");
+    if (!star) return;
+    star.innerHTML = favoritesFilterActive ? "&#9733;" : "&#9734;";
+    star.style.color = favoritesFilterActive ? "var(--color-accent)" : "var(--color-text-muted)";
+}
+
+window.toggleFavoritesFilter = () => {
+    favoritesFilterActive = !favoritesFilterActive;
+    paintFavoritesFilterStar();
     renderMenu(document.getElementById("menu-search")?.value || "");
 };
 
@@ -1453,7 +1467,8 @@ window.closeModal = () => document.getElementById("modal-overlay")?.remove();
 window.toggleOrderSound = (btn) => {
     const muted = !SoundSystem.isMuted();
     SoundSystem.setMuted(muted);
-    btn.textContent = muted ? "\u{1F507}" : "\u{1F50A}";
+    btn.innerHTML = soundIconSvg(muted);
+    btn.style.opacity = muted ? "0.5" : "1";
     btn.title = muted ? "Unmute order-ready sound" : "Mute order-ready sound";
 };
 window.requestOrderNotifications = async (btn) => {

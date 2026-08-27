@@ -111,9 +111,8 @@
        <!-- PAGE: MENU -->
 <div id="page-menu" class="page">
     <div class="menu-controls" style="padding: 10px; display: flex; justify-content: flex-end; align-items:center; gap: 15px">
-    <label id="favorites-filter-label" style="display:none; align-items:center; gap:5px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace;">
-        <input type="checkbox" id="favorites-filter-toggle" onchange="window.toggleFavoritesFilter(this.checked)" />
-        &#9733; FAVORITES ONLY
+    <label id="favorites-filter-label" onclick="window.toggleFavoritesFilter()" style="display:none; align-items:center; gap:5px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace; user-select:none;">
+        <span id="favorites-filter-star" style="font-size:11pt; line-height:1; color: var(--color-text-muted);">&#9734;</span> FAVORITES ONLY
     </label>
     <!-- Search is wired via window.initSearchBar() in app.js (debounced), not an inline
          handler - the old oninput="renderMenu(...)" called a function that was never

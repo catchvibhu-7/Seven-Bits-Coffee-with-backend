@@ -3,8 +3,10 @@
  * Location: /js/ui/tictactoe-game.js
  *
  * Two modes:
- *  - BOT: fully client-side, an unbeatable minimax opponent (tic-tac-toe's
- *    search space is tiny - 9! at most - so a full search is instant).
+ *  - BOT: fully client-side. Never misses a free win or a block (see
+ *    pickBotMove), but otherwise plays a random legal move most of the time
+ *    instead of full minimax - a pure minimax bot is unbeatable, which makes
+ *    "vs bot" pointless to actually play.
  *  - ONLINE: server-authoritative match against another in-store player.
  *    Moves are POSTed and validated server-side; board state comes back
  *    from the server every time, never computed locally, so two tabs can
@@ -47,6 +49,44 @@ function minimax(board, player, bot, human) {
     return player === bot
         ? moves.reduce((best, m) => (m.score > best.score ? m : best))
         : moves.reduce((best, m) => (m.score < best.score ? m : best));
+}
+
+function emptyCells(board) {
+    const cells = [];
+    for (let i = 0; i < 9; i++) if (!board[i]) cells.push(i);
+    return cells;
+}
+
+// A move that would immediately win FOR `player` if played right now, or
+// null - used so the bot never misses a free win/block even on the moves
+// where it's about to play randomly instead of optimally.
+function findImmediateWin(board, player) {
+    for (const i of emptyCells(board)) {
+        board[i] = player;
+        const win = checkWinner(board) === player;
+        board[i] = null;
+        if (win) return i;
+    }
+    return null;
+}
+
+// A pure minimax bot is unbeatable (best case for a human is a draw), which
+// makes the "vs bot" mode pointless to actually play. So: always take a free
+// win or block a losing threat (a bot that misses those looks broken, not
+// beatable), but otherwise play a random legal move most of the time instead
+// of the optimal one - only occasionally falling back to full minimax. That
+// keeps it a real opponent while leaving enough gaps for a decent player to
+// win some of the time.
+function pickBotMove(board) {
+    const winNow = findImmediateWin(board, "O");
+    if (winNow !== null) return winNow;
+    const blockNow = findImmediateWin(board, "X");
+    if (blockNow !== null) return blockNow;
+    if (Math.random() < 0.7) {
+        const cells = emptyCells(board);
+        return cells[Math.floor(Math.random() * cells.length)];
+    }
+    return minimax([...board], "O", "O", "X").index;
 }
 
 function cellStyle() {
@@ -156,7 +196,7 @@ export const TicTacToeGame = {
         this.botTurn = true;
         this.renderBotBoard("Bot is thinking...");
         setTimeout(() => {
-            const { index: botMove } = minimax([...this.board], "O", "O", "X");
+            const botMove = pickBotMove(this.board);
             this.board[botMove] = "O";
             const winnerAfterBot = checkWinner(this.board);
             if (winnerAfterBot) return this.finishBotGame(winnerAfterBot);
