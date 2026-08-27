@@ -23,18 +23,29 @@ export const KitchenSystem = {
         return res.json();
     },
 
-    async pushOrder(cartItems, method, { serviceChargeActive = true, tipApplied = false, phone = null, couponCode = null } = {}) {
+    async pushOrder(cartItems, method, { serviceChargeActive = true, tipApplied = false, phone = null, markPaidNow = false, tableSessionId = null, couponCode = null, redeemPoints = 0 } = {}) {
         const res = await fetch("/api/orders", {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                items: cartItems.map((i) => ({ id: i.id, quantity: i.quantity })),
+                items: cartItems.map((i) =>
+                    i.isCombo
+                        ? { type: "combo", comboId: i.comboId, quantity: i.quantity }
+                        : {
+                              id: i.id,
+                              quantity: i.quantity,
+                              customization: { size: i.size, milk: i.milk, extras: (i.extras || []).map((e) => e.key), notes: i.notes }
+                          }
+                ),
                 method,
                 serviceChargeActive,
                 tipApplied,
                 phone,
-                couponCode
+                markPaidNow,
+                tableSessionId,
+                couponCode,
+                redeemPoints
             })
         });
         const data = await res.json();

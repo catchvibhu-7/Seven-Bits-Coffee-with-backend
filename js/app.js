@@ -3,20 +3,25 @@
  * Location: /js/app.js
  */
 import { KitchenSystem } from "./features/kitchen-logic.js";
-import { discountedUnitPrice } from "./features/cart-logic.js";
-import { SoundSystem } from "./features/sound-logic.js";
+import { discountedBasePrice } from "./features/cart-logic.js";
 import { AuthSystem } from "./features/auth-logic.js";
 import { AdminConfig } from "./features/config-logic.js";
+import { PayrollSystem } from "./features/payroll-logic.js";
 import { renderCheckoutModal, renderPaymentConfirmation } from "./ui/checkout-modal.js";
 import { renderLoginModal, renderForceChangePasswordModal } from "./ui/login-modal.js";
 import { renderAccountSettingsModal } from "./ui/account-settings-modal.js";
+import { renderCustomizeModal } from "./ui/customize-modal.js";
+import { CustomizationSystem } from "./features/customization-logic.js";
+import { FavoritesSystem } from "./features/favorites-logic.js";
+import { renderMyOrdersModal } from "./ui/my-orders-modal.js";
+import { TableSessionsSystem } from "./features/table-sessions-logic.js";
+import { renderTableModal, renderTableBillModal } from "./ui/table-modal.js";
+import { SoundSystem } from "./features/sound-logic.js";
 
 // --- System State ---
 let cart = [];
 let serviceChargeActive = true;
 let tipApplied = false;
-let appliedCoupon = null; // {code, type, value} from a validated /api/coupons/validate response, or null
-let lastSeenOrderStatuses = {}; // orderId -> last status seen by refreshOrderStatusWidget, so the ready chime fires once per transition, not on every poll
 let currentKitchenStation = "MASTER"; // matches the "ALL" tab that's marked active by default in index.html
 let viewMode = "list";
 let menuData = { sections: [], items: [] };
@@ -24,19 +29,34 @@ let siteConfig = {}; // last-loaded config (colors/customIcons/etc.) for icon re
 let pendingOrder = null; // order returned by the server, waiting to be printed
 let ordersStream = null; // SSE connection, opened once after the first authenticated view
 let session = { authenticated: false, role: null, name: null, phone: null }; // current login state
+let favoritesFilterActive = false;
+let comboData = [];
+let lastSeenOrderStatuses = {}; // orderId -> last status seen by refreshOrderStatusWidget, so the ready chime fires once per transition, not on every poll
 
-const KITCHEN_ROLES = ["employee", "admin", "owner"];
-const ADMIN_ROLES = ["admin", "owner"];
+const KITCHEN_ROLES = ["employee", "manager", "admin", "owner"];
+const ADMIN_ROLES = ["admin", "owner"]; // full Admin panel (Branding, unrestricted staff)
+const MANAGER_UP_ROLES = ["manager", "admin", "owner"]; // Admin/Manager Dashboard page access
 const TRACKING_ROLES = ["customer", "guest"];
+const PAYROLL_ROLES = ["employee", "manager"];
 
 async function loadMenu() {
     const res = await fetch("/api/menu");
     menuData = await res.json();
 }
 
+async function loadCombos() {
+    const res = await fetch("/api/combos");
+    comboData = res.ok ? await res.json() : [];
+}
+
 async function refreshSession() {
     session = await AuthSystem.getSession();
     updateNavForSession();
+    if (TRACKING_ROLES.includes(session.role)) {
+        await FavoritesSystem.load();
+    } else {
+        FavoritesSystem.ids = [];
+    }
     return session;
 }
 
@@ -51,7 +71,13 @@ function updateNavForSession() {
     const accountBtn = document.getElementById("nav-account");
 
     if (kitchenTab) kitchenTab.style.display = KITCHEN_ROLES.includes(session.role) ? "" : "none";
-    if (adminTab) adminTab.style.display = ADMIN_ROLES.includes(session.role) ? "" : "none";
+    if (adminTab) {
+        adminTab.style.display = MANAGER_UP_ROLES.includes(session.role) ? "" : "none";
+        // Same page underneath (see admin-portal.js's role-aware tab list) -
+        // the label just reflects that a manager gets a scoped subset, not
+        // the full Admin panel.
+        adminTab.textContent = session.role === "manager" ? "DASHBOARD" : "ADMIN";
+    }
 
     if (accountBtn) {
         if (session.authenticated) {
@@ -61,6 +87,14 @@ function updateNavForSession() {
             accountBtn.textContent = "LOGIN";
         }
     }
+
+    updateTimeclockWidget();
+
+    const myOrdersLink = document.getElementById("my-orders-link-section");
+    if (myOrdersLink) myOrdersLink.style.display = "block"; // always available - openMyOrders() itself prompts login if needed
+
+    const favFilterLabel = document.getElementById("favorites-filter-label");
+    if (favFilterLabel) favFilterLabel.style.display = TRACKING_ROLES.includes(session.role) ? "flex" : "none";
 }
 
 /**
@@ -103,6 +137,23 @@ window.applyBranding = (config) => {
     if (colors.textMuted) root.style.setProperty("--color-text-muted", colors.textMuted);
     if (colors.secondary) root.style.setProperty("--color-cyan", colors.secondary);
 
+    // Admin panel text styles - tab nav row + muted helper/description
+    // paragraphs (see Branding tab "ADMIN PANEL TEXT"). Only touches the
+    // admin panel, not customer-facing pages.
+    const textStyles = config.textStyles || {};
+    if (textStyles.adminTabs) {
+        if (textStyles.adminTabs.fontSize) root.style.setProperty("--admin-tab-font-size", `${textStyles.adminTabs.fontSize}pt`);
+        if (textStyles.adminTabs.color) root.style.setProperty("--admin-tab-color", textStyles.adminTabs.color);
+    }
+    if (textStyles.adminHelp) {
+        if (textStyles.adminHelp.fontSize) root.style.setProperty("--admin-help-font-size", `${textStyles.adminHelp.fontSize}pt`);
+        if (textStyles.adminHelp.color) root.style.setProperty("--admin-help-color", textStyles.adminHelp.color);
+    }
+    if (textStyles.adminLabels) {
+        if (textStyles.adminLabels.fontSize) root.style.setProperty("--admin-label-font-size", `${textStyles.adminLabels.fontSize}pt`);
+        if (textStyles.adminLabels.color) root.style.setProperty("--admin-label-color", textStyles.adminLabels.color);
+    }
+
     document.body.classList.toggle("theme-light", config.theme === "light");
 
     const heroEl = document.querySelector(".icon-logo-hero");
@@ -126,6 +177,53 @@ window.applyBranding = (config) => {
             logoEl.style.display = "none";
         }
     }
+
+    // Home page hero copy - admin-editable from Global Settings, was
+    // previously hardcoded HTML text.
+    const shopNameEl = document.getElementById("hero-shop-name");
+    if (shopNameEl && config.shopName) shopNameEl.textContent = config.shopName;
+    const taglineEl = document.getElementById("hero-tagline");
+    if (taglineEl && config.heroTagline) taglineEl.textContent = config.heroTagline;
+};
+
+/**
+ * Small "Clock In / Clock Out" nav button, visible only to employee/manager
+ * accounts. Backs the payroll system's hourly-rate calculations with real
+ * timestamps instead of manually-guessed hours.
+ */
+async function updateTimeclockWidget() {
+    const btn = document.getElementById("nav-timeclock");
+    if (!btn) return;
+
+    if (!PAYROLL_ROLES.includes(session.role)) {
+        btn.style.display = "none";
+        return;
+    }
+
+    btn.style.display = "";
+    const status = await PayrollSystem.clockStatus();
+    btn.dataset.clockedIn = status.clockedIn ? "1" : "0";
+    btn.textContent = status.clockedIn ? "\u23f9 CLOCK OUT" : "\u23f5 CLOCK IN";
+    btn.style.background = status.clockedIn ? "var(--color-danger)" : "var(--color-success)";
+    btn.style.color = "#000";
+    btn.style.border = "none";
+}
+
+window.handleTimeclockClick = async () => {
+    const btn = document.getElementById("nav-timeclock");
+    const clockedIn = btn.dataset.clockedIn === "1";
+    try {
+        if (clockedIn) {
+            await PayrollSystem.clockOut();
+            window.showToast("Clocked out");
+        } else {
+            await PayrollSystem.clockIn();
+            window.showToast("Clocked in");
+        }
+    } catch (e) {
+        window.showToast(e.message, "error");
+    }
+    updateTimeclockWidget();
 };
 
 window.handleAccountClick = () => {
@@ -152,10 +250,18 @@ function renderAccountMenu() {
     const menu = document.createElement("div");
     menu.id = "account-menu";
     const rect = btn.getBoundingClientRect();
+    const menuWidth = 180;
+    // Left-align to the button (not right-align) - right-aligning a menu
+    // wider than a short button (e.g. "OWNER") pulls it left underneath
+    // whatever nav tab sits before it, which looked like a placement bug.
+    // Falls back to right-aligned only if left-aligning would overflow the
+    // viewport (e.g. a narrow mobile screen).
+    const overflowsRight = rect.left + menuWidth > window.innerWidth;
+    const horizontalRule = overflowsRight ? `right: ${window.innerWidth - rect.right}px;` : `left: ${rect.left}px;`;
     menu.style.cssText = `
-        position: fixed; top: ${rect.bottom + 6}px; right: ${window.innerWidth - rect.right}px;
+        position: fixed; top: ${rect.bottom + 6}px; ${horizontalRule}
         background: var(--color-surface); border: 1px solid var(--color-accent);
-        min-width: 180px; z-index: 5500; font-family: 'Courier New', monospace;
+        min-width: ${menuWidth}px; z-index: 5500; font-family: 'Courier New', monospace;
         box-shadow: 4px 4px 0 rgba(0,0,0,0.4);
     `;
 
@@ -246,7 +352,7 @@ window.showPage = async (pageId) => {
 
     if (needsKitchenRole || needsAdminRole) {
         await refreshSession();
-        const allowedRoles = needsAdminRole ? ADMIN_ROLES : KITCHEN_ROLES;
+        const allowedRoles = needsAdminRole ? MANAGER_UP_ROLES : KITCHEN_ROLES;
         if (!allowedRoles.includes(session.role)) {
             if (session.authenticated) {
                 alert("Your account doesn't have access to this page.");
@@ -286,11 +392,16 @@ window.showPage = async (pageId) => {
     if (pageId === "menu") renderMenu();
     if (pageId === "kitchen" || pageId === "orders") {
         await KitchenSystem.fetchOrders();
-        renderKitchen();
+        if (currentKitchenStation === "TABLES") {
+            await renderTablesPanel(); // refresh tab totals if the Tables view was left open
+        } else {
+            renderKitchen();
+        }
         ensureOrdersStream();
     }
     if (pageId === "home") {
         renderPopularPicks();
+        renderLiveStatsTicker();
         await refreshOrderStatusWidget();
         if (TRACKING_ROLES.includes(session.role)) ensureOrdersStream();
     }
@@ -380,27 +491,146 @@ function ensureOrdersStream() {
 
 /**
  * CART LOGIC
+ *
+ * Because items can carry customization (size/milk/extras/notes), the same
+ * menu item id can appear as several distinct cart lines - one per unique
+ * combination of choices. Each line gets a stable cartKey (see
+ * CustomizationSystem.lineKey) so identical repeat picks merge quantity
+ * instead of duplicating, while different picks stay separate.
  */
-window.addToCart = (id) => {
-    const item = cart.find((i) => i.id === id);
-    if (item) {
-        item.quantity++;
-    } else {
-        const product = menuData.items.find((i) => i.id === id);
-        if (product) cart.push({ ...product, quantity: 1 });
-    }
-    updateCartUI();
-    renderMenu();
+window.openCustomize = async (id) => {
+    const product = menuData.items.find((i) => i.id === id);
+    if (!product) return;
+    await CustomizationSystem.loadOptions();
+    renderCustomizeModal({
+        item: product,
+        onAdd: (custom) => addCartLine(product, custom)
+    });
 };
 
-window.removeFromCart = (id) => {
-    const item = cart.find((i) => i.id === id);
-    if (item) {
-        item.quantity--;
-        if (item.quantity <= 0) cart = cart.filter((i) => i.id !== id);
+/** The plain, no-frills version of an item (no size/milk/extras/notes) -
+ *  what the ADD BIT +/- stepper quick-adds, as distinct from any
+ *  customized line created via the CUSTOMIZE modal. */
+function defaultCartKey(itemId) {
+    return CustomizationSystem.lineKey(itemId, { size: "regular", milk: "regular", extras: [], notes: "" });
+}
+
+window.quickAdd = (itemId) => {
+    const product = menuData.items.find((i) => i.id === itemId);
+    if (!product) return;
+    addCartLine(product, { size: "regular", milk: "regular", extras: [], notes: "", quantity: 1 });
+};
+
+window.quickRemove = (itemId) => {
+    const cartKey = defaultCartKey(itemId);
+    const line = cart.find((c) => c.cartKey === cartKey);
+    if (!line) return;
+    line.quantity -= 1;
+    if (line.quantity <= 0) cart = cart.filter((c) => c.cartKey !== cartKey);
+    updateCartUI();
+    renderMenu();
+    if (document.getElementById("modal-overlay")) {
+        if (cart.length === 0) window.closeModal();
+        else renderCheckoutModal(cart, serviceChargeActive, tipApplied);
+    }
+};
+
+function addCartLine(product, custom) {
+    const cartKey = CustomizationSystem.lineKey(product.id, custom);
+    const existing = cart.find((c) => c.cartKey === cartKey);
+    if (existing) {
+        existing.quantity += custom.quantity;
+    } else {
+        const opts = CustomizationSystem.options || { sizeOptions: [], milkOptions: [], extraOptions: [] };
+        const sizeOpt = opts.sizeOptions.find((o) => o.key === custom.size);
+        const milkOpt = opts.milkOptions.find((o) => o.key === custom.milk);
+        const extraObjs = (custom.extras || [])
+            .map((k) => opts.extraOptions.find((o) => o.key === k))
+            .filter(Boolean);
+        cart.push({
+            ...product,
+            cartKey,
+            quantity: custom.quantity,
+            price: CustomizationSystem.estimateUnitPrice(discountedBasePrice(product), custom),
+            originalPrice: CustomizationSystem.estimateUnitPrice(product.price, custom),
+            promoDiscount: product.promoDiscount || null,
+            size: sizeOpt ? sizeOpt.key : null,
+            sizeLabel: sizeOpt ? sizeOpt.label : null,
+            sizePriceDelta: sizeOpt ? sizeOpt.priceDelta : 0,
+            milk: milkOpt ? milkOpt.key : null,
+            milkLabel: milkOpt ? milkOpt.label : null,
+            milkPriceDelta: milkOpt ? milkOpt.priceDelta : 0,
+            extras: extraObjs,
+            notes: custom.notes || ""
+        });
     }
     updateCartUI();
     renderMenu();
+}
+
+window.adjustCartLine = (cartKey, delta) => {
+    const item = cart.find((c) => c.cartKey === cartKey);
+    if (!item) return;
+    item.quantity += delta;
+    if (item.quantity <= 0) cart = cart.filter((c) => c.cartKey !== cartKey);
+    updateCartUI();
+    renderMenu();
+    if (document.getElementById("modal-overlay")) {
+        if (cart.length === 0) window.closeModal();
+        else renderCheckoutModal(cart, serviceChargeActive, tipApplied);
+    }
+};
+
+window.removeCartLine = (cartKey) => {
+    cart = cart.filter((c) => c.cartKey !== cartKey);
+    updateCartUI();
+    renderMenu();
+    if (document.getElementById("modal-overlay")) {
+        if (cart.length === 0) window.closeModal();
+        else renderCheckoutModal(cart, serviceChargeActive, tipApplied);
+    }
+};
+
+window.addCombo = (comboId) => {
+    const combo = comboData.find((c) => c.id === comboId);
+    if (!combo) return;
+    const cartKey = `combo-${combo.id}`;
+    const existing = cart.find((c) => c.cartKey === cartKey);
+    if (existing) {
+        existing.quantity += 1;
+    } else {
+        cart.push({
+            cartKey,
+            id: null,
+            isCombo: true,
+            comboId: combo.id,
+            name: combo.name,
+            price: combo.price,
+            quantity: 1,
+            extras: [],
+            notes: ""
+        });
+    }
+    updateCartUI();
+    renderMenu();
+    if (document.getElementById("modal-overlay")) renderCheckoutModal(cart, serviceChargeActive, tipApplied);
+};
+
+/** Mirrors quickRemove() for combos, so the ADD COMBO button turns into the
+ *  same -/qty/+ stepper as ADD BIT once one is in the cart, instead of a
+ *  separate "(N in cart)" label glued onto the add button. */
+window.comboRemove = (comboId) => {
+    const cartKey = `combo-${comboId}`;
+    const line = cart.find((c) => c.cartKey === cartKey);
+    if (!line) return;
+    line.quantity -= 1;
+    if (line.quantity <= 0) cart = cart.filter((c) => c.cartKey !== cartKey);
+    updateCartUI();
+    renderMenu();
+    if (document.getElementById("modal-overlay")) {
+        if (cart.length === 0) window.closeModal();
+        else renderCheckoutModal(cart, serviceChargeActive, tipApplied);
+    }
 };
 
 function updateCartUI() {
@@ -433,22 +663,28 @@ window.printBill = (order) => {
             <div class="center">
                 <h3>SEVEN BITS COFFEE</h3>
                 <p style="font-size: 8pt;">Hazaribagh, Jharkhand<br>#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
+                ${order.tableNumber ? `<p style="font-size: 10pt; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
             </div>
             <div class="hr"></div>
             ${order.items
-                .map(
-                    (item) => `
-                <div class="row">
-                    <span>${item.quantity}x ${item.name}</span>
-                    <span>\u20b9${(item.price * item.quantity).toFixed(2)}</span>
+                .map((item) => {
+                    const tags = customizationTagsText(item);
+                    return `
+                <div class="row" style="align-items: flex-start; flex-direction: column;">
+                    <div style="display:flex; justify-content:space-between; width:100%;">
+                        <span>${item.quantity}x ${escapeHtml(item.name)}</span>
+                        <span>\u20b9${(item.price * item.quantity).toFixed(2)}</span>
+                    </div>
+                    ${tags ? `<div style="font-size:7pt; color:#555; padding-left:10px;">${tags}</div>` : ""}
+                    ${item.notes ? `<div style="font-size:7pt; color:#555; font-style:italic; padding-left:10px;">"${escapeHtml(item.notes)}"</div>` : ""}
                 </div>
-            `
-                )
+            `;
+                })
                 .join("")}
             <div class="hr"></div>
             <div class="row">SUBTOTAL: <span>\u20b9${order.subtotal.toFixed(2)}</span></div>
             ${order.promoDiscountTotal > 0 ? `<div class="row">PROMO SAVINGS: <span>-\u20b9${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
-            ${order.couponDiscount > 0 ? `<div class="row">COUPON (${order.couponCode}): <span>-\u20b9${order.couponDiscount.toFixed(2)}</span></div>` : ""}
+            ${order.discountAmount > 0 ? `<div class="row">DISCOUNT${order.couponCode ? ` (${escapeHtml(order.couponCode)})` : ""}: <span>-\u20b9${order.discountAmount.toFixed(2)}</span></div>` : ""}
             <div class="row">TAX (CGST+SGST): <span>\u20b9${(order.cgst + order.sgst).toFixed(2)}</span></div>
             ${order.serviceChargeActive ? `<div class="row">SVC CHG: <span>\u20b9${order.serviceCharge.toFixed(2)}</span></div>` : ""}
             ${order.tipApplied ? `<div class="row">GINGER TIP: <span>\u20b9${order.tipAmount.toFixed(2)}</span></div>` : ""}
@@ -476,13 +712,19 @@ window.printKOT = (order) => {
             <div class="header">
                 <h2>KITCHEN TICKET</h2>
                 <p>#${order.orderNumber || order.id} | TYPE: ${order.method}</p>
+                ${order.tableNumber ? `<p style="font-size:16pt; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
             </div>
             ${order.items
-                .map(
-                    (item) => `
-                <div class="item">${item.quantity}x ${item.name}</div>
-            `
-                )
+                .map((item) => {
+                    const tags = customizationTagsText(item);
+                    return `
+                <div class="item">
+                    ${item.quantity}x ${escapeHtml(item.name)}
+                    ${tags ? `<div style="font-size:9pt; font-weight:normal;">${tags}</div>` : ""}
+                    ${item.notes ? `<div style="font-size:9pt; font-weight:normal; font-style:italic;">"${escapeHtml(item.notes)}"</div>` : ""}
+                </div>
+            `;
+                })
                 .join("")}
             <div style="margin-top: 20px; text-align: center; font-size: 8pt;">${new Date(order.createdAt).toLocaleTimeString()}</div>
         </body>
@@ -496,7 +738,9 @@ window.printKOT = (order) => {
  * 1. startCheckout() sends the cart to the server and gets back the
  *    authoritative order (real prices, real total, real QR amount).
  * 2. renderPaymentConfirmation() shows that server-confirmed info.
- * 3. finalizeAndPrint() clears the cart and prints from the server's order.
+ * 3. finalizeOrder() clears the cart, and prints from the server's order
+ *    only for staff/counter flows - customers/guests just see a thank-you
+ *    screen with their order number, amount, and an approximate wait time.
  */
 window.startCheckout = async (method) => {
     const btn = document.getElementById(method === "ONLINE" ? "btn-pay-online" : "btn-pay-cash");
@@ -515,9 +759,20 @@ window.startCheckout = async (method) => {
     }
 
     try {
-        const order = await KitchenSystem.pushOrder(cart, method, { serviceChargeActive, tipApplied, phone, couponCode: appliedCoupon?.code || null });
+        const markPaidNow = document.getElementById("checkout-mark-paid-now")?.checked || false;
+        const tableSessionId = document.getElementById("checkout-table-session")?.value || null;
+        const discount = window.__checkoutDiscount || {};
+        const order = await KitchenSystem.pushOrder(cart, method, {
+            serviceChargeActive,
+            tipApplied,
+            phone,
+            markPaidNow,
+            tableSessionId,
+            couponCode: discount.couponCode || null,
+            redeemPoints: discount.redeemPoints || 0
+        });
         pendingOrder = order;
-        renderPaymentConfirmation(order, method);
+        renderPaymentConfirmation(order, method, { isCustomerFacing: TRACKING_ROLES.includes(session.role) });
     } catch (e) {
         if (errorBox) errorBox.textContent = e.message;
     } finally {
@@ -528,21 +783,20 @@ window.startCheckout = async (method) => {
     }
 };
 
-window.finalizeAndPrint = () => {
+window.finalizeOrder = (shouldPrint) => {
     const order = pendingOrder;
     pendingOrder = null;
 
     cart = [];
     serviceChargeActive = true;
     tipApplied = false;
-    appliedCoupon = null;
     updateCartUI();
     document.getElementById("payment-overlay")?.remove();
     window.closeModal();
     renderMenu();
     refreshOrderStatusWidget();
 
-    if (order) {
+    if (order && shouldPrint) {
         setTimeout(() => {
             window.printBill(order);
             window.printKOT(order);
@@ -575,6 +829,11 @@ window.toggleJumpMenu = () => {
     } else {
         menu.innerHTML = `
             <div class="jump-header">Categories:</div>
+            ${
+                comboData.length > 0
+                    ? `<div class="jump-option" onclick="window.jumpTo('combos')"><span class="jump-id">COMBO DEALS</span></div>`
+                    : ""
+            }
             ${menuData.sections
                 .map(
                     (s) => `
@@ -608,6 +867,19 @@ window.jumpTo = (sectionId) => {
     }
 };
 
+function escapeHtml(str) {
+    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/** Short "Large · Oat Milk · +Extra Shot" style tag list for a customized order/cart line, HTML-escaped. */
+function customizationTagsText(item) {
+    const tags = [];
+    if (item.sizeLabel && item.sizeLabel !== "Regular") tags.push(item.sizeLabel);
+    if (item.milkLabel && item.milkLabel !== "Regular Milk") tags.push(item.milkLabel);
+    (item.extras || []).forEach((e) => tags.push(`+${e.label}`));
+    return tags.map(escapeHtml).join(" \u00b7 ");
+}
+
 /** Renders an item's icon - a custom admin-uploaded image if configured for that key, else the built-in CSS icon. */
 function iconMarkup(iconKey) {
     const customUrl = siteConfig.customIcons && siteConfig.customIcons[iconKey];
@@ -622,9 +894,58 @@ function renderMenu(filterQuery = "") {
     if (!root) return;
     root.innerHTML = "";
 
+    if (!favoritesFilterActive && !filterQuery && comboData.length > 0) {
+        const comboSection = document.createElement("section");
+        comboSection.id = "section-combos";
+        comboSection.className = "section-container";
+        comboSection.innerHTML = `<h2 class="section-title">COMBO DEALS</h2>`;
+        const comboContainer = document.createElement("div");
+        comboContainer.className = viewMode === "grid" ? "menu-grid" : "menu-list";
+        comboData.forEach((combo) => {
+            const count = cart.filter((c) => c.cartKey === `combo-${combo.id}`).reduce((sum, c) => sum + c.quantity, 0);
+            const itemList = combo.items
+                .map((ci) => {
+                    const product = menuData.items.find((m) => m.id === ci.id);
+                    return product ? `${ci.quantity}x ${product.name}` : null;
+                })
+                .filter(Boolean)
+                .join(" + ");
+            const buttonHTML =
+                count > 0
+                    ? `<div class="btn-qty-container">
+                    <button onclick="window.comboRemove(${combo.id})">-</button>
+                    <span>${count}</span>
+                    <button onclick="window.addCombo(${combo.id})">+</button>
+                </div>`
+                    : `<button class="btn-add-fixed" onclick="window.addCombo(${combo.id})">ADD COMBO</button>`;
+            const comboEl = document.createElement("div");
+            comboEl.className = "menu-item";
+            comboEl.innerHTML = `
+                <span class="icon icon-cake"></span>
+                <div class="info">
+                    <div class="name">${escapeHtml(combo.name)}</div>
+                    <div class="story">${itemList}${combo.description ? ` &middot; ${escapeHtml(combo.description)}` : ""}</div>
+                </div>
+                <div class="item-controls">
+                    <div class="price-fixed">\u20b9${combo.price}</div>
+                    <div class="action-fixed">${buttonHTML}</div>
+                </div>
+            `;
+            const comboWrapperEl = document.createElement("div");
+            comboWrapperEl.className = "menu-item-wrapper";
+            comboWrapperEl.appendChild(comboEl);
+            comboContainer.appendChild(comboWrapperEl);
+        });
+        comboSection.appendChild(comboContainer);
+        root.appendChild(comboSection);
+    }
+
     menuData.sections.forEach((section) => {
         const items = menuData.items.filter(
-            (item) => item.section === section.id && item.name.toLowerCase().includes(filterQuery.toLowerCase())
+            (item) =>
+                item.section === section.id &&
+                item.name.toLowerCase().includes(filterQuery.toLowerCase()) &&
+                (!favoritesFilterActive || FavoritesSystem.isFavorite(item.id))
         );
 
         if (items.length === 0) return;
@@ -638,49 +959,191 @@ function renderMenu(filterQuery = "") {
         itemsContainer.className = viewMode === "grid" ? "menu-grid" : "menu-list";
 
         items.forEach((item) => {
-            const inCart = cart.find((c) => c.id === item.id);
-            const count = inCart ? inCart.quantity : 0;
+            const isUnavailable = item.available === false;
 
-            const buttonHTML =
-                count > 0
-                    ? `<div class="btn-qty-container">
-                    <button onclick="window.removeFromCart(${item.id})">-</button>
-                    <span>${count}</span>
-                    <button onclick="window.addToCart(${item.id})">+</button>
+            // A "default" (no size/milk/extras/notes) line is what ADD BIT quick-adds/removes.
+            // Customize creates additional, separately-tracked lines for other combinations -
+            // each distinct customization is its own cart/order line (see addCartLine).
+            const defaultKey = defaultCartKey(item.id);
+            const defaultLine = cart.find((c) => c.cartKey === defaultKey);
+            const defaultCount = defaultLine ? defaultLine.quantity : 0;
+            const customizedLines = cart.filter((c) => c.id === item.id && c.cartKey !== defaultKey);
+
+            const quickControlsHTML = isUnavailable
+                ? `<button class="btn-add-fixed" disabled style="opacity:0.4; cursor:not-allowed;">UNAVAILABLE</button>`
+                : defaultCount > 0
+                  ? `<div class="btn-qty-container">
+                    <button onclick="window.quickRemove(${item.id})">-</button>
+                    <span>${defaultCount}</span>
+                    <button onclick="window.quickAdd(${item.id})">+</button>
                 </div>`
-                    : `<button class="btn-add-fixed" onclick="window.addToCart(${item.id})">ADD BIT</button>`;
+                  : `<button class="btn-add-fixed" onclick="window.quickAdd(${item.id})">ADD BIT</button>`;
 
-            const unitPrice = discountedUnitPrice(item);
-            const onPromo = unitPrice < item.price;
+            const showFavorite = TRACKING_ROLES.includes(session.role);
+            const isFav = showFavorite && FavoritesSystem.isFavorite(item.id);
+            const favButton = showFavorite
+                ? `<button class="btn-favorite" onclick="window.toggleFavorite(${item.id})" title="${isFav ? "Remove from favorites" : "Add to favorites"}" style="background:none; border:none; cursor:pointer; font-size: 14pt; line-height:1; color: ${isFav ? "var(--color-accent)" : "var(--color-text-muted)"};">${isFav ? "\u2605" : "\u2606"}</button>`
+                : "";
+
+            // Staff can flag an item as needing to come off the menu (e.g. out of
+            // stock) without themselves having permission to take it down - a
+            // manager/owner reviews it from Admin > Menu Items.
+            const hasPendingRequest = (item.disableRequests || []).length > 0;
+            const staffRequestHtml =
+                session.role === "employee" && !isUnavailable
+                    ? hasPendingRequest
+                        ? `<div style="font-size:6.5pt; color:var(--color-text-muted); margin-top:4px;">DISABLE REQUEST PENDING REVIEW</div>`
+                        : `<button class="btn-customize-link" onclick="window.requestDisableItem(${item.id})" style="background:none; border:none; color:var(--color-danger); text-decoration:underline; font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px; display:block;">\u26a0 REQUEST DISABLE</button>`
+                    : "";
+
+            // Each customized variant already in the cart gets its own row with a
+            // +/- stepper right here on the menu page - "+" repeats that exact
+            // customization, "-" removes it down to zero, no need to open checkout
+            // just to adjust or take off a customized order.
+            const customizedRowsHtml = customizedLines
+                .map((line) => {
+                    const tags = CustomizationSystem.describeLine(line);
+                    const label = tags.length ? tags.join(" \u00b7 ") : "Customized";
+                    return `
+                    <div class="customized-line-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 0; border-top:1px dashed var(--color-border);">
+                        <div style="font-size:7.5pt; color:var(--color-text-muted); flex:1;">
+                            <span style="color:var(--color-accent);">CUSTOMIZED</span> ${escapeHtml(label)}
+                            ${line.notes ? `<div style="font-style:italic;">"${escapeHtml(line.notes)}"</div>` : ""}
+                        </div>
+                        <div class="btn-qty-container">
+                            <button onclick="window.adjustCartLine('${line.cartKey}', -1)" title="Remove one">-</button>
+                            <span>${line.quantity}</span>
+                            <button onclick="window.adjustCartLine('${line.cartKey}', 1)" title="Repeat this exact customization">+</button>
+                        </div>
+                    </div>
+                `;
+                })
+                .join("");
+
+            const customizedPanelHtml = customizedLines.length ? `<div class="customized-lines-panel" style="margin-top:8px;">${customizedRowsHtml}</div>` : "";
+
+            // The customized panel is appended OUTSIDE the .menu-item card (in a plain
+            // block wrapper) rather than inside its flex row - .menu-item is a row flex
+            // in list view and a COLUMN flex in grid view, and wrapping overflow inside a
+            // column-direction flex container opens a new adjacent column instead of
+            // stacking below it, which visually overlapped the icon. A wrapper sidesteps
+            // that entirely, in both view modes.
+            const wrapperEl = document.createElement("div");
+            wrapperEl.className = "menu-item-wrapper";
+
+            const promoPrice = discountedBasePrice(item);
+            const onPromo = item.promoDiscount && promoPrice < item.price;
             const priceHTML = onPromo
-                ? `<span style="text-decoration:line-through; color:var(--color-text-muted); font-size:0.8em;">\u20b9${item.price}</span> \u20b9${unitPrice.toFixed(2)}`
+                ? `<span style="text-decoration:line-through; color:var(--color-text-muted); font-size:0.8em;">\u20b9${item.price}</span> \u20b9${promoPrice.toFixed(2)}`
                 : `\u20b9${item.price}`;
 
             const itemEl = document.createElement("div");
             itemEl.className = "menu-item";
+            if (isUnavailable) itemEl.style.opacity = "0.45";
             itemEl.innerHTML = `
                 ${iconMarkup(item.icon)}
                 <div class="info">
-                    <div class="name">${item.name}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
+                    <div class="name">${favButton}${item.name}${isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
+                    ${isUnavailable ? "" : `<button class="btn-customize-link" onclick="window.openCustomize(${item.id})" style="background:none; border:none; color:var(--color-accent); text-decoration:underline; font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;">+ CUSTOMIZE (SIZE/MILK/EXTRAS)</button>`}
+                    ${staffRequestHtml}
                 </div>
                 <div class="item-controls">
                     <div class="price-fixed">${priceHTML}</div>
-                    <div class="action-fixed">${buttonHTML}</div>
+                    <div class="action-fixed">${quickControlsHTML}</div>
                 </div>
             `;
-            itemsContainer.appendChild(itemEl);
+            wrapperEl.appendChild(itemEl);
+            if (customizedPanelHtml) wrapperEl.insertAdjacentHTML("beforeend", customizedPanelHtml);
+            itemsContainer.appendChild(wrapperEl);
         });
 
         sectionEl.appendChild(itemsContainer);
         root.appendChild(sectionEl);
     });
 
+    if (favoritesFilterActive && !root.hasChildNodes()) {
+        root.innerHTML = `<p style="text-align:center; padding: 30px; font-size: 9pt; color: var(--color-text-muted);">No favorites yet - tap the \u2606 on any item to add one.</p>`;
+    }
+
     const footer = document.getElementById("footer-actions");
     const cartBar = document.getElementById("cart-status");
 
     if (footer) footer.style.display = "flex";
     if (cartBar) cartBar.style.display = cart.length > 0 ? "flex" : "none";
+}
+
+window.toggleFavoritesFilter = (checked) => {
+    favoritesFilterActive = checked;
+    renderMenu(document.getElementById("menu-search")?.value || "");
+};
+
+window.toggleFavorite = async (itemId) => {
+    if (!TRACKING_ROLES.includes(session.role)) return;
+    try {
+        await FavoritesSystem.toggle(itemId);
+    } catch (e) {
+        alert(e.message || "Could not update favorites");
+    }
+    renderMenu(document.getElementById("menu-search")?.value || "");
+};
+
+window.requestDisableItem = async (itemId) => {
+    const note = prompt("Why should this item be taken off the menu? (e.g. out of stock)");
+    if (note === null) return; // cancelled
+    try {
+        const res = await fetch(`/api/menu/${itemId}/disable-request`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ note })
+        });
+        if (!res.ok) throw new Error((await res.json()).error || "Could not send request");
+        await loadMenu();
+        renderMenu(document.getElementById("menu-search")?.value || "");
+        alert("Request sent to management.");
+    } catch (e) {
+        alert(e.message || "Could not send request");
+    }
+};
+
+/**
+ * MY ORDERS / REORDER
+ */
+window.openMyOrders = async () => {
+    await refreshSession();
+    if (!session.authenticated) {
+        renderLoginModal(
+            (loginResult) => afterLoginSuccess(loginResult, async () => window.openMyOrders()),
+            { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
+        );
+        return;
+    }
+    const orders = await KitchenSystem.fetchMine();
+    renderMyOrdersModal(orders, { onReorder: reorderPastOrder });
+};
+
+/** Re-adds every line from a past order back into the cart, including its
+ *  original size/milk/extras/notes - prices are never copied from the old
+ *  order, only item ids, so checkout always recomputes fresh. */
+function reorderPastOrder(order) {
+    let addedCount = 0;
+    order.items.forEach((line) => {
+        const product = menuData.items.find((i) => i.id === line.id);
+        if (!product) return; // menu item may have been removed/renamed since
+        addCartLine(product, {
+            size: line.size,
+            milk: line.milk,
+            extras: (line.extras || []).map((e) => e.key),
+            notes: line.notes || "",
+            quantity: line.quantity
+        });
+        addedCount++;
+    });
+    if (addedCount < order.items.length) {
+        alert("Some items from that order are no longer on the menu and were skipped.");
+    }
+    window.showPage("menu");
 }
 
 // NOTE: the cart bar's onclick in index.html calls window.handleCartStatusClick()
@@ -699,14 +1162,14 @@ window.handleCartStatusClick = async () => {
         renderLoginModal(
             (loginResult) =>
                 afterLoginSuccess(loginResult, async () => {
-                    await renderCheckoutModal(cart, serviceChargeActive, tipApplied, appliedCoupon);
+                    await renderCheckoutModal(cart, serviceChargeActive, tipApplied);
                 }),
             { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
         );
         return;
     }
 
-    await renderCheckoutModal(cart, serviceChargeActive, tipApplied, appliedCoupon);
+    await renderCheckoutModal(cart, serviceChargeActive, tipApplied);
 };
 
 /**
@@ -715,7 +1178,7 @@ window.handleCartStatusClick = async () => {
 let kitchenStatusFilter = "active"; // "active" | "history" | "all"
 let kitchenSortOrder = "newest"; // "newest" | "oldest"
 
-window.filterKitchen = (station) => {
+window.filterKitchen = async (station) => {
     currentKitchenStation = station;
 
     document.querySelectorAll(".kitchen-tabs .admin-tab-btn").forEach((btn) => {
@@ -725,8 +1188,100 @@ window.filterKitchen = (station) => {
         }
     });
 
-    renderKitchen();
+    const isTablesView = station === "TABLES";
+    document.getElementById("kitchen-status-toolbar").style.display = isTablesView ? "none" : "flex";
+    document.getElementById("kitchen-orders-root").style.display = isTablesView ? "none" : "flex";
+    document.getElementById("tables-panel-root").style.display = isTablesView ? "block" : "none";
+
+    if (isTablesView) {
+        await renderTablesPanel();
+    } else {
+        renderKitchen();
+    }
 };
+
+/**
+ * TABLE SESSIONS (POSTPAID TABS) - staff-only view on the Orders/Kitchen page,
+ * selected via the TABLES/TABS tab alongside the station tabs (see filterKitchen).
+ */
+
+async function renderTablesPanel() {
+    const root = document.getElementById("tables-panel-root");
+    const openTables = await TableSessionsSystem.list("open");
+    const tableCount = (await AdminConfig.loadSettings()).tableCount ?? 10;
+
+    root.innerHTML = `
+        <div style="border:1px solid var(--color-border); padding:14px; background:var(--color-surface);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin:0;">OPEN TABLES</h3>
+                <button class="admin-btn admin-btn-primary" id="open-table-btn">+ OPEN TABLE</button>
+            </div>
+            ${
+                openTables.length === 0
+                    ? `<p style="font-size:8pt; color:var(--color-text-muted);">No open tabs right now.</p>`
+                    : openTables
+                          .map(
+                              (t) => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--color-border); font-size:9pt;">
+                        <div>
+                            <strong>TABLE ${escapeHtml(t.tableNumber)}</strong>
+                            ${t.customerName || t.customerPhone ? `<span style="color:var(--color-accent); font-size:7pt;"> &middot; ${escapeHtml(t.customerName || "")} ${t.customerPhone ? `(${escapeHtml(t.customerPhone)})` : ""}</span>` : ""}
+                            <span style="color:var(--color-text-muted); font-size:7pt;"> &middot; ${t.orderCount} order${t.orderCount === 1 ? "" : "s"} &middot; \u20b9${t.total.toFixed(2)} &middot; opened by ${escapeHtml(t.openedBy)}</span>
+                        </div>
+                        <div>
+                            <button class="admin-btn" data-edit-table="${t.id}">EDIT</button>
+                            <button class="admin-btn" data-close-table="${t.id}">CLOSE &amp; BILL</button>
+                        </div>
+                    </div>
+                `
+                          )
+                          .join("")
+            }
+        </div>
+    `;
+
+    document.getElementById("open-table-btn").addEventListener("click", () => {
+        renderTableModal({
+            tableCount,
+            onSave: async (payload) => {
+                await TableSessionsSystem.open(payload.tableNumber, payload.note, payload.customerName, payload.customerPhone);
+                await renderTablesPanel();
+            }
+        });
+    });
+
+    root.querySelectorAll("[data-edit-table]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const table = openTables.find((t) => t.id === btn.dataset.editTable);
+            renderTableModal({
+                tableCount,
+                table,
+                onSave: async (payload) => {
+                    await TableSessionsSystem.update(table.id, payload);
+                    await renderTablesPanel();
+                }
+            });
+        });
+    });
+
+    root.querySelectorAll("[data-close-table]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const table = await TableSessionsSystem.get(btn.dataset.closeTable);
+            if (!table) return;
+            renderTableBillModal({
+                table,
+                onClose: async (markPaid) => {
+                    try {
+                        await TableSessionsSystem.close(table.id, markPaid);
+                        await renderTablesPanel();
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                }
+            });
+        });
+    });
+}
 
 window.setKitchenStatusFilter = (filter) => {
     kitchenStatusFilter = filter;
@@ -785,17 +1340,21 @@ function renderKitchen() {
                 <span>#${order.orderNumber || order.id}</span>
                 <span style="float:right;">${paidStatus}</span>
             </div>
+            ${order.tableNumber ? `<div style="font-size:9pt; font-weight:bold; color:var(--color-accent); margin-bottom:4px;">TABLE ${escapeHtml(order.tableNumber)}</div>` : ""}
             <div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:6px;">${new Date(order.createdAt).toLocaleString()}</div>
             <div class="kot-body">
                 ${itemsToDisplay
-                    .map(
-                        (i) => `
+                    .map((i) => {
+                        const tags = customizationTagsText(i);
+                        return `
                     <div class="${i.isDone ? "item-done" : "item-pending"}">
-                        <strong>${i.quantity}x</strong> ${i.name}
+                        <strong>${i.quantity}x</strong> ${escapeHtml(i.name)}
                         ${isMaster && i.isDone ? '<span style="font-size:7pt; opacity:0.5; margin-left:5px;">[OK]</span>' : ""}
+                        ${tags ? `<div style="font-size:7pt; color: var(--color-accent); font-weight:normal;">${tags}</div>` : ""}
+                        ${i.notes ? `<div style="font-size:7pt; color: var(--color-text-muted); font-weight:normal; font-style:italic;">"${escapeHtml(i.notes)}"</div>` : ""}
                     </div>
-                `
-                    )
+                `;
+                    })
                     .join("")}
             </div>
 
@@ -855,67 +1414,22 @@ window.toggleOrderSound = (btn) => {
     btn.textContent = muted ? "\u{1F507}" : "\u{1F50A}";
     btn.title = muted ? "Unmute order-ready sound" : "Mute order-ready sound";
 };
+/**
+ * Both of these used to closeModal() then re-trigger the cart bar's click
+ * handler to reopen it - which itself awaits refreshSession() first. That
+ * gap between removing the overlay and re-inserting it was long enough for
+ * the browser to paint the in-between (no-overlay) frame, causing a visible
+ * flash of the page behind the modal. Re-rendering the checkout modal
+ * directly (same remove-then-insert renderCheckoutModal already does, but
+ * with no async gap in between) keeps it to a single paint.
+ */
 window.toggleTip = (check) => {
     tipApplied = check;
-    window.closeModal();
-    document.getElementById("cart-status").click();
+    renderCheckoutModal(cart, serviceChargeActive, tipApplied);
 };
 window.removeServiceCharge = () => {
     serviceChargeActive = false;
-    window.closeModal();
-    document.getElementById("cart-status").click();
-};
-
-window.applyCouponCode = async () => {
-    const input = document.getElementById("coupon-code-input");
-    const errorEl = document.getElementById("coupon-error");
-    const code = input?.value.trim();
-    if (!code) return;
-
-    try {
-        const res = await fetch("/api/coupons/validate", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ code })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Invalid coupon");
-        appliedCoupon = data;
-        window.closeModal();
-        document.getElementById("cart-status").click();
-    } catch (e) {
-        if (errorEl) errorEl.textContent = e.message;
-    }
-};
-
-window.removeCoupon = () => {
-    appliedCoupon = null;
-    window.closeModal();
-    document.getElementById("cart-status").click();
-};
-
-window.toggleShowCoupons = async () => {
-    const listEl = document.getElementById("public-coupons-list");
-    if (!listEl) return;
-    if (listEl.style.display !== "none") {
-        listEl.style.display = "none";
-        return;
-    }
-    listEl.style.display = "block";
-    listEl.innerHTML = "Loading...";
-    const res = await fetch("/api/coupons/public", { credentials: "include" });
-    const coupons = res.ok ? await res.json() : [];
-    if (coupons.length === 0) {
-        listEl.innerHTML = "No public codes available right now.";
-        return;
-    }
-    listEl.innerHTML = coupons
-        .map(
-            (c) =>
-                `<div style="cursor:pointer; padding:3px 0; text-decoration:underline;" onclick="document.getElementById('coupon-code-input').value='${c.code}'">${c.code} - ${c.type === "percent" ? `${c.value}% OFF` : `₹${c.value} OFF`}</div>`
-        )
-        .join("");
+    renderCheckoutModal(cart, serviceChargeActive, tipApplied);
 };
 
 window.triggerGingerAnimation = (message) => {
@@ -1017,8 +1531,8 @@ function renderPopularPicks() {
 
     root.innerHTML = picks
         .map(
-            (item) => `
-        <div class="popular-pick-card" onclick="window.pickFromHome(${item.id})">
+            (item, i) => `
+        <div class="popular-pick-card" style="transition-delay: ${i * 60}ms;" onclick="window.pickFromHome(${item.id})">
             ${iconMarkup(item.icon)}
             <div class="name">${item.name}</div>
             <div class="price">\u20b9${item.price}</div>
@@ -1026,11 +1540,54 @@ function renderPopularPicks() {
     `
         )
         .join("");
+
+    // Fade cards in as they scroll into view rather than all at once - see
+    // .popular-pick-card / .in-view in theme.css for the actual animation.
+    if ("IntersectionObserver" in window) {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add("in-view");
+                        observer.unobserve(entry.target);
+                    }
+                });
+            },
+            { threshold: 0.15 }
+        );
+        root.querySelectorAll(".popular-pick-card").forEach((card) => observer.observe(card));
+    } else {
+        root.querySelectorAll(".popular-pick-card").forEach((card) => card.classList.add("in-view"));
+    }
+}
+
+/**
+ * Small "live" ticker on the home page showing today's real order/item
+ * counts - not decorative fake numbers. Uses the public, non-sensitive
+ * stats endpoint (no revenue, no names) so it works for anyone, logged in
+ * or not.
+ */
+async function renderLiveStatsTicker() {
+    const root = document.getElementById("live-stats-ticker");
+    if (!root) return;
+    try {
+        const res = await fetch("/api/stats/public");
+        if (!res.ok) throw new Error();
+        const stats = await res.json();
+        root.innerHTML = `
+            <span class="live-dot"></span>
+            <span><strong>${stats.ordersToday}</strong> ORDER${stats.ordersToday === 1 ? "" : "S"} TODAY</span>
+            <span style="opacity:0.4;">\u00b7</span>
+            <span><strong>${stats.itemsServedToday}</strong> BITS BREWED TODAY</span>
+        `;
+    } catch (e) {
+        root.style.display = "none";
+    }
 }
 
 window.pickFromHome = (itemId) => {
-    window.addToCart(itemId);
     window.showPage("menu");
+    window.openCustomize(itemId);
 };
 
 /**
@@ -1039,6 +1596,8 @@ window.pickFromHome = (itemId) => {
 (async () => {
     document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
     await loadMenu();
+    await loadCombos();
+    await CustomizationSystem.loadOptions();
     await refreshSession();
     const config = await AdminConfig.loadSettings();
     window.applyBranding(config);

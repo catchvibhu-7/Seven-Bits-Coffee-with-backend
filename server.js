@@ -47,10 +47,12 @@ const IS_HTTPS = process.env.FORCE_SECURE_COOKIE === "1";
 const UPI_VPA = process.env.UPI_VPA || "";
 const UPI_PAYEE_NAME = process.env.UPI_PAYEE_NAME || "";
 
-const STAFF_ROLES = ["employee", "admin", "owner"];
-const MENU_ADMIN_ROLES = ["admin", "owner"];
-const KITCHEN_ROLES = ["employee", "admin", "owner"];
+const STAFF_ROLES = ["employee", "manager", "admin", "owner"];
+const MENU_ADMIN_ROLES = ["admin", "owner"]; // full Admin panel (branding, all staff, cross-store)
+const MANAGER_UP_ROLES = ["manager", "admin", "owner"]; // Manager Dashboard + everything above it
+const KITCHEN_ROLES = ["employee", "manager", "admin", "owner"];
 const TRACKING_ROLES = ["customer", "guest"];
+const PAYROLL_ROLES = ["employee", "manager"]; // who payroll/timeclock applies to
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -79,10 +81,26 @@ const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const AUDIT_LOG_FILE = path.join(DATA_DIR, "audit-log.json");
 const BRANDING_PROFILES_FILE = path.join(DATA_DIR, "branding-profiles.json");
+const STORES_FILE = path.join(DATA_DIR, "stores.json");
+const TIMECLOCK_FILE = path.join(DATA_DIR, "timeclock.json");
+const PAYROLL_FILE = path.join(DATA_DIR, "payroll.json");
+const ATTENDANCE_FILE = path.join(DATA_DIR, "attendance.json");
+const OVERTIME_APPROVALS_FILE = path.join(DATA_DIR, "overtime-approvals.json");
+const FAVORITES_FILE = path.join(DATA_DIR, "favorites.json");
+const COMBOS_FILE = path.join(DATA_DIR, "combos.json");
+const TABLE_SESSIONS_FILE = path.join(DATA_DIR, "table-sessions.json");
 const COUPONS_FILE = path.join(DATA_DIR, "coupons.json");
 
 if (!fs.existsSync(AUDIT_LOG_FILE)) writeJson(AUDIT_LOG_FILE, []);
 if (!fs.existsSync(BRANDING_PROFILES_FILE)) writeJson(BRANDING_PROFILES_FILE, {});
+if (!fs.existsSync(TIMECLOCK_FILE)) writeJson(TIMECLOCK_FILE, []);
+if (!fs.existsSync(PAYROLL_FILE)) writeJson(PAYROLL_FILE, []);
+if (!fs.existsSync(ATTENDANCE_FILE)) writeJson(ATTENDANCE_FILE, []);
+if (!fs.existsSync(OVERTIME_APPROVALS_FILE)) writeJson(OVERTIME_APPROVALS_FILE, []);
+// Multi-store groundwork: everything (users, and later menu/orders) can carry
+// a storeId, but with a single store seeded there's no behavior change yet -
+// this just means a real second store later doesn't need a data migration.
+if (!fs.existsSync(STORES_FILE)) writeJson(STORES_FILE, [{ id: 1, name: "Main Store", address: "" }]);
 
 /**
  * Records sensitive admin actions (currently: password resets and staff
@@ -138,6 +156,18 @@ if (!fs.existsSync(CONFIG_FILE)) {
     },
     heroImageUrl: "",
     logoUrl: "",
+    // Font size (pt) + color for the admin sub-tab nav row and the muted
+    // helper/description paragraphs in the admin panel - see Branding tab
+    // "ADMIN PANEL TEXT" section, and DEFAULT_BRANDING.textStyles below.
+    textStyles: {
+      adminTabs: { fontSize: 9, color: "#888888" },
+      adminHelp: { fontSize: 7.5, color: "#888888" },
+      adminLabels: { fontSize: 8, color: "#888888" }
+    },
+    // Home page hero copy - was hardcoded in index.html, now admin-editable
+    // from Global Settings so a shop can rebrand without touching code.
+    heroTagline:
+      "Born from love for Physics, Coffee, a cat named Ginger and an obssesion with the number seven. We don't just brew; we process flavor with low-latency precision.",
     // Admin-added icon options beyond the built-in set (see Branding tab).
     // Key -> image URL; menu items reference these by key just like the
     // built-in CSS icon names.
@@ -149,6 +179,17 @@ if (!fs.existsSync(CONFIG_FILE)) {
       phone: "",
       email: "",
       hours: ""
+    },
+    // Number of physical tables the shop has. Table 0 is a reserved label
+    // for "Online / Counter" (no physical table), never an openable tab -
+    // real tabs are numbered 1..tableCount. See /api/table-sessions.
+    tableCount: 10,
+    // Industry-standard "earn on spend, redeem for a discount" loyalty
+    // program - both rates admin-editable from Discounts & Loyalty.
+    loyalty: {
+      enabled: true,
+      pointsPerRupeeSpent: 0.1, // e.g. 0.1 = 1 point per Rs.10 spent
+      rupeeValuePerPoint: 0.5 // e.g. 0.5 = each point is worth Rs.0.50 off
     }
   });
 }
@@ -164,7 +205,18 @@ const DEFAULT_BRANDING = {
     secondary: "#22d3ee"
   },
   heroImageUrl: "",
-  logoUrl: ""
+  logoUrl: "",
+  // Font size (pt) + color for two specific text categories in the admin
+  // panel: the sub-tab navigation row (Dashboard/Menu Items/.../Branding),
+  // and the small muted helper/description paragraphs under section
+  // headings (e.g. "Applies only to drink items..."). Separate from the
+  // main color palette above since these are admin-only UI text, not
+  // customer-facing branding.
+  textStyles: {
+    adminTabs: { fontSize: 9, color: "#888888" },
+    adminHelp: { fontSize: 7.5, color: "#888888" },
+    adminLabels: { fontSize: 8, color: "#888888" }
+  }
 };
 
 if (!fs.existsSync(ORDERS_FILE)) {
@@ -255,7 +307,18 @@ function findUserById(id) {
   return users.find((u) => u.id === id);
 }
 
-function createUser({ username, password, role, name, phone, mustChangePassword = false }) {
+function createUser({
+  username,
+  password,
+  role,
+  name,
+  phone,
+  mustChangePassword = false,
+  storeId = 1,
+  tag = "",
+  payRateType = null,
+  payRate = null
+}) {
   const users = readJson(USERS_FILE, []);
   if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
     throw new Error("That username is already taken");
@@ -270,7 +333,17 @@ function createUser({ username, password, role, name, phone, mustChangePassword 
     role,
     name: name || username,
     phone: phone || null,
-    mustChangePassword
+    mustChangePassword,
+    // storeId: which store this person works at/manages. Owner/admin aren't
+    // tied to one store (they see everything), so storeId is mostly
+    // meaningful for employee/manager.
+    storeId: ["employee", "manager"].includes(role) ? storeId : null,
+    // tag: free-text responsibility label an admin/manager sets, e.g.
+    // "Barista", "Cashier" - shown in the staff table, not used for
+    // permissions (that's what role is for).
+    tag: ["employee", "manager"].includes(role) ? tag : "",
+    payRateType: ["employee", "manager"].includes(role) ? payRateType : null,
+    payRate: ["employee", "manager"].includes(role) ? payRate : null
   };
   users.push(user);
   writeJson(USERS_FILE, users);
@@ -533,85 +606,31 @@ function normalizePhone(raw) {
   return digits;
 }
 
+/** Stable per-person key for favorites - a signed-in customer keeps favorites
+ *  across devices (keyed by account), a guest's favorites are scoped to the
+ *  phone number they're currently using, same privacy boundary as /orders/mine. */
+function favoritesOwnerKey(session) {
+  return session.role === "customer" ? `customer:${session.userId}` : `guest:${session.phone}`;
+}
+
 // ---------------------------------------------------------------------------
 // Business logic: menu station mapping + order pricing (server-authoritative)
 // ---------------------------------------------------------------------------
 
+const DRINK_SECTIONS = ["fast-sellers", "limited", "classics"];
+
 function getStation(item) {
   if (item.section === "sweets") return "DESSERTS";
-  if (["fast-sellers", "limited", "classics"].includes(item.section)) return "BARISTA";
+  if (DRINK_SECTIONS.includes(item.section)) return "BARISTA";
   return "KITCHEN";
+}
+
+function isDrinkItem(item) {
+  return DRINK_SECTIONS.includes(item.section);
 }
 
 function round2(n) {
   return Math.round(n * 100) / 100;
-}
-
-// Validates a menu item's promo-discount payload, returning null for "no
-// promo" (including invalid input, so a bad request just drops the promo
-// rather than saving garbage). percent is capped at 100; flat just needs to
-// be a positive rupee amount - computeOrder() clamps the resulting price to
-// a floor of 0 regardless.
-function sanitizePromoDiscount(input) {
-  if (!input) return null;
-  const type = input.type === "flat" ? "flat" : input.type === "percent" ? "percent" : null;
-  const value = Number(input.value);
-  if (!type || !Number.isFinite(value) || value <= 0) return null;
-  if (type === "percent" && value > 100) return null;
-  return { type, value };
-}
-
-// A menu item "on promotion" auto-applies its discount to every line for
-// that item - no coupon code needed. (This codebase has no coupon system to
-// be mutually exclusive with; if one is added later, block coupon
-// application whenever any cart line carries a promoDiscount.)
-function promoUnitPrice(product) {
-  const promo = product.promoDiscount;
-  if (!promo) return product.price;
-  const discounted = promo.type === "percent" ? product.price * (1 - promo.value / 100) : product.price - promo.value;
-  return round2(Math.max(0, discounted));
-}
-
-// Coupons are order-wide (applied to the subtotal) and mutually exclusive
-// with per-item promos - a cart with any promo-discounted line can't also
-// redeem a coupon code, so the two discount mechanisms never stack.
-function findValidCoupon(code) {
-  if (!code) return null;
-  const normalized = String(code).trim().toUpperCase();
-  if (!normalized) return null;
-  const coupon = readJson(COUPONS_FILE, []).find((c) => c.code === normalized);
-  if (!coupon) return null;
-  if (!coupon.active) return null;
-  if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now()) return null;
-  if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses) return null;
-  return coupon;
-}
-
-function computeCouponDiscount(coupon, subtotal) {
-  const raw = coupon.type === "percent" ? subtotal * (coupon.value / 100) : coupon.value;
-  return round2(Math.max(0, Math.min(subtotal, raw)));
-}
-
-function sanitizeCouponInput(body, existingCoupons, ignoreId = null) {
-  const code = String(body.code || "").trim().toUpperCase();
-  const type = body.type === "flat" ? "flat" : body.type === "percent" ? "percent" : null;
-  const value = Number(body.value);
-  if (!code) return { error: "Code is required" };
-  if (existingCoupons.some((c) => c.code === code && c.id !== ignoreId)) return { error: "That code is already in use" };
-  if (!type || !Number.isFinite(value) || value <= 0) return { error: "Enter a valid discount type and value" };
-  if (type === "percent" && value > 100) return { error: "Percent discount can't exceed 100" };
-  let maxUses = null;
-  if (body.maxUses !== undefined && body.maxUses !== null && body.maxUses !== "") {
-    maxUses = parseInt(body.maxUses, 10);
-    if (!Number.isFinite(maxUses) || maxUses <= 0) return { error: "Max uses must be a positive number" };
-  }
-  let expiresAt = null;
-  if (body.expiresAt) {
-    const d = new Date(body.expiresAt);
-    if (Number.isNaN(d.getTime())) return { error: "Invalid expiry date" };
-    expiresAt = d.toISOString();
-  }
-  return { value: { code, type, value, private: !!body.private, maxUses, expiresAt } };
 }
 
 // Customer/staff-facing display number, separate from `id` (the internal
@@ -630,26 +649,211 @@ function generateOrderNumber(existingOrders) {
   return `${datePrefix}${String(todayCount + 1).padStart(2, "0")}`;
 }
 
-function computeOrder(items, method, serviceChargeActive, tipApplied, couponCode) {
+// Validates a menu item's promo-discount payload, returning null for "no
+// promo" (including invalid input, so a bad request just drops the promo
+// rather than saving garbage). percent is capped at 100; flat just needs to
+// be a positive rupee amount - the price is clamped to a floor of 0
+// wherever promoUnitPrice() is used regardless.
+function sanitizePromoDiscount(input) {
+  if (!input) return null;
+  const type = input.type === "flat" ? "flat" : input.type === "percent" ? "percent" : null;
+  const value = Number(input.value);
+  if (!type || !Number.isFinite(value) || value <= 0) return null;
+  if (type === "percent" && value > 100) return null;
+  return { type, value };
+}
+
+// A menu item "on promotion" auto-applies its discount to the item's base
+// price for every line ordering it - no coupon code needed, and mutually
+// exclusive with coupons (enforced in computeOrder). Customization price
+// deltas (size/milk/extras) are added on top of the discounted base, not
+// discounted themselves.
+function promoUnitPrice(product) {
+  const promo = product.promoDiscount;
+  if (!promo) return product.price;
+  const discounted = promo.type === "percent" ? product.price * (1 - promo.value / 100) : product.price - promo.value;
+  return round2(Math.max(0, discounted));
+}
+
+// ---------------------------------------------------------------------------
+// Order customization catalog (server-authoritative - client only picks keys,
+// every price delta and label comes from here so a tampered client can't
+// change what gets charged). Persisted so a manager/owner can edit prices
+// from Admin > Customization Pricing; DEFAULT_CUSTOMIZATION_OPTIONS seeds a
+// fresh install and is also the fallback if the data file is ever missing.
+// ---------------------------------------------------------------------------
+
+const CUSTOMIZATION_FILE = path.join(DATA_DIR, "customization-options.json");
+
+const DEFAULT_CUSTOMIZATION_OPTIONS = {
+  sizeOptions: [
+    { key: "regular", label: "Regular", priceDelta: 0 },
+    { key: "large", label: "Large", priceDelta: 40 }
+  ],
+  milkOptions: [
+    { key: "regular", label: "Regular Milk", priceDelta: 0 },
+    { key: "oat", label: "Oat Milk", priceDelta: 30 },
+    { key: "almond", label: "Almond Milk", priceDelta: 30 },
+    { key: "soy", label: "Soy Milk", priceDelta: 30 },
+    { key: "none", label: "No Milk / Black", priceDelta: 0 }
+  ],
+  extraOptions: [
+    { key: "extra-shot", label: "Extra Espresso Shot", priceDelta: 40 },
+    { key: "whipped-cream", label: "Whipped Cream", priceDelta: 20 },
+    { key: "extra-syrup", label: "Extra Flavor Syrup", priceDelta: 20 },
+    { key: "extra-cheese", label: "Extra Cheese", priceDelta: 30 },
+    { key: "extra-butter", label: "Extra Butter", priceDelta: 15 }
+  ]
+};
+
+function getCustomizationOptions() {
+  return readJson(CUSTOMIZATION_FILE, DEFAULT_CUSTOMIZATION_OPTIONS);
+}
+
+const MAX_NOTES_LENGTH = 140;
+const MAX_EXTRAS_PER_LINE = 6;
+
+function sanitizeNotes(raw) {
+  if (typeof raw !== "string") return "";
+  // eslint-disable-next-line no-control-regex
+  return raw.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, MAX_NOTES_LENGTH);
+}
+
+/**
+ * Resolves a client-submitted customization (just keys) against the server
+ * catalog, dropping anything that doesn't exist and computing the real
+ * price delta. Size/milk only apply to drink-section items.
+ */
+function resolveCustomization(requested, product) {
+  const drink = isDrinkItem(product);
+  const options = getCustomizationOptions();
+  requested = requested || {};
+
+  let size = null;
+  if (drink) {
+    size = options.sizeOptions.find((s) => s.key === requested.size) || options.sizeOptions[0];
+  }
+
+  let milk = null;
+  if (drink) {
+    milk = options.milkOptions.find((m) => m.key === requested.milk) || options.milkOptions[0];
+  }
+
+  const requestedExtraKeys = Array.isArray(requested.extras) ? requested.extras : [];
+  const extras = [];
+  const seen = new Set();
+  for (const key of requestedExtraKeys) {
+    if (extras.length >= MAX_EXTRAS_PER_LINE) break;
+    if (seen.has(key)) continue;
+    const found = options.extraOptions.find((e) => e.key === key);
+    if (found) {
+      extras.push(found);
+      seen.add(key);
+    }
+  }
+
+  const notes = sanitizeNotes(requested.notes);
+  const priceDelta = (size ? size.priceDelta : 0) + (milk ? milk.priceDelta : 0) + extras.reduce((s, e) => s + e.priceDelta, 0);
+
+  return { size, milk, extras, notes, priceDelta };
+}
+
+/**
+ * Expands one combo cart line into its component menu items, priced by
+ * splitting the admin-set combo price proportionally across each
+ * component's normal price - so a combo's line items still route to the
+ * right kitchen stations and show individually on the KOT, but the
+ * customer is charged the discounted bundle price, not the sum of retail
+ * prices. The combo's price and component list both come from the server's
+ * own combo catalog, never trusted from the client - only the combo id and
+ * how many bundles were ordered are.
+ */
+function resolveComboLine(requested, menu, combos) {
+  const combo = combos.find((c) => c.id === requested.comboId && c.active !== false);
+  if (!combo) return [];
+  const quantity = Math.max(1, Math.min(50, parseInt(requested.quantity, 10) || 0));
+  if (!quantity) return [];
+
+  const components = combo.items
+    .map((c) => ({ product: menu.items.find((i) => i.id === c.id), qty: c.quantity }))
+    .filter((c) => c.product && c.product.available !== false);
+  if (components.length === 0) return [];
+
+  const baseUnitSum = components.reduce((sum, c) => sum + c.product.price * c.qty, 0);
+  let allocatedSoFar = 0;
+  const lines = [];
+  components.forEach((c, idx) => {
+    const isLast = idx === components.length - 1;
+    const share = baseUnitSum > 0 ? (c.product.price * c.qty) / baseUnitSum : 1 / components.length;
+    const allocatedUnitTotal = isLast ? round2(combo.price - allocatedSoFar) : round2(combo.price * share);
+    allocatedSoFar += allocatedUnitTotal;
+
+    const comboUnitPrice = round2(allocatedUnitTotal / c.qty);
+    lines.push({
+      id: c.product.id,
+      name: c.product.name,
+      basePrice: c.product.price,
+      price: comboUnitPrice, // per-unit price after combo discount, never client-supplied
+      originalPrice: comboUnitPrice, // combos aren't eligible for item-level promos, so there's no separate "original"
+      promoDiscount: null,
+      quantity: c.qty * quantity,
+      station: getStation(c.product),
+      isDone: false,
+      size: null,
+      sizeLabel: null,
+      milk: null,
+      milkLabel: null,
+      extras: [],
+      notes: "",
+      comboId: combo.id,
+      comboName: combo.name
+    });
+  });
+  return lines;
+}
+
+function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCode = null, redeemPoints = 0, customerId = null } = {}) {
   const menu = readJson(MENU_FILE, { items: [] });
   const config = readJson(CONFIG_FILE, {});
+  const combos = readJson(COMBOS_FILE, []);
 
   const resolvedItems = [];
   for (const requested of items) {
+    if (requested.type === "combo") {
+      resolvedItems.push(...resolveComboLine(requested, menu, combos));
+      continue;
+    }
+
     const id = Number(requested.id);
     const quantity = Math.max(1, Math.min(50, parseInt(requested.quantity, 10) || 0));
     if (!quantity) continue;
     const product = menu.items.find((i) => i.id === id);
     if (!product) continue; // ignore unknown items rather than trusting the client
+    if (product.available === false) continue; // item was taken off the menu - never trust client to skip it itself
+
+    const custom = resolveCustomization(requested.customization, product);
+    // authoritative: promo-discounted base price (or plain base price if no
+    // promo) + server-priced customizations - customization deltas are
+    // added on top of the discount, not discounted themselves.
+    const unitPrice = promoUnitPrice(product) + custom.priceDelta;
+    const originalUnitPrice = product.price + custom.priceDelta;
+
     resolvedItems.push({
       id: product.id,
       name: product.name,
-      price: promoUnitPrice(product), // authoritative price from server menu (promo applied), never from client
-      originalPrice: product.price,
+      basePrice: product.price,
+      price: round2(unitPrice), // unit price including customization, never trusted from client
+      originalPrice: round2(originalUnitPrice), // pre-promo unit price, for showing the discount in the UI
       promoDiscount: product.promoDiscount || null,
       quantity,
       station: getStation(product),
-      isDone: false
+      isDone: false,
+      size: custom.size ? custom.size.key : null,
+      sizeLabel: custom.size ? custom.size.label : null,
+      milk: custom.milk ? custom.milk.key : null,
+      milkLabel: custom.milk ? custom.milk.label : null,
+      extras: custom.extras.map((e) => ({ key: e.key, label: e.label, priceDelta: e.priceDelta })),
+      notes: custom.notes
     });
   }
 
@@ -658,21 +862,52 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, couponCode
   }
 
   const subtotal = resolvedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const promoDiscountTotal = resolvedItems.reduce((sum, i) => sum + (i.originalPrice - i.price) * i.quantity, 0);
+  const promoDiscountTotal = round2(resolvedItems.reduce((sum, i) => sum + ((i.originalPrice ?? i.price) - i.price) * i.quantity, 0));
 
+  // Coupon discount - server re-validates the code against the live catalog
+  // and current subtotal; a client can never dictate the discount amount.
+  // Mutually exclusive with item-level promos: a cart with any
+  // promo-discounted line can't also redeem a coupon, so the two discount
+  // mechanisms never stack.
   const hasPromoItem = resolvedItems.some((i) => i.promoDiscount);
-  let coupon = null;
-  if (couponCode) {
-    if (hasPromoItem) {
-      throw new Error("Coupon codes can't be combined with promotional items in your cart");
-    }
-    coupon = findValidCoupon(couponCode);
-    if (!coupon) {
-      throw new Error("Invalid, expired, or exhausted coupon code");
+  if (couponCode && hasPromoItem) {
+    throw new Error("Coupon codes can't be combined with promotional items in your cart");
+  }
+  const coupons = readJson(COUPONS_FILE, []);
+  const coupon = couponCode ? findValidCoupon(couponCode, coupons) : null;
+  const couponDiscount = coupon ? computeCouponDiscount(coupon, subtotal) : 0;
+
+  // Loyalty points redemption - capped at the customer's real balance and at
+  // whatever's left of the subtotal after the coupon, so stacking never
+  // discounts below zero. Only signed-in "customer" accounts have a balance
+  // (guests aren't persistent identities to track points against).
+  const loyaltyConfig = config.loyalty || {};
+  let loyaltyPointsRedeemed = 0;
+  let loyaltyDiscount = 0;
+  if (customerId && redeemPoints > 0 && loyaltyConfig.enabled) {
+    const users = readJson(USERS_FILE, []);
+    const user = users.find((u) => u.id === customerId);
+    const available = user ? user.loyaltyPoints || 0 : 0;
+    const requested = Math.min(Math.max(0, Math.floor(redeemPoints)), available);
+    const rupeeValuePerPoint = loyaltyConfig.rupeeValuePerPoint ?? 0.5;
+    const remaining = Math.max(0, subtotal - couponDiscount);
+    const candidateDiscount = round2(requested * rupeeValuePerPoint);
+    if (candidateDiscount > remaining && rupeeValuePerPoint > 0) {
+      loyaltyPointsRedeemed = Math.floor(remaining / rupeeValuePerPoint);
+      loyaltyDiscount = round2(loyaltyPointsRedeemed * rupeeValuePerPoint);
+    } else {
+      loyaltyPointsRedeemed = requested;
+      loyaltyDiscount = candidateDiscount;
     }
   }
-  const couponDiscount = coupon ? computeCouponDiscount(coupon, subtotal) : 0;
-  const taxableAmount = subtotal - couponDiscount;
+
+  const discountAmount = round2(couponDiscount + loyaltyDiscount);
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
+  // New points are earned on what the customer actually pays, i.e. after
+  // discounts - computed here (pure), credited to the account by the caller
+  // only once the order is confirmed to have been created successfully.
+  const loyaltyPointsEarned =
+    customerId && loyaltyConfig.enabled ? Math.floor(taxableAmount * (loyaltyConfig.pointsPerRupeeSpent ?? 0.1)) : 0;
 
   const cgst = taxableAmount * (config.cgstRate ?? 0.05);
   const sgst = taxableAmount * (config.sgstRate ?? 0.05);
@@ -691,10 +926,13 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, couponCode
   return {
     items: resolvedItems,
     subtotal: round2(subtotal),
-    promoDiscountTotal: round2(promoDiscountTotal),
+    promoDiscountTotal,
     couponCode: coupon ? coupon.code : null,
     couponId: coupon ? coupon.id : null,
-    couponDiscount: round2(couponDiscount),
+    discountAmount,
+    loyaltyPointsRedeemed,
+    loyaltyDiscount,
+    loyaltyPointsEarned,
     cgst: round2(cgst),
     sgst: round2(sgst),
     serviceCharge: round2(serviceCharge),
@@ -777,9 +1015,9 @@ route("POST", /^\/api\/auth\/login\/?$/, async (req, res) => {
   }
 
   recordAuthSuccess(ip);
-  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone });
+  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId });
   setSessionCookie(res, token);
-  sendJson(res, 200, { role: user.role, name: user.name, phone: user.phone, mustChangePassword: !!user.mustChangePassword });
+  sendJson(res, 200, { role: user.role, name: user.name, phone: user.phone, storeId: user.storeId, mustChangePassword: !!user.mustChangePassword });
 });
 
 route("GET", /^\/api\/auth\/check-username\/?$/, async (req, res, params, url) => {
@@ -820,7 +1058,7 @@ route("POST", /^\/api\/auth\/change-password\/?$/, async (req, res) => {
 
   setUserPassword(user.id, body.newPassword, { mustChangePassword: false });
   clearSessionCookie(res);
-  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone });
+  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId });
   setSessionCookie(res, token);
   sendJson(res, 200, { ok: true });
 });
@@ -893,19 +1131,42 @@ route("GET", /^\/api\/auth\/session\/?$/, async (req, res) => {
     name: session.name,
     phone: session.phone,
     userId: session.userId,
-    mustChangePassword: !!(user && user.mustChangePassword)
+    storeId: session.storeId,
+    mustChangePassword: !!(user && user.mustChangePassword),
+    loyaltyPoints: user ? user.loyaltyPoints || 0 : 0
   });
 });
 
-// --- Staff accounts (created by admin/owner only - no public sign-up for these roles) ---
+/** Which roles a given session is allowed to hand out when creating a new account. */
+function allowedRolesToCreate(session) {
+  if (session.role === "owner") return ["employee", "manager", "admin", "owner"];
+  if (session.role === "admin") return ["employee", "manager"];
+  if (session.role === "manager") return ["employee"];
+  return [];
+}
+
+function canManageTarget(session, targetUser) {
+  if (!targetUser) return false;
+  if (session.role === "owner") return true;
+  if (session.role === "admin") return ["employee", "manager"].includes(targetUser.role);
+  if (session.role === "manager") return targetUser.role === "employee" && targetUser.storeId === session.storeId;
+  return false;
+}
+
 route("GET", /^\/api\/users\/?$/, async (req, res) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
-  const users = readJson(USERS_FILE, []).filter((u) => STAFF_ROLES.includes(u.role));
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  let users = readJson(USERS_FILE, []).filter((u) => STAFF_ROLES.includes(u.role));
+  // A manager only sees their own store's staff (plus themselves), never
+  // other stores' employees or the admin/owner accounts.
+  if (session.role === "manager") {
+    users = users.filter((u) => u.id === session.userId || (u.role === "employee" && u.storeId === session.storeId));
+  }
   sendJson(res, 200, users.map(publicUser));
 });
 
 route("POST", /^\/api\/users\/?$/, async (req, res) => {
-  const session = requireRole(req, res, MENU_ADMIN_ROLES);
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
 
   const body = await readBody(req);
@@ -913,14 +1174,18 @@ route("POST", /^\/api\/users\/?$/, async (req, res) => {
   const password = String(body.password || "");
   const name = String(body.name || "").trim();
   const role = String(body.role || "");
+  const tag = String(body.tag || "").trim();
+  const payRateType = ["hourly", "weekly", "monthly"].includes(body.payRateType) ? body.payRateType : null;
+  const payRate = Number.isFinite(Number(body.payRate)) && Number(body.payRate) >= 0 ? Number(body.payRate) : null;
+  // A manager can only create employees for their OWN store - they can't
+  // even choose a different store id.
+  const storeId = session.role === "manager" ? session.storeId : Number(body.storeId) || 1;
 
   if (username.length < 3) return sendJson(res, 400, { error: "Username must be at least 3 characters" });
   const pwIssues = passwordIssues(password);
   if (pwIssues.length) return sendJson(res, 400, { error: pwIssues[0] });
 
-  // An admin can only create employees. Only the owner can create admins or
-  // other owners - this stops an admin account from elevating itself/others.
-  const allowedToCreate = session.role === "owner" ? ["employee", "admin", "owner"] : ["employee"];
+  const allowedToCreate = allowedRolesToCreate(session);
   if (!allowedToCreate.includes(role)) {
     return sendJson(res, 403, { error: `Your account can't create a "${role}" account` });
   }
@@ -928,22 +1193,42 @@ route("POST", /^\/api\/users\/?$/, async (req, res) => {
   try {
     // Staff accounts start with mustChangePassword so the temp password an
     // admin hands over only works once before the new hire sets their own.
-    const user = createUser({ username, password, role, name, mustChangePassword: true });
+    const user = createUser({ username, password, role, name, mustChangePassword: true, storeId, tag, payRateType, payRate });
     sendJson(res, 201, publicUser(user));
   } catch (e) {
     sendJson(res, 400, { error: e.message });
   }
 });
 
-function canManageTarget(session, targetUser) {
-  if (!targetUser) return false;
-  if (session.role === "owner") return true;
-  if (session.role === "admin") return targetUser.role === "employee";
-  return false;
-}
+route("PATCH", /^\/api\/users\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  // Editing tag/pay rate/store for an EXISTING staff member (not role or
+  // password - those have their own, more tightly-guarded routes).
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+
+  const targetUser = findUserById(Number(params.id));
+  if (!canManageTarget(session, targetUser)) {
+    return sendJson(res, 403, { error: "Your account can't edit that person" });
+  }
+
+  const body = await readBody(req);
+  const users = readJson(USERS_FILE, []);
+  const user = users.find((u) => u.id === targetUser.id);
+  if (body.name !== undefined) user.name = String(body.name).trim() || user.name;
+  if (body.tag !== undefined) user.tag = String(body.tag).trim();
+  if (body.payRateType !== undefined) {
+    user.payRateType = ["hourly", "weekly", "monthly"].includes(body.payRateType) ? body.payRateType : null;
+  }
+  if (body.payRate !== undefined) {
+    const rate = Number(body.payRate);
+    user.payRate = Number.isFinite(rate) && rate >= 0 ? rate : null;
+  }
+  writeJson(USERS_FILE, users);
+  sendJson(res, 200, publicUser(user));
+});
 
 route("POST", /^\/api\/users\/(?<id>\d+)\/reset-password\/?$/, async (req, res, params) => {
-  const session = requireRole(req, res, MENU_ADMIN_ROLES);
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
 
   const targetUser = findUserById(Number(params.id));
@@ -966,7 +1251,7 @@ route("POST", /^\/api\/users\/(?<id>\d+)\/reset-password\/?$/, async (req, res, 
 });
 
 route("DELETE", /^\/api\/users\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  const session = requireRole(req, res, MENU_ADMIN_ROLES);
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
 
   const targetUser = findUserById(Number(params.id));
@@ -984,6 +1269,32 @@ route("DELETE", /^\/api\/users\/(?<id>\d+)\/?$/, async (req, res, params) => {
   sendJson(res, 200, { ok: true });
 });
 
+// ---------------------------------------------------------------------------
+// Stores (multi-store groundwork)
+//
+// With one store, none of this changes daily behavior - it exists so that
+// adding a second physical location later is "create a store, assign staff
+// to it" instead of a data migration.
+// ---------------------------------------------------------------------------
+
+route("GET", /^\/api\/stores\/?$/, async (req, res) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  sendJson(res, 200, readJson(STORES_FILE, []));
+});
+
+route("POST", /^\/api\/stores\/?$/, async (req, res) => {
+  if (!requireRole(req, res, ["owner"])) return; // only the owner opens a new store
+  const body = await readBody(req);
+  const name = String(body.name || "").trim();
+  if (!name) return sendJson(res, 400, { error: "Store name is required" });
+  const stores = readJson(STORES_FILE, []);
+  const nextId = stores.length ? Math.max(...stores.map((s) => s.id)) + 1 : 1;
+  const store = { id: nextId, name, address: String(body.address || "").trim() };
+  stores.push(store);
+  writeJson(STORES_FILE, stores);
+  sendJson(res, 201, store);
+});
+
 route("GET", /^\/api\/audit-log\/?$/, async (req, res) => {
   // Owner-only, intentionally - this exists specifically so an owner can
   // see what admins have been doing to other accounts (password resets,
@@ -994,13 +1305,540 @@ route("GET", /^\/api\/audit-log\/?$/, async (req, res) => {
   sendJson(res, 200, log);
 });
 
+// ---------------------------------------------------------------------------
+// Time clock + payroll
+//
+// Pay periods are fixed calendar windows, not custom ranges an admin picks
+// each time: monthly-rate staff are paid on a calendar-month cycle,
+// hourly/weekly-rate staff on a Monday-Sunday weekly cycle. "Marking paid"
+// snapshots that period's amount into payroll.json so it can't silently
+// change later (e.g. if a shift gets edited after the fact) and so the
+// period can't accidentally be marked paid twice.
+// ---------------------------------------------------------------------------
+
+function computePayPeriod(payRateType, referenceDate = new Date()) {
+  if (payRateType === "monthly") {
+    const start = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+    const end = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0, 23, 59, 59, 999);
+    return { periodType: "monthly", start, end };
+  }
+  // hourly and weekly both run on a Monday-Sunday cycle.
+  const day = referenceDate.getDay(); // 0=Sun..6=Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const start = new Date(referenceDate);
+  start.setDate(referenceDate.getDate() + diffToMonday);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { periodType: "weekly", start, end };
+}
+
+const DAILY_HOUR_CAP = 8;
+
+function dateKeyOf(d) {
+  return new Date(d).toISOString().slice(0, 10);
+}
+
+/** Raw (uncapped) clocked hours for one user on one calendar day. */
+function clockedHoursOnDay(userId, dateStr) {
+  const shifts = readJson(TIMECLOCK_FILE, []);
+  let ms = 0;
+  for (const s of shifts) {
+    if (s.userId !== userId || !s.clockOut) continue;
+    if (dateKeyOf(s.clockIn) === dateStr) {
+      ms += new Date(s.clockOut).getTime() - new Date(s.clockIn).getTime();
+    }
+  }
+  return round2(ms / (1000 * 60 * 60));
+}
+
+/** Raw (uncapped) manager-marked attendance hours for one user on one day. */
+function attendanceHoursOnDay(userId, dateStr) {
+  const entries = readJson(ATTENDANCE_FILE, []);
+  return round2(entries.filter((a) => a.userId === userId && a.date === dateStr).reduce((sum, a) => sum + a.hours, 0));
+}
+
+function isOvertimeApproved(userId, dateStr) {
+  const approvals = readJson(OVERTIME_APPROVALS_FILE, []);
+  return approvals.some((a) => a.userId === userId && a.date === dateStr);
+}
+
+/**
+ * Every date between start/end (inclusive) that has EITHER clocked shifts
+ * or manager-marked attendance for this user.
+ */
+function datesWithActivity(userId, start, end) {
+  const dates = new Set();
+  readJson(TIMECLOCK_FILE, []).forEach((s) => {
+    if (s.userId === userId && s.clockOut) {
+      const d = new Date(s.clockIn);
+      if (d >= start && d <= end) dates.add(dateKeyOf(d));
+    }
+  });
+  readJson(ATTENDANCE_FILE, []).forEach((a) => {
+    if (a.userId === userId) {
+      const d = new Date(a.date);
+      if (d >= start && d <= end) dates.add(a.date);
+    }
+  });
+  return [...dates];
+}
+
+/**
+ * Total hours counted toward pay for a period: each individual DAY is
+ * capped at 8 hours (DAILY_HOUR_CAP) - whether the hours came from
+ * self clock-in/out or a manager marking attendance directly - unless a
+ * manager has explicitly approved overtime for that specific user+date.
+ * The cap is per-day, not per-period, so a 12-hour day and two 6-hour days
+ * are treated differently even if the period total is the same.
+ */
+function hoursWorkedInPeriod(userId, start, end) {
+  let total = 0;
+  let rawTotal = 0;
+  let hasUnapprovedOvertime = false;
+
+  for (const dateStr of datesWithActivity(userId, start, end)) {
+    const raw = round2(clockedHoursOnDay(userId, dateStr) + attendanceHoursOnDay(userId, dateStr));
+    rawTotal += raw;
+    if (raw > DAILY_HOUR_CAP && !isOvertimeApproved(userId, dateStr)) {
+      hasUnapprovedOvertime = true;
+      total += DAILY_HOUR_CAP;
+    } else {
+      total += raw;
+    }
+  }
+
+  return { hours: round2(total), rawHours: round2(rawTotal), hasUnapprovedOvertime };
+}
+
+function computeEarnings(user, period, hoursWorked) {
+  if (user.payRateType === "hourly") return round2((user.payRate || 0) * hoursWorked);
+  if (user.payRateType === "weekly" || user.payRateType === "monthly") return round2(user.payRate || 0);
+  return 0;
+}
+
+function periodKey(period) {
+  return `${period.start.toISOString().slice(0, 10)}_${period.end.toISOString().slice(0, 10)}`;
+}
+
+/** Staff a manager/admin/owner session is allowed to see for payroll/timeclock purposes. */
+function visibleStaffFor(session) {
+  const users = readJson(USERS_FILE, []).filter((u) => PAYROLL_ROLES.includes(u.role));
+  if (session.role === "manager") return users.filter((u) => u.storeId === session.storeId);
+  return users; // admin/owner see everyone
+}
+
+route("POST", /^\/api\/timeclock\/clock-in\/?$/, async (req, res) => {
+  const session = requireRole(req, res, PAYROLL_ROLES);
+  if (!session) return;
+  const shifts = readJson(TIMECLOCK_FILE, []);
+  if (shifts.some((s) => s.userId === session.userId && !s.clockOut)) {
+    return sendJson(res, 400, { error: "Already clocked in" });
+  }
+  const shift = { id: shifts.length ? Math.max(...shifts.map((s) => s.id)) + 1 : 1, userId: session.userId, storeId: session.storeId, clockIn: new Date().toISOString(), clockOut: null };
+  shifts.push(shift);
+  writeJson(TIMECLOCK_FILE, shifts);
+  sendJson(res, 201, shift);
+});
+
+route("POST", /^\/api\/timeclock\/clock-out\/?$/, async (req, res) => {
+  const session = requireRole(req, res, PAYROLL_ROLES);
+  if (!session) return;
+  const shifts = readJson(TIMECLOCK_FILE, []);
+  const open = shifts.find((s) => s.userId === session.userId && !s.clockOut);
+  if (!open) return sendJson(res, 400, { error: "Not currently clocked in" });
+  open.clockOut = new Date().toISOString();
+  writeJson(TIMECLOCK_FILE, shifts);
+  sendJson(res, 200, open);
+});
+
+route("GET", /^\/api\/timeclock\/status\/?$/, async (req, res) => {
+  const session = requireRole(req, res, PAYROLL_ROLES);
+  if (!session) return;
+  const shifts = readJson(TIMECLOCK_FILE, []);
+  const open = shifts.find((s) => s.userId === session.userId && !s.clockOut);
+  sendJson(res, 200, { clockedIn: !!open, since: open ? open.clockIn : null });
+});
+
+route("GET", /^\/api\/payroll\/?$/, async (req, res) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+
+  const staff = visibleStaffFor(session).filter((u) => u.payRateType);
+  const paidRecords = readJson(PAYROLL_FILE, []);
+
+  const result = staff.map((u) => {
+    const period = computePayPeriod(u.payRateType);
+    const hoursInfo = u.payRateType === "hourly" ? hoursWorkedInPeriod(u.id, period.start, period.end) : null;
+    const hours = hoursInfo ? hoursInfo.hours : null;
+    const amount = computeEarnings(u, period, hours || 0);
+    const key = periodKey(period);
+    const paidRecord = paidRecords.find((p) => p.userId === u.id && p.periodKey === key);
+    return {
+      userId: u.id,
+      name: u.name,
+      username: u.username,
+      tag: u.tag,
+      storeId: u.storeId,
+      payRateType: u.payRateType,
+      payRate: u.payRate,
+      periodType: period.periodType,
+      periodStart: period.start.toISOString(),
+      periodEnd: period.end.toISOString(),
+      hoursWorked: hours,
+      rawHours: hoursInfo ? hoursInfo.rawHours : null,
+      hasUnapprovedOvertime: hoursInfo ? hoursInfo.hasUnapprovedOvertime : false,
+      amount,
+      isPaid: !!paidRecord,
+      paidAt: paidRecord ? paidRecord.paidAt : null
+    };
+  });
+  sendJson(res, 200, result);
+});
+
+route("POST", /^\/api\/payroll\/(?<userId>\d+)\/mark-paid\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+
+  const targetUser = findUserById(Number(params.userId));
+  if (!canManageTarget(session, targetUser)) {
+    return sendJson(res, 403, { error: "Your account can't manage payroll for that person" });
+  }
+  if (!targetUser.payRateType) return sendJson(res, 400, { error: "This person has no pay rate set" });
+
+  const period = computePayPeriod(targetUser.payRateType);
+  const hoursInfo = targetUser.payRateType === "hourly" ? hoursWorkedInPeriod(targetUser.id, period.start, period.end) : null;
+  const hours = hoursInfo ? hoursInfo.hours : null;
+  const amount = computeEarnings(targetUser, period, hours || 0);
+  const key = periodKey(period);
+
+  const records = readJson(PAYROLL_FILE, []);
+  if (records.some((p) => p.userId === targetUser.id && p.periodKey === key)) {
+    return sendJson(res, 400, { error: "This period is already marked paid" });
+  }
+  records.push({
+    id: records.length ? Math.max(...records.map((r) => r.id)) + 1 : 1,
+    userId: targetUser.id,
+    periodKey: key,
+    periodType: period.periodType,
+    periodStart: period.start.toISOString(),
+    periodEnd: period.end.toISOString(),
+    hoursWorked: hours,
+    amountPaid: amount,
+    paidAt: new Date().toISOString(),
+    paidBy: session.name
+  });
+  writeJson(PAYROLL_FILE, records);
+  logAuditEvent(session, "payroll_paid", targetUser);
+  sendJson(res, 200, { ok: true, amount });
+});
+
+route("GET", /^\/api\/payroll\/history\/?$/, async (req, res) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const visibleIds = new Set(visibleStaffFor(session).map((u) => u.id));
+  const records = readJson(PAYROLL_FILE, [])
+    .filter((r) => visibleIds.has(r.userId))
+    .sort((a, b) => new Date(b.paidAt) - new Date(a.paidAt));
+  const users = readJson(USERS_FILE, []);
+  sendJson(
+    res,
+    200,
+    records.map((r) => ({ ...r, name: users.find((u) => u.id === r.userId)?.name || "Unknown" }))
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Manager-marked attendance
+//
+// For staff who never log in themselves (e.g. table service staff who don't
+// need the system at all) - a manager records their hours directly. Subject
+// to the same 8-hour daily cap as self clock-in/out (see hoursWorkedInPeriod);
+// a manager can flag an entry as overtime-approved to let it count in full.
+// ---------------------------------------------------------------------------
+
+route("GET", /^\/api\/attendance\/?$/, async (req, res, params, url) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const visibleIds = new Set(visibleStaffFor(session).map((u) => u.id));
+  let entries = readJson(ATTENDANCE_FILE, []).filter((a) => visibleIds.has(a.userId));
+  const userId = url.searchParams.get("userId");
+  if (userId) entries = entries.filter((a) => a.userId === Number(userId));
+  entries.sort((a, b) => (a.date < b.date ? 1 : -1));
+  const users = readJson(USERS_FILE, []);
+  sendJson(
+    res,
+    200,
+    entries.map((a) => ({ ...a, name: users.find((u) => u.id === a.userId)?.name || "Unknown" }))
+  );
+});
+
+route("POST", /^\/api\/attendance\/?$/, async (req, res) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+
+  const body = await readBody(req);
+  const targetUser = findUserById(Number(body.userId));
+  if (!canManageTarget(session, targetUser)) {
+    return sendJson(res, 403, { error: "Your account can't mark attendance for that person" });
+  }
+  const date = String(body.date || "").slice(0, 10);
+  const hours = Number(body.hours);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return sendJson(res, 400, { error: "Invalid date" });
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return sendJson(res, 400, { error: "Enter hours between 0 and 24" });
+
+  const entries = readJson(ATTENDANCE_FILE, []);
+  const entry = {
+    id: entries.length ? Math.max(...entries.map((e) => e.id)) + 1 : 1,
+    userId: targetUser.id,
+    storeId: targetUser.storeId,
+    date,
+    hours: round2(hours),
+    markedBy: session.name,
+    markedAt: new Date().toISOString()
+  };
+  entries.push(entry);
+  writeJson(ATTENDANCE_FILE, entries);
+
+  // Deliberately NOT auto-approving overtime here even if this pushes the
+  // day over 8 hours - "marking hours" and "approving overtime" need to
+  // stay two distinct actions, or the daily cap would mean nothing for
+  // manually-entered attendance (a manager could always just type a bigger
+  // number). Overtime still needs the separate POST /api/overtime-approvals
+  // confirmation, exactly like a self-clocked day that runs over.
+  sendJson(res, 201, entry);
+});
+
+route("DELETE", /^\/api\/attendance\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const entries = readJson(ATTENDANCE_FILE, []);
+  const entry = entries.find((e) => e.id === Number(params.id));
+  if (!entry) return sendJson(res, 404, { error: "Entry not found" });
+  const targetUser = findUserById(entry.userId);
+  if (!canManageTarget(session, targetUser)) {
+    return sendJson(res, 403, { error: "Your account can't edit that entry" });
+  }
+  writeJson(ATTENDANCE_FILE, entries.filter((e) => e.id !== entry.id));
+  sendJson(res, 200, { ok: true });
+});
+
+/**
+ * Explicitly approves overtime for a self-clocked day that went over 8
+ * hours (manually-entered attendance over 8h is auto-approved at entry
+ * time instead - see POST /api/attendance above).
+ */
+route("POST", /^\/api\/overtime-approvals\/?$/, async (req, res) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
+  const targetUser = findUserById(Number(body.userId));
+  if (!canManageTarget(session, targetUser)) {
+    return sendJson(res, 403, { error: "Your account can't approve overtime for that person" });
+  }
+  const date = String(body.date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return sendJson(res, 400, { error: "Invalid date" });
+
+  const approvals = readJson(OVERTIME_APPROVALS_FILE, []);
+  if (!approvals.some((a) => a.userId === targetUser.id && a.date === date)) {
+    approvals.push({ userId: targetUser.id, date, approvedBy: session.name, approvedAt: new Date().toISOString(), reason: "clocked_overtime" });
+    writeJson(OVERTIME_APPROVALS_FILE, approvals);
+  }
+  sendJson(res, 200, { ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// KPI dashboard
+// ---------------------------------------------------------------------------
+
+route("GET", /^\/api\/stats\/public\/?$/, async (req, res) => {
+  // Deliberately minimal and public - no revenue, no names, nothing
+  // sensitive. Just enough for a fun "live" counter on the home page.
+  const orders = readJson(ORDERS_FILE, []);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayOrders = orders.filter((o) => new Date(o.createdAt) >= startOfToday);
+  const itemsServedToday = todayOrders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0);
+  sendJson(res, 200, { ordersToday: todayOrders.length, itemsServedToday });
+});
+
+route("GET", /^\/api\/kpi\/?$/, async (req, res, params, url) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const orders = readJson(ORDERS_FILE, []);
+  const requestedRange = url.searchParams.get("range");
+  const range = ["7d", "1m", "1y"].includes(requestedRange) ? requestedRange : "7d";
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfWeek = (() => {
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const d = new Date(now);
+    d.setDate(now.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  })();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const inRange = (order, from) => new Date(order.createdAt) >= from;
+  const sumRevenue = (list) => round2(list.reduce((acc, o) => acc + o.total, 0));
+
+  const todayOrders = orders.filter((o) => inRange(o, startOfToday));
+  const weekOrders = orders.filter((o) => inRange(o, startOfWeek));
+  const monthOrders = orders.filter((o) => inRange(o, startOfMonth));
+
+  // Chart buckets depend on the requested range: daily for 7 days/1 month,
+  // monthly for 1 year (otherwise a year of daily bars would be unreadable).
+  const chart = [];
+  let chartRangeStart;
+  if (range === "1y") {
+    for (let i = 11; i >= 0; i--) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      const monthOrdersForChart = orders.filter((o) => new Date(o.createdAt) >= monthStart && new Date(o.createdAt) < monthEnd);
+      chart.push({ label: monthStart.toISOString().slice(0, 7), revenue: sumRevenue(monthOrdersForChart), count: monthOrdersForChart.length });
+    }
+    chartRangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  } else {
+    const days = range === "1m" ? 29 : 6;
+    for (let i = days; i >= 0; i--) {
+      const dayStart = new Date(startOfToday);
+      dayStart.setDate(startOfToday.getDate() - i);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setHours(23, 59, 59, 999);
+      const dayOrders = orders.filter((o) => new Date(o.createdAt) >= dayStart && new Date(o.createdAt) <= dayEnd);
+      chart.push({ label: dayStart.toISOString().slice(0, 10), revenue: sumRevenue(dayOrders), count: dayOrders.length });
+    }
+    chartRangeStart = new Date(startOfToday);
+    chartRangeStart.setDate(startOfToday.getDate() - days);
+  }
+
+  // Best sellers scoped to the same range as the chart, so switching the
+  // filter gives a consistent picture rather than mixing an all-time list
+  // with a windowed chart.
+  const rangeOrders = orders.filter((o) => new Date(o.createdAt) >= chartRangeStart);
+  const itemCounts = {};
+  rangeOrders.forEach((o) =>
+    o.items.forEach((i) => {
+      itemCounts[i.name] = (itemCounts[i.name] || 0) + i.quantity;
+    })
+  );
+  const bestSellers = Object.entries(itemCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, quantity]) => ({ name, quantity }));
+
+  sendJson(res, 200, {
+    today: { orders: todayOrders.length, revenue: sumRevenue(todayOrders) },
+    week: { orders: weekOrders.length, revenue: sumRevenue(weekOrders) },
+    month: { orders: monthOrders.length, revenue: sumRevenue(monthOrders) },
+    allTime: { orders: orders.length, revenue: sumRevenue(orders) },
+    range,
+    chart,
+    bestSellers
+  });
+});
+
 // --- Menu ---
-route("GET", /^\/api\/menu\/?$/, async (req, res) => {
-  sendJson(res, 200, readJson(MENU_FILE, { sections: [], items: [] }));
+route("GET", /^\/api\/customization-options\/?$/, async (req, res) => {
+  // Public - the menu page needs this to render the customize modal, no auth required.
+  const options = getCustomizationOptions();
+  sendJson(res, 200, {
+    sizeOptions: options.sizeOptions,
+    milkOptions: options.milkOptions,
+    extraOptions: options.extraOptions,
+    drinkSections: DRINK_SECTIONS,
+    maxNotesLength: MAX_NOTES_LENGTH
+  });
+});
+
+/** Validates and normalizes one edited option list (sizes/milks/extras) coming
+ *  from the admin pricing grid: unique non-empty keys, finite non-negative
+ *  prices, at least one entry left with a zero delta so a "no charge" pick
+ *  always exists for that group. */
+function validateOptionList(list, groupName) {
+  if (!Array.isArray(list) || list.length === 0) {
+    throw new Error(`${groupName} needs at least one option`);
+  }
+  const seenKeys = new Set();
+  const cleaned = list.map((raw, idx) => {
+    const key = String(raw.key || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    const label = String(raw.label || "").trim();
+    const priceDelta = Number(raw.priceDelta);
+    if (!key) throw new Error(`${groupName} option ${idx + 1} needs a key`);
+    if (seenKeys.has(key)) throw new Error(`${groupName} has a duplicate key: ${key}`);
+    if (!label) throw new Error(`${groupName} option "${key}" needs a label`);
+    if (!Number.isFinite(priceDelta) || priceDelta < 0) throw new Error(`${groupName} option "${key}" needs a valid non-negative price`);
+    seenKeys.add(key);
+    return { key, label, priceDelta: round2(priceDelta) };
+  });
+  return cleaned;
+}
+
+route("PATCH", /^\/api\/customization-options\/?$/, async (req, res) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const body = await readBody(req);
+  const current = getCustomizationOptions();
+
+  try {
+    const updated = {
+      sizeOptions: body.sizeOptions !== undefined ? validateOptionList(body.sizeOptions, "Sizes") : current.sizeOptions,
+      milkOptions: body.milkOptions !== undefined ? validateOptionList(body.milkOptions, "Milks") : current.milkOptions,
+      extraOptions: body.extraOptions !== undefined ? validateOptionList(body.extraOptions, "Extras") : current.extraOptions
+    };
+    writeJson(CUSTOMIZATION_FILE, updated);
+    sendJson(res, 200, updated);
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+  }
+});
+
+route("GET", /^\/api\/menu\/?$/, async (req, res, params, url) => {
+  const menu = readJson(MENU_FILE, { sections: [], items: [] });
+  // Soft-deleted items are hidden from the public/customer menu by default -
+  // only the admin Menu Items screen passes includeDeleted to manage/restore them.
+  const includeDeleted = url.searchParams.get("includeDeleted") === "true";
+  const items = includeDeleted ? menu.items : menu.items.filter((i) => !i.deleted);
+  sendJson(res, 200, { ...menu, items });
+});
+
+route("POST", /^\/api\/menu\/sections\/?$/, async (req, res) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const body = await readBody(req);
+  const menu = readJson(MENU_FILE, { sections: [], items: [] });
+  const title = String(body.title || "").trim();
+  if (!title) return sendJson(res, 400, { error: "Section title is required" });
+
+  // Slug the id from the title (lowercase, hyphenated), de-duplicated if it collides.
+  let id = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "section";
+  let suffix = 1;
+  const baseId = id;
+  while (menu.sections.some((s) => s.id === id)) {
+    id = `${baseId}-${++suffix}`;
+  }
+
+  const section = { id, title };
+  menu.sections.push(section);
+  writeJson(MENU_FILE, menu);
+  sendJson(res, 201, section);
+});
+
+route("DELETE", /^\/api\/menu\/sections\/(?<id>[\w-]+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const menu = readJson(MENU_FILE, { sections: [], items: [] });
+  const idx = menu.sections.findIndex((s) => s.id === params.id);
+  if (idx === -1) return sendJson(res, 404, { error: "Section not found" });
+  if (menu.items.some((i) => i.section === params.id)) {
+    return sendJson(res, 400, { error: "Move or delete this section's items first" });
+  }
+  menu.sections.splice(idx, 1);
+  writeJson(MENU_FILE, menu);
+  sendJson(res, 200, { ok: true });
 });
 
 route("POST", /^\/api\/menu\/?$/, async (req, res) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
   const body = await readBody(req);
   const menu = readJson(MENU_FILE, { sections: [], items: [] });
   const name = String(body.name || "").trim();
@@ -1033,7 +1871,7 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
 });
 
 route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
   const body = await readBody(req);
   const menu = readJson(MENU_FILE, { sections: [], items: [] });
   const item = menu.items.find((i) => i.id === Number(params.id));
@@ -1053,6 +1891,13 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
     if (!Number.isFinite(price) || price <= 0) return sendJson(res, 400, { error: "Invalid price" });
     item.price = price;
   }
+  if (body.available !== undefined) {
+    item.available = Boolean(body.available);
+    if (item.available) item.disableRequests = []; // re-enabling clears any pending requests
+  }
+  if (body.deleted !== undefined) {
+    item.deleted = Boolean(body.deleted); // restoring a soft-deleted item
+  }
   if (body.promoDiscount !== undefined) {
     if (body.promoDiscount === null) {
       item.promoDiscount = null;
@@ -1066,13 +1911,122 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
   sendJson(res, 200, item);
 });
 
-route("DELETE", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+/** Staff (any signed-in kitchen role) can flag an item as needing to come off
+ *  the menu - e.g. ran out of stock - without themselves having permission
+ *  to take it down. A manager/owner reviews and acts on it from Menu Items. */
+route("POST", /^\/api\/menu\/(?<id>\d+)\/disable-request\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
   const menu = readJson(MENU_FILE, { sections: [], items: [] });
-  const idx = menu.items.findIndex((i) => i.id === Number(params.id));
-  if (idx === -1) return sendJson(res, 404, { error: "Item not found" });
-  menu.items.splice(idx, 1);
+  const item = menu.items.find((i) => i.id === Number(params.id));
+  if (!item) return sendJson(res, 404, { error: "Item not found" });
+
+  const note = sanitizeNotes(body.note || "");
+  item.disableRequests = item.disableRequests || [];
+  item.disableRequests.push({ by: session.name || session.username, role: session.role, note, at: new Date().toISOString() });
   writeJson(MENU_FILE, menu);
+  sendJson(res, 200, item);
+});
+
+/** A manager/owner dismisses a pending disable request without taking the
+ *  item down (e.g. stock is back) - separate from PATCH available:true,
+ *  which also clears requests but additionally re-enables an already-off item. */
+route("DELETE", /^\/api\/menu\/(?<id>\d+)\/disable-request\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const menu = readJson(MENU_FILE, { sections: [], items: [] });
+  const item = menu.items.find((i) => i.id === Number(params.id));
+  if (!item) return sendJson(res, 404, { error: "Item not found" });
+  item.disableRequests = [];
+  writeJson(MENU_FILE, menu);
+  sendJson(res, 200, item);
+});
+
+
+/** Soft-delete: never actually removes the item (order history references it
+ *  by id/name, and staff may want to bring it back later) - just hides it
+ *  from the customer-facing menu and disables ordering, same as "available:
+ *  false" but permanent-looking rather than a temporary 86. */
+route("DELETE", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const menu = readJson(MENU_FILE, { sections: [], items: [] });
+  const item = menu.items.find((i) => i.id === Number(params.id));
+  if (!item) return sendJson(res, 404, { error: "Item not found" });
+  item.deleted = true;
+  item.available = false;
+  writeJson(MENU_FILE, menu);
+  sendJson(res, 200, { ok: true });
+});
+
+// --- Combos (bundled deals sold at a discount vs buying items separately) ---
+route("GET", /^\/api\/combos\/?$/, async (req, res) => {
+  // Public - the menu page needs this to show combo deals to anyone browsing.
+  const combos = readJson(COMBOS_FILE, []);
+  sendJson(res, 200, combos.filter((c) => c.active !== false));
+});
+
+route("POST", /^\/api\/combos\/?$/, async (req, res) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const body = await readBody(req);
+  const menu = readJson(MENU_FILE, { sections: [], items: [] });
+  const combos = readJson(COMBOS_FILE, []);
+
+  const name = String(body.name || "").trim();
+  const price = Number(body.price);
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+  const items = rawItems
+    .map((i) => ({ id: Number(i.id), quantity: Math.max(1, Math.min(20, parseInt(i.quantity, 10) || 1)) }))
+    .filter((i) => menu.items.some((m) => m.id === i.id));
+
+  if (!name || !Number.isFinite(price) || price <= 0) {
+    return sendJson(res, 400, { error: "name and a positive price are required" });
+  }
+  if (items.length < 2) {
+    return sendJson(res, 400, { error: "A combo needs at least 2 valid menu items" });
+  }
+
+  const nextId = combos.length ? Math.max(...combos.map((c) => c.id)) + 1 : 1;
+  const combo = { id: nextId, name, description: String(body.description || ""), items, price, active: true };
+  combos.push(combo);
+  writeJson(COMBOS_FILE, combos);
+  sendJson(res, 201, combo);
+});
+
+route("PATCH", /^\/api\/combos\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const body = await readBody(req);
+  const menu = readJson(MENU_FILE, { sections: [], items: [] });
+  const combos = readJson(COMBOS_FILE, []);
+  const combo = combos.find((c) => c.id === Number(params.id));
+  if (!combo) return sendJson(res, 404, { error: "Combo not found" });
+
+  if (body.name !== undefined) combo.name = String(body.name).trim();
+  if (body.description !== undefined) combo.description = String(body.description);
+  if (body.active !== undefined) combo.active = Boolean(body.active);
+  if (body.price !== undefined) {
+    const price = Number(body.price);
+    if (!Number.isFinite(price) || price <= 0) return sendJson(res, 400, { error: "Invalid price" });
+    combo.price = price;
+  }
+  if (body.items !== undefined) {
+    const items = (Array.isArray(body.items) ? body.items : [])
+      .map((i) => ({ id: Number(i.id), quantity: Math.max(1, Math.min(20, parseInt(i.quantity, 10) || 1)) }))
+      .filter((i) => menu.items.some((m) => m.id === i.id));
+    if (items.length < 2) return sendJson(res, 400, { error: "A combo needs at least 2 valid menu items" });
+    combo.items = items;
+  }
+
+  writeJson(COMBOS_FILE, combos);
+  sendJson(res, 200, combo);
+});
+
+route("DELETE", /^\/api\/combos\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const combos = readJson(COMBOS_FILE, []);
+  const idx = combos.findIndex((c) => c.id === Number(params.id));
+  if (idx === -1) return sendJson(res, 404, { error: "Combo not found" });
+  combos.splice(idx, 1);
+  writeJson(COMBOS_FILE, combos);
   sendJson(res, 200, { ok: true });
 });
 
@@ -1087,6 +2041,7 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   const config = readJson(CONFIG_FILE, {});
   const allowed = [
     "shopName",
+    "heroTagline",
     "tipEnabled",
     "tipAmount",
     "cgstRate",
@@ -1097,16 +2052,49 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "heroImageUrl",
     "logoUrl",
     "upiVpa",
-    "upiPayeeName"
+    "upiPayeeName",
+    "tableCount"
   ];
   for (const key of allowed) {
     if (body[key] !== undefined) config[key] = body[key];
   }
+  if (body.loyalty && typeof body.loyalty === "object") {
+    config.loyalty = { ...config.loyalty, ...body.loyalty };
+    config.loyalty.enabled = Boolean(config.loyalty.enabled);
+    const per = Number(config.loyalty.pointsPerRupeeSpent);
+    const val = Number(config.loyalty.rupeeValuePerPoint);
+    config.loyalty.pointsPerRupeeSpent = Number.isFinite(per) && per >= 0 ? per : 0.1;
+    config.loyalty.rupeeValuePerPoint = Number.isFinite(val) && val >= 0 ? val : 0.5;
+  }
+  if (config.tableCount !== undefined) {
+    const n = parseInt(config.tableCount, 10);
+    config.tableCount = Number.isFinite(n) && n >= 0 ? Math.min(n, 200) : 10;
+  }
+  // shopName/heroTagline are rendered directly into the home page - cap
+  // length and strip control chars so a bad paste can't break layout.
+  if (typeof config.shopName === "string") config.shopName = config.shopName.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 60);
+  if (typeof config.heroTagline === "string") config.heroTagline = config.heroTagline.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400);
   // Colors, footer, and customIcons are objects - merge individual keys
   // instead of replacing the whole thing, so a partial update (e.g. just
   // "accent", or just one new icon) doesn't wipe out the rest.
   if (body.colors && typeof body.colors === "object") {
     config.colors = { ...config.colors, ...body.colors };
+  }
+  // textStyles: font size (pt) + color for the admin tab-nav row and the
+  // muted helper/description paragraphs - merge per sub-key like colors,
+  // and clamp fontSize to a sane range so a bad value can't make the admin
+  // panel unreadably tiny/huge or break layout.
+  if (body.textStyles && typeof body.textStyles === "object") {
+    config.textStyles = config.textStyles || { ...DEFAULT_BRANDING.textStyles };
+    for (const key of ["adminTabs", "adminHelp", "adminLabels"]) {
+      if (body.textStyles[key] && typeof body.textStyles[key] === "object") {
+        const existing = config.textStyles[key] || DEFAULT_BRANDING.textStyles[key];
+        const merged = { ...existing, ...body.textStyles[key] };
+        const size = Number(merged.fontSize);
+        merged.fontSize = Number.isFinite(size) ? Math.min(24, Math.max(5, size)) : existing.fontSize;
+        config.textStyles[key] = merged;
+      }
+    }
   }
   if (body.footer && typeof body.footer === "object") {
     config.footer = { ...config.footer, ...body.footer };
@@ -1135,6 +2123,11 @@ route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
   config.colors = { ...DEFAULT_BRANDING.colors };
   config.heroImageUrl = DEFAULT_BRANDING.heroImageUrl;
   config.logoUrl = DEFAULT_BRANDING.logoUrl;
+  config.textStyles = {
+    adminTabs: { ...DEFAULT_BRANDING.textStyles.adminTabs },
+    adminHelp: { ...DEFAULT_BRANDING.textStyles.adminHelp },
+    adminLabels: { ...DEFAULT_BRANDING.textStyles.adminLabels }
+  };
   writeJson(CONFIG_FILE, config);
   sendJson(res, 200, config);
 });
@@ -1190,77 +2183,6 @@ route("DELETE", /^\/api\/branding-profiles\/(?<name>[^/]+)\/?$/, async (req, res
   sendJson(res, 200, profiles);
 });
 
-// --- Coupons ---
-route("GET", /^\/api\/coupons\/?$/, async (req, res) => {
-  // Manager/owner only - returns everything, including private/inactive/
-  // exhausted codes. The public listing below is a separate, filtered route.
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
-  sendJson(res, 200, readJson(COUPONS_FILE, []));
-});
-
-route("GET", /^\/api\/coupons\/public\/?$/, async (req, res) => {
-  // No auth beyond a session (same level as coupon validation) - lets a
-  // customer self-serve the list of codes worth trying. Private coupons and
-  // anything inactive/expired/exhausted never appear here.
-  const session = currentSession(req);
-  if (!session) return sendJson(res, 401, { error: "Not signed in" });
-  const now = Date.now();
-  const coupons = readJson(COUPONS_FILE, [])
-    .filter((c) => c.active && !c.private)
-    .filter((c) => !c.expiresAt || new Date(c.expiresAt).getTime() >= now)
-    .filter((c) => c.maxUses == null || c.usedCount < c.maxUses)
-    .map((c) => ({ code: c.code, type: c.type, value: c.value, expiresAt: c.expiresAt }));
-  sendJson(res, 200, coupons);
-});
-
-route("POST", /^\/api\/coupons\/validate\/?$/, async (req, res) => {
-  const session = currentSession(req);
-  if (!session) return sendJson(res, 401, { error: "Not signed in" });
-  const body = await readBody(req);
-  const coupon = findValidCoupon(body.code);
-  if (!coupon) return sendJson(res, 404, { error: "Invalid, expired, or exhausted coupon code" });
-  sendJson(res, 200, { code: coupon.code, type: coupon.type, value: coupon.value });
-});
-
-route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
-  const body = await readBody(req);
-  const coupons = readJson(COUPONS_FILE, []);
-  const result = sanitizeCouponInput(body, coupons);
-  if (result.error) return sendJson(res, 400, { error: result.error });
-
-  const nextId = coupons.length ? Math.max(...coupons.map((c) => c.id)) + 1 : 1;
-  const coupon = { id: nextId, ...result.value, active: true, usedCount: 0, createdAt: new Date().toISOString() };
-  coupons.push(coupon);
-  writeJson(COUPONS_FILE, coupons);
-  sendJson(res, 201, coupon);
-});
-
-route("PATCH", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
-  const body = await readBody(req);
-  const coupons = readJson(COUPONS_FILE, []);
-  const coupon = coupons.find((c) => c.id === Number(params.id));
-  if (!coupon) return sendJson(res, 404, { error: "Coupon not found" });
-
-  if (body.active !== undefined) {
-    coupon.active = !!body.active;
-  } else {
-    const result = sanitizeCouponInput(body, coupons, coupon.id);
-    if (result.error) return sendJson(res, 400, { error: result.error });
-    Object.assign(coupon, result.value);
-  }
-  writeJson(COUPONS_FILE, coupons);
-  sendJson(res, 200, coupon);
-});
-
-route("DELETE", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
-  const coupons = readJson(COUPONS_FILE, []).filter((c) => c.id !== Number(params.id));
-  writeJson(COUPONS_FILE, coupons);
-  sendJson(res, 200, { ok: true });
-});
-
 // --- Orders ---
 route("GET", /^\/api\/orders\/?$/, async (req, res) => {
   // Full order list is for staff running the register/kitchen/admin views only.
@@ -1270,16 +2192,21 @@ route("GET", /^\/api\/orders\/?$/, async (req, res) => {
 
 route("GET", /^\/api\/orders\/mine\/?$/, async (req, res) => {
   // A customer sees only orders tied to their account; a guest sees only
-  // orders tied to the phone number they logged in with - never anyone else's.
-  const session = requireRole(req, res, TRACKING_ROLES);
+  // orders tied to the phone number they logged in with - never anyone
+  // else's. Staff roles (owner/admin/manager/employee) don't place orders
+  // as a customer, so they simply get an empty list rather than a 403 -
+  // "My Orders" should be usable by anyone signed in, not just customers.
+  const session = requireSession(req, res);
   if (!session) return;
 
   const orders = readJson(ORDERS_FILE, []);
-  const mine = orders
-    .filter((o) => (session.role === "customer" ? o.customerId === session.userId : o.customerPhone === session.phone))
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 10)
-    .map((o) => ({ ...o, status: orderStatusOf(o) }));
+  let mine = [];
+  if (session.role === "customer") {
+    mine = orders.filter((o) => o.customerId === session.userId);
+  } else if (session.role === "guest") {
+    mine = orders.filter((o) => o.customerPhone === session.phone);
+  }
+  mine = mine.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10).map((o) => ({ ...o, status: orderStatusOf(o) }));
 
   sendJson(res, 200, mine);
 });
@@ -1309,35 +2236,72 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
 
   let computed;
   try {
-    computed = computeOrder(Array.isArray(body.items) ? body.items : [], method, serviceChargeActive, tipApplied, body.couponCode);
+    const customerId = session.role === "customer" ? session.userId : null;
+    computed = computeOrder(Array.isArray(body.items) ? body.items : [], method, serviceChargeActive, tipApplied, {
+      couponCode: body.couponCode || null,
+      redeemPoints: parseInt(body.redeemPoints, 10) || 0,
+      customerId
+    });
   } catch (e) {
     return sendJson(res, 400, { error: e.message });
   }
 
   const orders = readJson(ORDERS_FILE, []);
+  // Staff placing an order at the counter on a customer's behalf can mark it
+  // paid immediately (cash already collected) instead of having to find it
+  // in Order History afterwards - customers/guests can never self-mark paid.
+  const staffMarkedPaid = KITCHEN_ROLES.includes(session.role) && body.markPaidNow === true;
   const order = {
     id: `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
     orderNumber: generateOrderNumber(orders),
     createdAt: new Date().toISOString(),
     method,
-    isPaid: method === "ONLINE", // still trust-based until a real payment webhook is wired up - see README
+    isPaid: method === "ONLINE" || staffMarkedPaid, // still trust-based until a real payment webhook is wired up - see README
     tipApplied,
     serviceChargeActive,
     customerId: session.role === "customer" ? session.userId : null,
+    customerName: session.name || null,
     customerPhone: phone,
+    placedByStaff: KITCHEN_ROLES.includes(session.role) ? session.name : null,
+    // Only staff can tag an order to an open table tab, and only if that
+    // table is actually still open - never trust an arbitrary id from the client.
+    tableSessionId: null,
     ...computed
   };
   orders.push(order);
+
+  // Validate the requested table tag AFTER building the order object, since
+  // it needs to override the tableSessionId:null default above.
+  if (KITCHEN_ROLES.includes(session.role) && body.tableSessionId) {
+    const tableSessions = readJson(TABLE_SESSIONS_FILE, []);
+    const targetTable = tableSessions.find((t) => t.id === body.tableSessionId && t.status === "open");
+    if (targetTable) {
+      order.tableSessionId = targetTable.id;
+      order.tableNumber = targetTable.tableNumber; // denormalized for KOT/Bill display even after the table later closes
+    }
+  }
+
   writeJson(ORDERS_FILE, orders);
 
-  if (computed.couponId != null) {
+  // Side effects that only happen once the order is confirmed real: burn a
+  // coupon use, debit redeemed loyalty points, credit newly-earned ones.
+  if (order.couponId) {
     const coupons = readJson(COUPONS_FILE, []);
-    const coupon = coupons.find((c) => c.id === computed.couponId);
-    if (coupon) {
-      coupon.usedCount = (coupon.usedCount || 0) + 1;
+    const c = coupons.find((x) => x.id === order.couponId);
+    if (c) {
+      c.usedCount = (c.usedCount || 0) + 1;
       writeJson(COUPONS_FILE, coupons);
     }
   }
+  if (order.customerId && (order.loyaltyPointsRedeemed > 0 || order.loyaltyPointsEarned > 0)) {
+    const users = readJson(USERS_FILE, []);
+    const user = users.find((u) => u.id === order.customerId);
+    if (user) {
+      user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) - order.loyaltyPointsRedeemed + order.loyaltyPointsEarned);
+      writeJson(USERS_FILE, users);
+    }
+  }
+
   broadcastOrdersChanged();
   sendJson(res, 201, order);
 });
@@ -1364,6 +2328,297 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
   broadcastOrdersChanged();
   sendJson(res, 200, order);
 });
+
+route("GET", /^\/api\/favorites\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const favorites = readJson(FAVORITES_FILE, []);
+  const key = favoritesOwnerKey(session);
+  const itemIds = favorites.filter((f) => f.ownerKey === key).map((f) => f.itemId);
+  sendJson(res, 200, itemIds);
+});
+
+route("POST", /^\/api\/favorites\/(?<itemId>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const itemId = Number(params.itemId);
+  const menu = readJson(MENU_FILE, { items: [] });
+  if (!menu.items.find((i) => i.id === itemId)) {
+    return sendJson(res, 404, { error: "Menu item not found" });
+  }
+  const favorites = readJson(FAVORITES_FILE, []);
+  const key = favoritesOwnerKey(session);
+  if (!favorites.find((f) => f.ownerKey === key && f.itemId === itemId)) {
+    favorites.push({ ownerKey: key, itemId });
+    writeJson(FAVORITES_FILE, favorites);
+  }
+  sendJson(res, 200, { ok: true });
+});
+
+route("DELETE", /^\/api\/favorites\/(?<itemId>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const itemId = Number(params.itemId);
+  const favorites = readJson(FAVORITES_FILE, []);
+  const key = favoritesOwnerKey(session);
+  writeJson(
+    FAVORITES_FILE,
+    favorites.filter((f) => !(f.ownerKey === key && f.itemId === itemId))
+  );
+  sendJson(res, 200, { ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Coupons (discount codes) - created by manager/admin/owner. A usageLimit of
+// null means "usable until stopped" (manually deactivated), rather than a
+// fixed number of redemptions.
+// ---------------------------------------------------------------------------
+
+function findValidCoupon(code, coupons) {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!normalized) return null;
+  const coupon = coupons.find((c) => c.code === normalized);
+  if (!coupon || !coupon.active) return null;
+  if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) return null;
+  return coupon;
+}
+
+function computeCouponDiscount(coupon, subtotal) {
+  if (!coupon) return 0;
+  const raw = coupon.type === "percent" ? subtotal * (coupon.value / 100) : coupon.value;
+  return round2(Math.min(raw, subtotal)); // never discount below zero
+}
+
+route("GET", /^\/api\/coupons\/?$/, async (req, res) => {
+  // Manager/owner only - returns everything, including private/stopped/
+  // exhausted codes. The public listing below is a separate, filtered route.
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  sendJson(res, 200, readJson(COUPONS_FILE, []));
+});
+
+/** Lets a customer self-serve the list of codes worth trying at checkout.
+ *  Private coupons and anything inactive/exhausted never appear here - do
+ *  NOT reuse the manager-only GET /api/coupons above for this. */
+route("GET", /^\/api\/coupons\/public\/?$/, async (req, res) => {
+  if (!requireSession(req, res)) return;
+  const coupons = readJson(COUPONS_FILE, [])
+    .filter((c) => c.active && !c.private)
+    .filter((c) => c.usageLimit === null || c.usedCount < c.usageLimit)
+    .map((c) => ({ code: c.code, type: c.type, value: c.value }));
+  sendJson(res, 200, coupons);
+});
+
+route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
+  const coupons = readJson(COUPONS_FILE, []);
+
+  const code = String(body.code || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  const type = body.type === "flat" ? "flat" : "percent";
+  const value = Number(body.value);
+  const usageLimit = body.usageLimit === null || body.usageLimit === "" || body.usageLimit === undefined ? null : parseInt(body.usageLimit, 10);
+
+  if (!code) return sendJson(res, 400, { error: "Coupon code is required" });
+  if (coupons.some((c) => c.code === code)) return sendJson(res, 400, { error: "A coupon with this code already exists" });
+  if (!Number.isFinite(value) || value <= 0) return sendJson(res, 400, { error: "Enter a valid discount value" });
+  if (type === "percent" && value > 100) return sendJson(res, 400, { error: "Percent discount can't exceed 100" });
+  if (usageLimit !== null && (!Number.isFinite(usageLimit) || usageLimit <= 0)) return sendJson(res, 400, { error: "Usage limit must be a positive number, or left blank for unlimited" });
+
+  const coupon = {
+    id: coupons.length ? Math.max(...coupons.map((c) => c.id)) + 1 : 1,
+    code,
+    type,
+    value,
+    usageLimit,
+    usedCount: 0,
+    active: true,
+    private: !!body.private, // default false = public, listed in GET /api/coupons/public
+    createdBy: session.name,
+    createdAt: new Date().toISOString()
+  };
+  coupons.push(coupon);
+  writeJson(COUPONS_FILE, coupons);
+  sendJson(res, 201, coupon);
+});
+
+route("PATCH", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const body = await readBody(req);
+  const coupons = readJson(COUPONS_FILE, []);
+  const coupon = coupons.find((c) => c.id === Number(params.id));
+  if (!coupon) return sendJson(res, 404, { error: "Coupon not found" });
+
+  if (body.active !== undefined) coupon.active = Boolean(body.active);
+  if (body.private !== undefined) coupon.private = Boolean(body.private);
+  writeJson(COUPONS_FILE, coupons);
+  sendJson(res, 200, coupon);
+});
+
+route("DELETE", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const coupons = readJson(COUPONS_FILE, []);
+  const idx = coupons.findIndex((c) => c.id === Number(params.id));
+  if (idx === -1) return sendJson(res, 404, { error: "Coupon not found" });
+  coupons.splice(idx, 1);
+  writeJson(COUPONS_FILE, coupons);
+  sendJson(res, 200, { ok: true });
+});
+
+/** Checkout-time preview - any signed-in role can check a code's validity
+ *  and discount amount without redeeming it (redemption/usedCount happens
+ *  only at real order creation, so previewing never burns a use). */
+route("POST", /^\/api\/coupons\/validate\/?$/, async (req, res) => {
+  if (!requireSession(req, res)) return;
+  const body = await readBody(req);
+  const coupons = readJson(COUPONS_FILE, []);
+  const coupon = findValidCoupon(body.code, coupons);
+  if (!coupon) return sendJson(res, 404, { error: "Invalid or expired coupon code" });
+  const subtotal = Number(body.subtotal) || 0;
+  sendJson(res, 200, { code: coupon.code, type: coupon.type, value: coupon.value, discountAmount: computeCouponDiscount(coupon, subtotal) });
+});
+
+// ---------------------------------------------------------------------------
+// Table sessions (postpaid tabs) - staff opens a table when a group starts
+// running a tab, tags orders to it as they come in, then closes it to get
+// one combined bill instead of billing each order separately. Entirely a
+// staff-side concept; customers never see or interact with this.
+// ---------------------------------------------------------------------------
+
+function computeTableSessionBill(session, allOrders) {
+  const orders = allOrders.filter((o) => o.tableSessionId === session.id);
+  const mergedItems = [];
+  orders.forEach((o) =>
+    o.items.forEach((i) => {
+      mergedItems.push({ ...i, orderId: o.id });
+    })
+  );
+  const subtotal = round2(orders.reduce((sum, o) => sum + o.subtotal, 0));
+  const cgst = round2(orders.reduce((sum, o) => sum + o.cgst, 0));
+  const sgst = round2(orders.reduce((sum, o) => sum + o.sgst, 0));
+  const serviceCharge = round2(orders.reduce((sum, o) => sum + (o.serviceCharge || 0), 0));
+  const tipAmount = round2(orders.reduce((sum, o) => sum + (o.tipAmount || 0), 0));
+  const total = round2(orders.reduce((sum, o) => sum + o.total, 0));
+  return { ...session, orderCount: orders.length, items: mergedItems, subtotal, cgst, sgst, serviceCharge, tipAmount, total };
+}
+
+route("POST", /^\/api\/table-sessions\/?$/, async (req, res) => {
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
+  const config = readJson(CONFIG_FILE, {});
+  const tableNumber = parseInt(body.tableNumber, 10);
+  const tableCount = config.tableCount ?? 10;
+  if (!Number.isFinite(tableNumber) || tableNumber < 1 || tableNumber > tableCount) {
+    return sendJson(res, 400, { error: `Table number must be between 1 and ${tableCount}` });
+  }
+
+  const sessions = readJson(TABLE_SESSIONS_FILE, []);
+  if (sessions.some((s) => s.tableNumber === tableNumber && s.status === "open")) {
+    return sendJson(res, 400, { error: `Table ${tableNumber} already has an open tab` });
+  }
+
+  const tableSession = {
+    id: `TBL-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+    tableNumber,
+    note: sanitizeNotes(body.note || ""),
+    // Optional - lets staff identify a repeat/known customer for discounts,
+    // without requiring the customer to log in themselves.
+    customerName: sanitizeNotes(body.customerName || "").slice(0, 60),
+    customerPhone: normalizePhone(body.customerPhone) || "",
+    openedBy: session.name,
+    openedAt: new Date().toISOString(),
+    status: "open",
+    closedAt: null,
+    closedBy: null,
+    isPaid: false
+  };
+  sessions.push(tableSession);
+  writeJson(TABLE_SESSIONS_FILE, sessions);
+  sendJson(res, 201, tableSession);
+});
+
+/** Lets staff change a table's seat number (customer asked to move) or
+ *  update the customer name/phone on an already-open tab. */
+route("PATCH", /^\/api\/table-sessions\/(?<id>[\w-]+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
+  const config = readJson(CONFIG_FILE, {});
+  const tableCount = config.tableCount ?? 10;
+  const sessions = readJson(TABLE_SESSIONS_FILE, []);
+  const tableSession = sessions.find((s) => s.id === params.id);
+  if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
+  if (tableSession.status !== "open") return sendJson(res, 400, { error: "Table is already closed" });
+
+  if (body.tableNumber !== undefined) {
+    const newNumber = parseInt(body.tableNumber, 10);
+    if (!Number.isFinite(newNumber) || newNumber < 1 || newNumber > tableCount) {
+      return sendJson(res, 400, { error: `Table number must be between 1 and ${tableCount}` });
+    }
+    if (newNumber !== tableSession.tableNumber && sessions.some((s) => s.tableNumber === newNumber && s.status === "open")) {
+      return sendJson(res, 400, { error: `Table ${newNumber} already has an open tab` });
+    }
+    tableSession.tableNumber = newNumber;
+  }
+  if (body.customerName !== undefined) tableSession.customerName = sanitizeNotes(body.customerName).slice(0, 60);
+  if (body.customerPhone !== undefined) tableSession.customerPhone = normalizePhone(body.customerPhone) || "";
+
+  writeJson(TABLE_SESSIONS_FILE, sessions);
+  const orders = readJson(ORDERS_FILE, []);
+  sendJson(res, 200, computeTableSessionBill(tableSession, orders));
+});
+
+route("GET", /^\/api\/table-sessions\/?$/, async (req, res, params, url) => {
+  if (!requireRole(req, res, KITCHEN_ROLES)) return;
+  const sessions = readJson(TABLE_SESSIONS_FILE, []);
+  const orders = readJson(ORDERS_FILE, []);
+  const statusFilter = url.searchParams.get("status");
+  const filtered = statusFilter ? sessions.filter((s) => s.status === statusFilter) : sessions;
+  sendJson(
+    res,
+    200,
+    filtered.map((s) => computeTableSessionBill(s, orders)).sort((a, b) => new Date(b.openedAt) - new Date(a.openedAt))
+  );
+});
+
+route("GET", /^\/api\/table-sessions\/(?<id>[\w-]+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, KITCHEN_ROLES)) return;
+  const sessions = readJson(TABLE_SESSIONS_FILE, []);
+  const tableSession = sessions.find((s) => s.id === params.id);
+  if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
+  const orders = readJson(ORDERS_FILE, []);
+  sendJson(res, 200, computeTableSessionBill(tableSession, orders));
+});
+
+route("POST", /^\/api\/table-sessions\/(?<id>[\w-]+)\/close\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
+  const sessions = readJson(TABLE_SESSIONS_FILE, []);
+  const tableSession = sessions.find((s) => s.id === params.id);
+  if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
+  if (tableSession.status === "closed") return sendJson(res, 400, { error: "Table is already closed" });
+
+  tableSession.status = "closed";
+  tableSession.closedAt = new Date().toISOString();
+  tableSession.closedBy = session.name;
+
+  if (body.markPaid === true) {
+    tableSession.isPaid = true;
+    const orders = readJson(ORDERS_FILE, []);
+    orders.forEach((o) => {
+      if (o.tableSessionId === tableSession.id) o.isPaid = true;
+    });
+    writeJson(ORDERS_FILE, orders);
+    broadcastOrdersChanged();
+  }
+
+  writeJson(TABLE_SESSIONS_FILE, sessions);
+  const orders = readJson(ORDERS_FILE, []);
+  sendJson(res, 200, computeTableSessionBill(tableSession, orders));
+});
+
 
 route("GET", /^\/api\/orders\/stream\/?$/, async (req, res) => {
   // Any signed-in role can listen (it only signals "something changed" -
@@ -1415,7 +2670,15 @@ function serveStatic(req, res, pathname) {
     const ext = path.extname(filePath);
     res.writeHead(200, {
       "Content-Type": MIME[ext] || "application/octet-stream",
-      "X-Content-Type-Options": "nosniff"
+      "X-Content-Type-Options": "nosniff",
+      // No cache headers were set at all before, which lets some browsers
+      // hold onto an old cached copy of e.g. theme.css after a redeploy -
+      // JS/HTML changes show up but stale CSS keeps rendering, which looks
+      // like a real layout bug even though the shipped files are correct.
+      // no-cache (not no-store) still lets the browser cache the file, but
+      // forces a revalidation request each time instead of trusting a
+      // stale copy blindly.
+      "Cache-Control": "no-cache"
     });
     res.end(data);
   });

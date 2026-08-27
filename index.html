@@ -29,6 +29,7 @@
             content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self';" />
         <link rel="stylesheet" href="css/theme.css" />
         <link rel="stylesheet" href="css/iconsvg.css" />
+        <link rel="stylesheet" href="css/cat.css" />
         <title>Seven Bits Coffee // Hazaribagh</title>
     </head>
     <body>
@@ -39,22 +40,48 @@
             <button onclick="showPage('menu')">MENU</button>
             <button id="nav-kitchen" onclick="showPage('kitchen')" style="display:none;">ORDERS</button>
             <button id="nav-admin" onclick="showPage('admin')" style="display:none;">ADMIN</button>
+            <button id="nav-timeclock" onclick="window.handleTimeclockClick()" style="display:none; margin-left:auto;"></button>
             <button id="nav-account" onclick="window.handleAccountClick()" style="margin-left:auto;">LOGIN</button>
         </nav>
 
         <!-- PAGE: HOME (Landing section with hero logo and story) -->
         <div id="page-home" class="page active">
+            <!-- Ambient animated backdrop for the hero - pure CSS, no images/deps -->
+            <div class="hero-backdrop" aria-hidden="true"></div>
+
             <div class="hero-section">
-                <div class="icon-logo icon-logo-hero"></div>
-                <h1>SEVEN BITS COFFEE</h1>
-                <p class="story-text">
+                <div class="icon-logo icon-logo-hero hero-reveal" style="animation-delay: 0s;"></div>
+                <h1 class="hero-reveal" id="hero-shop-name" style="animation-delay: 0.1s;">SEVEN BITS COFFEE</h1>
+                <p class="story-text hero-reveal" id="hero-tagline" style="animation-delay: 0.2s;">
                     Born from love for Physics, Coffee, a cat named Ginger and an obssesion with the number seven. We
                     don't just brew; we process flavor with low-latency precision.
                 </p>
-                <button class="btn-primary" onclick="showPage('menu')">ORDER NOW</button>
-                <div class="pixel-cat-container">
-                    <div class="pixel-cat"></div>
+                <button class="btn-primary btn-glitch hero-reveal" style="animation-delay: 0.3s;" onclick="showPage('menu')">
+                    <span data-text="ORDER NOW">ORDER NOW</span>
+                </button>
+                <div class="pixel-kitty-container">
+                    <!-- The Mover handles screen travel, tripping, and flipping -->
+                    <div class="kitty-mover">
+                        <!-- Cat 1: Walking on two legs -->
+                        <div class="kitty-biped"></div>
+
+                        <!-- Cat 2: Walking on four legs -->
+                        <div class="kitty-quad"></div>
+
+                        <!-- The randomized held item (coffee/food icon) - id="held-item" is
+                             required here, not just class="latte-cup": cat.css defines a
+                             dedicated #held-item rule (small 20x20 box positioned in the
+                             cat's paw, its own item-fly animation) separate from the older
+                             fixed-size .latte-cup layer. Using #held-item is what lets
+                             app.js's icon-randomizing script (below) swap which icon shows -
+                             .latte-cup alone would only ever display one fixed cup and
+                             wouldn't respond to the randomizer at all. -->
+                        <div id="held-item"></div>
+                    </div>
                 </div>
+
+                <!-- Live ticker - real numbers from the server, not decorative fakery -->
+                <div id="live-stats-ticker" class="live-stats-ticker hero-reveal" style="animation-delay: 0.4s;"></div>
             </div>
 
             <!-- A few featured items so the home page has something to browse/click
@@ -71,6 +98,9 @@
                 <h3 style="font-size: 10pt; letter-spacing: 1px; color: var(--color-accent); margin-bottom: 10px;">YOUR ORDER</h3>
                 <div id="order-status-root"></div>
             </div>
+            <div id="my-orders-link-section" style="max-width: 420px; margin: 10px auto; padding: 0 15px; display: none; text-align:center;">
+                <button onclick="window.openMyOrders()" style="background:none; border:1px solid var(--color-accent); color: var(--color-accent); font-size: 8pt; padding: 8px 16px; cursor:pointer; font-family: 'Courier New', monospace; text-transform: uppercase;">MY ORDERS &amp; REORDER</button>
+            </div>
 
             <!-- Store details footer - content populated from admin Branding settings -->
             <footer id="site-footer" class="site-footer"></footer>
@@ -79,7 +109,11 @@
         <!-- PAGE: MENU (Dynamic menu rendering with view toggles) -->
        <!-- PAGE: MENU -->
 <div id="page-menu" class="page">
-    <div class="menu-controls" style="padding: 10px; display: flex; justify-content: flex-end; gap: 15px">
+    <div class="menu-controls" style="padding: 10px; display: flex; justify-content: flex-end; align-items:center; gap: 15px">
+    <label id="favorites-filter-label" style="display:none; align-items:center; gap:5px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace;">
+        <input type="checkbox" id="favorites-filter-toggle" onchange="window.toggleFavoritesFilter(this.checked)" />
+        &#9733; FAVORITES ONLY
+    </label>
     <!-- Search is wired via window.initSearchBar() in app.js (debounced), not an inline
          handler - the old oninput="renderMenu(...)" called a function that was never
          attached to window, so it silently errored on every keystroke. -->
@@ -128,16 +162,20 @@
 
         <!-- PAGE: ORDERS (Kitchen Display System / KOT Management) -->
         <div id="page-kitchen" class="page">
-            <!-- Station tabs restyled to match the admin panel's sub-tab look -->
+            <!-- Station tabs restyled to match the admin panel's sub-tab look.
+                 TABLES/TABS sits here too (not a separate toggle button) since
+                 it's another way of tracking active orders - just grouped by
+                 table instead of by station. -->
             <div class="kitchen-tabs admin-tabs">
                 <button class="admin-tab-btn active" data-station="MASTER" onclick="filterKitchen('MASTER')">ALL STATIONS</button>
                 <button class="admin-tab-btn" data-station="BARISTA" onclick="filterKitchen('BARISTA')">BARISTA</button>
                 <button class="admin-tab-btn" data-station="KITCHEN" onclick="filterKitchen('KITCHEN')">KITCHEN</button>
                 <button class="admin-tab-btn" data-station="DESSERTS" onclick="window.filterKitchen('DESSERTS')">DESSERTS</button>
+                <button class="admin-tab-btn" data-station="TABLES" onclick="window.filterKitchen('TABLES')">TABLES / TABS</button>
             </div>
 
-            <!-- Active vs. history filter + date sort -->
-            <div class="kitchen-toolbar">
+            <!-- Active vs. history filter + date sort - not relevant to the Tables view -->
+            <div class="kitchen-toolbar" id="kitchen-status-toolbar">
                 <div class="kitchen-status-filter">
                     <button class="admin-btn active" data-status-filter="active" onclick="window.setKitchenStatusFilter('active')">ACTIVE</button>
                     <button class="admin-btn" data-status-filter="history" onclick="window.setKitchenStatusFilter('history')">HISTORY</button>
@@ -149,6 +187,11 @@
                     <option value="oldest">OLDEST FIRST</option>
                 </select>
             </div>
+
+            <!-- Postpaid table tabs - staff open/close these to group multiple
+                 orders into one combined bill. Only visible when the
+                 TABLES/TABS tab above is selected. -->
+            <div id="tables-panel-root" style="display:none; margin-bottom:20px;"></div>
 
             <!-- Target for dynamic KOT ticket injection -->
             <div id="kitchen-orders-root"></div>
@@ -167,6 +210,43 @@
                 <div id="admin-tab-content"></div>
             </div>
         </div>
+
+        <!-- Randomizes which icon the walking cat is "holding" each time its
+             15s walk-and-tumble animation loop restarts. Needs to run after
+             the pixel-kitty-container markup above (for getElementById to
+             find #held-item) but before app.js, which is just where it's
+             placed - a plain non-module script always runs synchronously as
+             the parser reaches it, so no DOMContentLoaded wrapper is needed
+             here since the container HTML is already above it in the file. -->
+        <script>
+            const itemClasses = [
+                'icon-americano',
+                'icon-matcha-drink',
+                'icon-cookie',
+                'icon-ice-cream',
+                'icon-ice-latte',
+                'icon-latte-svg'
+            ];
+            const heldItem = document.getElementById('held-item');
+            const mover = document.querySelector('.kitty-mover');
+
+            function randomizeItem() {
+                heldItem.classList.remove(...itemClasses);
+                const randomClass = itemClasses[Math.floor(Math.random() * itemClasses.length)];
+                heldItem.classList.add(randomClass);
+            }
+
+            randomizeItem(); // give the cat a random item immediately on page load
+
+            mover.addEventListener('animationiteration', (event) => {
+                // .kitty-mover actually runs several looping animations (opacity
+                // toggles, flip physics) that also fire 'animationiteration' -
+                // only re-randomize on the one that represents a full walk cycle.
+                if (event.animationName === 'move-and-tumble') {
+                    randomizeItem();
+                }
+            });
+        </script>
 
         <!-- Main JS entry point (Module type required for ES6 imports) -->
         <script type="module" src="js/app.js"></script>

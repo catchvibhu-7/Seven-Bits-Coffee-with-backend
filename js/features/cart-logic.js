@@ -9,53 +9,40 @@
  */
 /**
  * A menu item "on promotion" (item.promoDiscount = {type: 'percent'|'flat',
- * value}) auto-discounts every line for that item, no coupon needed. Mirrors
- * promoUnitPrice() in server.js so the pre-checkout preview matches what the
- * server will actually charge.
+ * value}) auto-discounts its base price, no coupon needed. Mirrors
+ * promoUnitPrice() in server.js so cart/menu previews match what the server
+ * will actually charge. Customization price deltas are applied on top of
+ * this discounted base separately (see addCartLine() in app.js), not
+ * discounted themselves.
  */
-export function discountedUnitPrice(item) {
-    const promo = item.promoDiscount;
-    if (!promo) return item.price;
-    const discounted = promo.type === "percent" ? item.price * (1 - promo.value / 100) : item.price - promo.value;
+export function discountedBasePrice(product) {
+    const promo = product.promoDiscount;
+    if (!promo) return product.price;
+    const discounted = promo.type === "percent" ? product.price * (1 - promo.value / 100) : product.price - promo.value;
     return Math.max(0, discounted);
 }
 
 export const CartSystem = {
-    /**
-     * @param {object} [appliedCoupon] - {code, type, value} from a validated
-     *   /api/coupons/validate response. Ignored (never applied) if any cart
-     *   item carries a promoDiscount - the two discount mechanisms are
-     *   mutually exclusive, mirroring computeOrder() in server.js.
-     */
-    calculateBreakdown(items, config = {}, appliedCoupon = null) {
+    calculateBreakdown(items, config = {}) {
         const cgstRate = config.cgstRate ?? 0.05;
         const sgstRate = config.sgstRate ?? 0.05;
         const serviceChargeRate = config.serviceChargeRate ?? 0.02;
 
-        const subtotal = items.reduce((sum, item) => sum + discountedUnitPrice(item) * item.quantity, 0);
-        const promoDiscountTotal = items.reduce((sum, item) => sum + (item.price - discountedUnitPrice(item)) * item.quantity, 0);
+        const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        const promoDiscountTotal = items.reduce((sum, item) => sum + ((item.originalPrice ?? item.price) - item.price) * item.quantity, 0);
         const hasPromoItem = items.some((item) => !!item.promoDiscount);
-
-        let couponDiscount = 0;
-        if (appliedCoupon && !hasPromoItem) {
-            const raw = appliedCoupon.type === "percent" ? subtotal * (appliedCoupon.value / 100) : appliedCoupon.value;
-            couponDiscount = Math.max(0, Math.min(subtotal, raw));
-        }
-        const taxableAmount = subtotal - couponDiscount;
-
-        const cgst = taxableAmount * cgstRate;
-        const sgst = taxableAmount * sgstRate;
-        const serviceCharge = taxableAmount * serviceChargeRate;
+        const cgst = subtotal * cgstRate;
+        const sgst = subtotal * sgstRate;
+        const serviceCharge = subtotal * serviceChargeRate;
 
         return {
             subtotal,
             promoDiscountTotal,
             hasPromoItem,
-            couponDiscount,
             cgst,
             sgst,
             serviceCharge,
-            total: taxableAmount + cgst + sgst + serviceCharge
+            total: subtotal + cgst + sgst + serviceCharge
         };
     }
 };

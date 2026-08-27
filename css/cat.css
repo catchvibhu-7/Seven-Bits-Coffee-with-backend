@@ -1,0 +1,229 @@
+/* 
+ * ==========================================
+ * 🎨 PHASE 1: BIPEDAL FRAMES (Latte Removed)
+ * ==========================================
+ */
+:root {
+    --biped-f1: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='b'><rect x='26' y='10' width='4' height='4' fill='%23c2410c'/><rect x='22' y='24' width='14' height='16' fill='%23d97706'/><rect x='18' y='14' width='14' height='12' fill='%23d97706'/><rect x='20' y='10' width='4' height='6' fill='%23d97706'/><rect x='28' y='20' width='6' height='6' fill='%23d97706'/><rect x='18' y='22' width='4' height='6' fill='%23d97706'/><rect x='26' y='16' width='2' height='2' fill='%23000000'/><rect x='32' y='20' width='2' height='2' fill='%23fca5a5'/><rect x='14' y='34' width='8' height='4' fill='%23d97706'/><rect x='30' y='26' width='12' height='4' fill='%23d97706'/></g></defs><rect x='22' y='40' width='4' height='12' fill='%23c2410c'/><rect x='30' y='40' width='4' height='10' fill='%23d97706'/><use href='%23b' x='0' y='1'/></svg>");
+    --biped-f2: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='b'><rect x='26' y='10' width='4' height='4' fill='%23c2410c'/><rect x='22' y='24' width='14' height='16' fill='%23d97706'/><rect x='18' y='14' width='14' height='12' fill='%23d97706'/><rect x='20' y='10' width='4' height='6' fill='%23d97706'/><rect x='28' y='20' width='6' height='6' fill='%23d97706'/><rect x='18' y='22' width='4' height='6' fill='%23d97706'/><rect x='26' y='16' width='2' height='2' fill='%23000000'/><rect x='32' y='20' width='2' height='2' fill='%23fca5a5'/><rect x='14' y='34' width='8' height='4' fill='%23d97706'/><rect x='30' y='26' width='12' height='4' fill='%23d97706'/></g></defs><rect x='20' y='40' width='4' height='10' fill='%23c2410c'/><rect x='32' y='40' width='4' height='12' fill='%23d97706'/><use href='%23b' x='0' y='0'/></svg>");
+    --biped-f3: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='b'><rect x='26' y='10' width='4' height='4' fill='%23c2410c'/><rect x='22' y='24' width='14' height='16' fill='%23d97706'/><rect x='18' y='14' width='14' height='12' fill='%23d97706'/><rect x='20' y='10' width='4' height='6' fill='%23d97706'/><rect x='28' y='20' width='6' height='6' fill='%23d97706'/><rect x='18' y='22' width='4' height='6' fill='%23d97706'/><rect x='26' y='16' width='2' height='2' fill='%23000000'/><rect x='32' y='20' width='2' height='2' fill='%23fca5a5'/><rect x='14' y='34' width='8' height='4' fill='%23d97706'/><rect x='30' y='26' width='12' height='4' fill='%23d97706'/></g></defs><rect x='18' y='40' width='4' height='10' fill='%23c2410c'/><rect x='30' y='40' width='4' height='10' fill='%23d97706'/><use href='%23b' x='0' y='-1'/></svg>");
+    --biped-f4: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='b'><rect x='26' y='10' width='4' height='4' fill='%23c2410c'/><rect x='22' y='24' width='14' height='16' fill='%23d97706'/><rect x='18' y='14' width='14' height='12' fill='%23d97706'/><rect x='20' y='10' width='4' height='6' fill='%23d97706'/><rect x='28' y='20' width='6' height='6' fill='%23d97706'/><rect x='18' y='22' width='4' height='6' fill='%23d97706'/><rect x='26' y='16' width='2' height='2' fill='%23000000'/><rect x='32' y='20' width='2' height='2' fill='%23fca5a5'/><rect x='14' y='34' width='8' height='4' fill='%23d97706'/><rect x='30' y='26' width='12' height='4' fill='%23d97706'/></g></defs><rect x='20' y='40' width='4' height='10' fill='%23c2410c'/><rect x='28' y='40' width='4' height='12' fill='%23d97706'/><use href='%23b' x='0' y='0'/></svg>");
+    --biped-f5: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='b'><rect x='26' y='10' width='4' height='4' fill='%23c2410c'/><rect x='22' y='24' width='14' height='16' fill='%23d97706'/><rect x='18' y='14' width='14' height='12' fill='%23d97706'/><rect x='20' y='10' width='4' height='6' fill='%23d97706'/><rect x='28' y='20' width='6' height='6' fill='%23d97706'/><rect x='18' y='22' width='4' height='6' fill='%23d97706'/><rect x='26' y='16' width='2' height='2' fill='%23000000'/><rect x='32' y='20' width='2' height='2' fill='%23fca5a5'/><rect x='14' y='34' width='8' height='4' fill='%23d97706'/><rect x='30' y='26' width='12' height='4' fill='%23d97706'/></g></defs><rect x='22' y='40' width='4' height='10' fill='%23c2410c'/><rect x='26' y='40' width='4' height='12' fill='%23d97706'/><use href='%23b' x='0' y='1'/></svg>");
+    --biped-f6: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='b'><rect x='26' y='10' width='4' height='4' fill='%23c2410c'/><rect x='22' y='24' width='14' height='16' fill='%23d97706'/><rect x='18' y='14' width='14' height='12' fill='%23d97706'/><rect x='20' y='10' width='4' height='6' fill='%23d97706'/><rect x='28' y='20' width='6' height='6' fill='%23d97706'/><rect x='18' y='22' width='4' height='6' fill='%23d97706'/><rect x='26' y='16' width='2' height='2' fill='%23000000'/><rect x='32' y='20' width='2' height='2' fill='%23fca5a5'/><rect x='14' y='34' width='8' height='4' fill='%23d97706'/><rect x='30' y='26' width='12' height='4' fill='%23d97706'/></g></defs><rect x='26' y='40' width='4' height='12' fill='%23c2410c'/><rect x='24' y='40' width='4' height='10' fill='%23d97706'/><use href='%23b' x='0' y='0'/></svg>");
+    --biped-f7: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='b'><rect x='26' y='10' width='4' height='4' fill='%23c2410c'/><rect x='22' y='24' width='14' height='16' fill='%23d97706'/><rect x='18' y='14' width='14' height='12' fill='%23d97706'/><rect x='20' y='10' width='4' height='6' fill='%23d97706'/><rect x='28' y='20' width='6' height='6' fill='%23d97706'/><rect x='18' y='22' width='4' height='6' fill='%23d97706'/><rect x='26' y='16' width='2' height='2' fill='%23000000'/><rect x='32' y='20' width='2' height='2' fill='%23fca5a5'/><rect x='14' y='34' width='8' height='4' fill='%23d97706'/><rect x='30' y='26' width='12' height='4' fill='%23d97706'/></g></defs><rect x='28' y='40' width='4' height='10' fill='%23c2410c'/><rect x='22' y='40' width='4' height='10' fill='%23d97706'/><use href='%23b' x='0' y='-1'/></svg>");
+    --biped-f8: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='b'><rect x='26' y='10' width='4' height='4' fill='%23c2410c'/><rect x='22' y='24' width='14' height='16' fill='%23d97706'/><rect x='18' y='14' width='14' height='12' fill='%23d97706'/><rect x='20' y='10' width='4' height='6' fill='%23d97706'/><rect x='28' y='20' width='6' height='6' fill='%23d97706'/><rect x='18' y='22' width='4' height='6' fill='%23d97706'/><rect x='26' y='16' width='2' height='2' fill='%23000000'/><rect x='32' y='20' width='2' height='2' fill='%23fca5a5'/><rect x='14' y='34' width='8' height='4' fill='%23d97706'/><rect x='30' y='26' width='12' height='4' fill='%23d97706'/></g></defs><rect x='24' y='40' width='4' height='12' fill='%23c2410c'/><rect x='20' y='40' width='4' height='10' fill='%23d97706'/><use href='%23b' x='0' y='0'/></svg>");
+
+/* 
+ * ==========================================
+ * 🎨 PHASE 2: QUADRUPED FRAMES (Original)
+ * ==========================================
+ */
+    --quad-f1: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='k'><rect x='44' y='16' width='4' height='4' fill='%23c2410c'/><rect x='16' y='28' width='24' height='12' fill='%23d97706'/><rect x='36' y='20' width='14' height='12' fill='%23d97706'/><rect x='38' y='16' width='4' height='6' fill='%23d97706'/><rect x='46' y='26' width='6' height='6' fill='%23d97706'/><rect x='36' y='28' width='4' height='6' fill='%23d97706'/><rect x='44' y='22' width='2' height='2' fill='%23000000'/><rect x='50' y='26' width='2' height='2' fill='%23fca5a5'/><rect x='12' y='28' width='4' height='4' fill='%23d97706'/></g></defs><rect x='24' y='40' width='4' height='10' fill='%23c2410c'/><rect x='34' y='38' width='4' height='10' fill='%23c2410c'/><g transform='translate(0,1)'><rect x='8' y='24' width='4' height='4' fill='%23d97706'/><rect x='4' y='20' width='4' height='4' fill='%23d97706'/><use href='%23k' x='0' y='0'/></g><rect x='16' y='38' width='4' height='10' fill='%23d97706'/><rect x='42' y='40' width='4' height='10' fill='%23d97706'/></svg>");
+    --quad-f2: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='k'><rect x='44' y='16' width='4' height='4' fill='%23c2410c'/><rect x='16' y='28' width='24' height='12' fill='%23d97706'/><rect x='36' y='20' width='14' height='12' fill='%23d97706'/><rect x='38' y='16' width='4' height='6' fill='%23d97706'/><rect x='46' y='26' width='6' height='6' fill='%23d97706'/><rect x='36' y='28' width='4' height='6' fill='%23d97706'/><rect x='44' y='22' width='2' height='2' fill='%23000000'/><rect x='50' y='26' width='2' height='2' fill='%23fca5a5'/><rect x='12' y='28' width='4' height='4' fill='%23d97706'/></g></defs><rect x='22' y='40' width='4' height='10' fill='%23c2410c'/><rect x='36' y='37' width='4' height='10' fill='%23c2410c'/><g transform='translate(0,0)'><rect x='8' y='26' width='4' height='4' fill='%23d97706'/><rect x='4' y='22' width='4' height='4' fill='%23d97706'/><use href='%23k' x='0' y='0'/></g><rect x='18' y='37' width='4' height='10' fill='%23d97706'/><rect x='40' y='40' width='4' height='10' fill='%23d97706'/></svg>");
+    --quad-f3: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='k'><rect x='44' y='16' width='4' height='4' fill='%23c2410c'/><rect x='16' y='28' width='24' height='12' fill='%23d97706'/><rect x='36' y='20' width='14' height='12' fill='%23d97706'/><rect x='38' y='16' width='4' height='6' fill='%23d97706'/><rect x='46' y='26' width='6' height='6' fill='%23d97706'/><rect x='36' y='28' width='4' height='6' fill='%23d97706'/><rect x='44' y='22' width='2' height='2' fill='%23000000'/><rect x='50' y='26' width='2' height='2' fill='%23fca5a5'/><rect x='12' y='28' width='4' height='4' fill='%23d97706'/></g></defs><rect x='20' y='40' width='4' height='10' fill='%23c2410c'/><rect x='38' y='38' width='4' height='10' fill='%23c2410c'/><g transform='translate(0,-1)'><rect x='8' y='28' width='4' height='4' fill='%23d97706'/><rect x='4' y='24' width='4' height='4' fill='%23d97706'/><use href='%23k' x='0' y='0'/></g><rect x='20' y='38' width='4' height='10' fill='%23d97706'/><rect x='38' y='40' width='4' height='10' fill='%23d97706'/></svg>");
+    --quad-f4: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='k'><rect x='44' y='16' width='4' height='4' fill='%23c2410c'/><rect x='16' y='28' width='24' height='12' fill='%23d97706'/><rect x='36' y='20' width='14' height='12' fill='%23d97706'/><rect x='38' y='16' width='4' height='6' fill='%23d97706'/><rect x='46' y='26' width='6' height='6' fill='%23d97706'/><rect x='36' y='28' width='4' height='6' fill='%23d97706'/><rect x='44' y='22' width='2' height='2' fill='%23000000'/><rect x='50' y='26' width='2' height='2' fill='%23fca5a5'/><rect x='12' y='28' width='4' height='4' fill='%23d97706'/></g></defs><rect x='18' y='40' width='4' height='10' fill='%23c2410c'/><rect x='40' y='39' width='4' height='10' fill='%23c2410c'/><g transform='translate(0,0)'><rect x='8' y='26' width='4' height='4' fill='%23d97706'/><rect x='4' y='22' width='4' height='4' fill='%23d97706'/><use href='%23k' x='0' y='0'/></g><rect x='22' y='39' width='4' height='10' fill='%23d97706'/><rect x='36' y='40' width='4' height='10' fill='%23d97706'/></svg>");
+    --quad-f5: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='k'><rect x='44' y='16' width='4' height='4' fill='%23c2410c'/><rect x='16' y='28' width='24' height='12' fill='%23d97706'/><rect x='36' y='20' width='14' height='12' fill='%23d97706'/><rect x='38' y='16' width='4' height='6' fill='%23d97706'/><rect x='46' y='26' width='6' height='6' fill='%23d97706'/><rect x='36' y='28' width='4' height='6' fill='%23d97706'/><rect x='44' y='22' width='2' height='2' fill='%23000000'/><rect x='50' y='26' width='2' height='2' fill='%23fca5a5'/><rect x='12' y='28' width='4' height='4' fill='%23d97706'/></g></defs><rect x='16' y='38' width='4' height='10' fill='%23c2410c'/><rect x='42' y='40' width='4' height='10' fill='%23c2410c'/><g transform='translate(0,1)'><rect x='8' y='24' width='4' height='4' fill='%23d97706'/><rect x='4' y='20' width='4' height='4' fill='%23d97706'/><use href='%23k' x='0' y='0'/></g><rect x='24' y='40' width='4' height='10' fill='%23d97706'/><rect x='34' y='38' width='4' height='10' fill='%23d97706'/></svg>");
+    --quad-f6: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='k'><rect x='44' y='16' width='4' height='4' fill='%23c2410c'/><rect x='16' y='28' width='24' height='12' fill='%23d97706'/><rect x='36' y='20' width='14' height='12' fill='%23d97706'/><rect x='38' y='16' width='4' height='6' fill='%23d97706'/><rect x='46' y='26' width='6' height='6' fill='%23d97706'/><rect x='36' y='28' width='4' height='6' fill='%23d97706'/><rect x='44' y='22' width='2' height='2' fill='%23000000'/><rect x='50' y='26' width='2' height='2' fill='%23fca5a5'/><rect x='12' y='28' width='4' height='4' fill='%23d97706'/></g></defs><rect x='18' y='37' width='4' height='10' fill='%23c2410c'/><rect x='40' y='40' width='4' height='10' fill='%23c2410c'/><g transform='translate(0,0)'><rect x='8' y='26' width='4' height='4' fill='%23d97706'/><rect x='4' y='22' width='4' height='4' fill='%23d97706'/><use href='%23k' x='0' y='0'/></g><rect x='22' y='40' width='4' height='10' fill='%23d97706'/><rect x='36' y='37' width='4' height='10' fill='%23d97706'/></svg>");
+    --quad-f7: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='k'><rect x='44' y='16' width='4' height='4' fill='%23c2410c'/><rect x='16' y='28' width='24' height='12' fill='%23d97706'/><rect x='36' y='20' width='14' height='12' fill='%23d97706'/><rect x='38' y='16' width='4' height='6' fill='%23d97706'/><rect x='46' y='26' width='6' height='6' fill='%23d97706'/><rect x='36' y='28' width='4' height='6' fill='%23d97706'/><rect x='44' y='22' width='2' height='2' fill='%23000000'/><rect x='50' y='26' width='2' height='2' fill='%23fca5a5'/><rect x='12' y='28' width='4' height='4' fill='%23d97706'/></g></defs><rect x='20' y='38' width='4' height='10' fill='%23c2410c'/><rect x='38' y='40' width='4' height='10' fill='%23c2410c'/><g transform='translate(0,-1)'><rect x='8' y='28' width='4' height='4' fill='%23d97706'/><rect x='4' y='24' width='4' height='4' fill='%23d97706'/><use href='%23k' x='0' y='0'/></g><rect x='20' y='40' width='4' height='10' fill='%23d97706'/><rect x='38' y='38' width='4' height='10' fill='%23d97706'/></svg>");
+    --quad-f8: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><defs><g id='k'><rect x='44' y='16' width='4' height='4' fill='%23c2410c'/><rect x='16' y='28' width='24' height='12' fill='%23d97706'/><rect x='36' y='20' width='14' height='12' fill='%23d97706'/><rect x='38' y='16' width='4' height='6' fill='%23d97706'/><rect x='46' y='26' width='6' height='6' fill='%23d97706'/><rect x='36' y='28' width='4' height='6' fill='%23d97706'/><rect x='44' y='22' width='2' height='2' fill='%23000000'/><rect x='50' y='26' width='2' height='2' fill='%23fca5a5'/><rect x='12' y='28' width='4' height='4' fill='%23d97706'/></g></defs><rect x='22' y='39' width='4' height='10' fill='%23c2410c'/><rect x='36' y='40' width='4' height='10' fill='%23c2410c'/><g transform='translate(0,0)'><rect x='8' y='26' width='4' height='4' fill='%23d97706'/><rect x='4' y='22' width='4' height='4' fill='%23d97706'/><use href='%23k' x='0' y='0'/></g><rect x='18' y='40' width='4' height='10' fill='%23d97706'/><rect x='40' y='39' width='4' height='10' fill='%23d97706'/></svg>");
+    
+/* 
+ * ==========================================
+ * ☕ PHASE 3: THE SEPARATE LATTE SVG
+ * ==========================================
+ */
+    --latte-svg: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' shape-rendering='crispEdges'><rect x='42' y='20' width='6' height='10' fill='%23d97706' opacity='0.9'/><rect x='43' y='22' width='4' height='7' fill='%23fca5a5'/><rect x='44' y='14' width='2' height='8' fill='%23d97706'/></svg>");
+}
+
+/* Base Stage */
+.pixel-kitty-container {
+    height: 70px; 
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+    margin: 50px 0;
+    border-bottom: 2px solid #1a1a1a;
+}
+
+/* 
+ * The Mover handles horizontal travel, Faceplanting, and flipping left/right
+ */
+.kitty-mover {
+    width: 64px;
+    height: 64px;
+    position: absolute;
+    bottom: 0;
+    left: -70px;
+    
+    /* Set rotation point to the cat's feet so it falls forward naturally */
+    transform-origin: 50% 100%; 
+    
+    /* 15 second total loop for the full sequence */
+    animation: move-and-tumble 15s infinite linear;
+}
+
+/* Base shared styles for the cat bodies and the latte */
+.kitty-biped, .kitty-quad, .latte-cup {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* The Bipedal Walk (Slowed down to 1.4s) */
+.kitty-biped {
+    background-image: var(--biped-f1);
+    animation: 
+        walk-biped 1.4s step-end infinite,
+        toggle-biped 15s infinite; 
+}
+
+/* The Quadruped Walk (Slowed down to 1.4s) */
+.kitty-quad {
+    background-image: var(--quad-f1);
+    animation: 
+        walk-quad 1.4s step-end infinite,
+        toggle-quad 15s infinite; 
+}
+
+/* The Latte Cup Physics */
+.latte-cup {
+    background-image: var(--latte-svg);
+    animation: latte-fly 15s infinite linear;
+}
+
+/* 
+ * ==========================================
+ * ☕ THE HELD ITEM CONTAINER & PHYSICS
+ * ==========================================
+ */
+#held-item {
+    /* ADJUST THESE NUMBERS if you want the icon bigger or smaller */
+    width: 20px; 
+    height: 20px;
+    
+    position: absolute;
+    left: 35px;
+    top: 10px;
+    
+    /* This forces the big SVG to scale down into the 22x22 box */
+    background-size: contain; 
+    background-position: center bottom;
+    background-repeat: no-repeat;
+    
+    animation: item-fly 15s infinite linear;
+}
+
+/* The Item Physics (Renamed from latte-fly) */
+@keyframes item-fly {
+    0%, 35% { 
+        transform: translate(0, 0) rotate(0deg); 
+        opacity: 1; 
+    }
+    /* Throws the item forward and down when the cat trips */
+    40% { 
+        transform: translate(40px, -60px) rotate(-180deg); 
+        opacity: 0; 
+    }
+    41%, 100% { 
+        opacity: 0; 
+        transform: translate(0,0); 
+    }
+}
+/* 
+ * ==========================================
+ * 🎬 MASTER ANIMATION TIMELINES
+ * ==========================================
+ */
+
+/* 1. Walk Cycles */
+@keyframes walk-biped {
+    0%    { background-image: var(--biped-f1); }
+    12.5% { background-image: var(--biped-f2); }
+    25%   { background-image: var(--biped-f3); }
+    37.5% { background-image: var(--biped-f4); }
+    50%   { background-image: var(--biped-f5); }
+    62.5% { background-image: var(--biped-f6); }
+    75%   { background-image: var(--biped-f7); }
+    87.5% { background-image: var(--biped-f8); }
+    100%  { background-image: var(--biped-f1); }
+}
+
+@keyframes walk-quad {
+    0%    { background-image: var(--quad-f1); }
+    12.5% { background-image: var(--quad-f2); }
+    25%   { background-image: var(--quad-f3); }
+    37.5% { background-image: var(--quad-f4); }
+    50%   { background-image: var(--quad-f5); }
+    62.5% { background-image: var(--quad-f6); }
+    75%   { background-image: var(--quad-f7); }
+    87.5% { background-image: var(--quad-f8); }
+    100%  { background-image: var(--quad-f1); }
+}
+
+/* 2. Opacity Toggles (Who is visible when?) */
+@keyframes toggle-biped {
+    0%, 46.9% { opacity: 1; }
+    47%, 100% { opacity: 0; }
+}
+
+@keyframes toggle-quad {
+    0%, 46.9% { opacity: 0; }
+    47%, 100% { opacity: 1; }
+}
+
+/* 3. The Grand Journey (Walk Right -> Faceplant -> Walk Left) */
+@keyframes move-and-tumble {
+    /* Walk right on two legs */
+    0%   { left: -70px; transform: scaleX(1) rotate(0deg); }
+    
+    /* Stop well before the screen edge so we can see the fall */
+    35%  { left: calc(100% - 120px); transform: scaleX(1) rotate(0deg); }
+    
+    /* Trip and faceplant immediately! */
+    36%  { left: calc(100% - 120px); transform: scaleX(1) rotate(90deg); }
+    
+    /* 
+     * Dizzy Phase: Shaking back and forth while on the ground 
+     */
+    38%  { left: calc(100% - 120px); transform: scaleX(1) rotate(85deg); }
+    40%  { left: calc(100% - 120px); transform: scaleX(1) rotate(95deg); }
+    42%  { left: calc(100% - 120px); transform: scaleX(1) rotate(85deg); }
+    44%  { left: calc(100% - 120px); transform: scaleX(1) rotate(90deg); }
+    
+    /* Stand up, Instantly flip around to face left (Opacity swaps to Quadruped here!) */
+    47%  { left: calc(100% - 120px); transform: scaleX(-1) rotate(0deg); }
+    
+    /* Walk all the way back to the start on four legs */
+    95%  { left: -70px; transform: scaleX(-1) rotate(0deg); }
+    
+    /* Snap back to facing right, ready to start the loop over */
+    100% { left: -70px; transform: scaleX(1) rotate(0deg); }
+}
+
+/* 4. The Latte Physics */
+@keyframes latte-fly {
+    /* Stays in the cat's hand smoothly */
+    0%, 35% { 
+        transform: translate(0, 0) rotate(0deg); 
+        opacity: 1; 
+    }
+    
+    /* 
+     * When the cat rotates 90 degrees, the latte is technically inside a rotated box.
+     * So to throw the latte "forward and down", we move it on the X/Y axis relative to that rotated box. 
+     */
+    40% { 
+        transform: translate(30px, -80px) rotate(-180deg); 
+        opacity: 0; 
+    }
+    
+    /* Stay hidden until the loop restarts */
+    41%, 100% { 
+        opacity: 0; 
+        transform: translate(0,0); 
+    }
+}
