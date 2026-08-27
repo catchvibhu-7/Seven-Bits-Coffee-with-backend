@@ -2,7 +2,7 @@
  * SEVEN BITS COFFEE - ARCADE SHARED FX
  * Location: /js/features/game-fx.js
  *
- * Two things every single-player arcade game reuses:
+ * Things every single-player arcade game reuses:
  *  - runCountdown(): a 3-2-1-GO overlay before play actually starts, so a
  *    reflex game doesn't cost a life while the player is still finding the
  *    tab. It only delays the caller's own start function - state resets
@@ -12,6 +12,10 @@
  *    leaderboard row) and whether it beat the current #1 (in which case it
  *    fires confetti). Every game routes its game-over submission through
  *    this instead of calling ArcadeSystem.submitScore directly.
+ *  - loadDifficulty()/saveDifficulty()/difficultySelectorHtml()/
+ *    wireDifficultySelector(): an EASY/NORMAL/HARD control, persisted
+ *    per-browser in localStorage, for the games where speed/gravity/etc.
+ *    genuinely change the difficulty curve.
  */
 import { ArcadeSystem } from "./arcade-logic.js";
 
@@ -87,6 +91,61 @@ export function fireConfetti(root) {
         layer.appendChild(piece);
     }
     setTimeout(() => layer.remove(), 3200);
+}
+
+const DIFFICULTIES = ["easy", "normal", "hard"];
+
+export function loadDifficulty(storageKey) {
+    try {
+        const v = localStorage.getItem(storageKey);
+        return DIFFICULTIES.includes(v) ? v : "normal";
+    } catch (e) {
+        return "normal";
+    }
+}
+
+export function saveDifficulty(storageKey, value) {
+    try {
+        localStorage.setItem(storageKey, value);
+    } catch (e) {
+        // Private-browsing/storage-blocked - the buttons still work for this session.
+    }
+}
+
+/** A row of EASY/NORMAL/HARD buttons. `idPrefix` must be unique per game
+ *  (e.g. "snake-diff") since the caller wires click handlers by that id. */
+export function difficultySelectorHtml(idPrefix, current) {
+    return `
+        <div style="display:flex; gap:6px; max-width:280px; margin:10px auto 0;">
+            ${DIFFICULTIES.map((d) => {
+                const active = d === current;
+                return `<button type="button" id="${idPrefix}-${d}" class="admin-btn" style="flex:1; margin-right:0; ${active ? "background:var(--color-accent); color:var(--color-accent-contrast); border-color:var(--color-accent);" : ""}">${d.toUpperCase()}</button>`;
+            }).join("")}
+        </div>
+    `;
+}
+
+/** Wires the buttons from difficultySelectorHtml(). onSelect is called with
+ *  the chosen difficulty; the caller decides what that means (usually:
+ *  persist it and restart the round with new parameters). */
+export function wireDifficultySelector(root, idPrefix, onSelect) {
+    DIFFICULTIES.forEach((d) => {
+        root.querySelector(`#${idPrefix}-${d}`)?.addEventListener("click", () => onSelect(d));
+    });
+}
+
+/** Re-highlights the active button in place - cheaper than re-rendering the
+ *  whole selector, and it survives a startGame() that doesn't touch this
+ *  part of the DOM. */
+export function paintDifficultySelector(root, idPrefix, current) {
+    DIFFICULTIES.forEach((d) => {
+        const btn = root.querySelector(`#${idPrefix}-${d}`);
+        if (!btn) return;
+        const active = d === current;
+        btn.style.background = active ? "var(--color-accent)" : "";
+        btn.style.color = active ? "var(--color-accent-contrast)" : "";
+        btn.style.borderColor = active ? "var(--color-accent)" : "";
+    });
 }
 
 /** Submits a score only if it's > 0, comparing against the leaderboard's

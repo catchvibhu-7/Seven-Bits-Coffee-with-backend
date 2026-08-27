@@ -7,18 +7,23 @@
  * CSS vars itself): bird = accent, pipes = cyan.
  */
 import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
+import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../features/game-fx.js";
 
 const WIDTH = 300;
 const HEIGHT = 400;
 const BIRD_X = 60;
 const BIRD_R = 10;
-const GRAVITY = 0.4;
-const FLAP_VELOCITY = -7;
 const PIPE_WIDTH = 40;
-const PIPE_GAP = 130;
-const PIPE_SPEED = 2.2;
-const PIPE_INTERVAL = 90; // frames between spawns
+const DIFFICULTY_KEY = "sb-arcade-flappy-difficulty";
+// The original fixed values (gravity 0.4, flap -7, gap 130) made the bird
+// drop hard and fast with very little room to correct - "unable to play"
+// territory for anyone but a very practiced player. NORMAL is a noticeably
+// gentler fall with a wider gap; HARD is close to the old defaults.
+const DIFFICULTY_PRESETS = {
+    easy: { gravity: 0.22, flap: -5.2, gap: 175, pipeSpeed: 1.6, pipeInterval: 100 },
+    normal: { gravity: 0.28, flap: -5.8, gap: 155, pipeSpeed: 1.9, pipeInterval: 95 },
+    hard: { gravity: 0.38, flap: -6.8, gap: 130, pipeSpeed: 2.3, pipeInterval: 88 }
+};
 
 export const FlappyGame = {
     root: null,
@@ -36,13 +41,17 @@ export const FlappyGame = {
     touchHandler: null,
     keyHandler: null,
     colors: null,
+    difficulty: "normal",
+    preset: null,
 
     mount(root) {
         this.root = root;
+        this.difficulty = loadDifficulty(DIFFICULTY_KEY);
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">FLAPPY BIT</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="flap-score" style="color:var(--color-accent);">0</strong></p>
             <canvas id="flap-canvas" width="${WIDTH}" height="${HEIGHT}" style="display:block; margin:0 auto; background:var(--color-bg); border:1px solid var(--color-border); max-width:100%; height:auto; cursor:pointer;"></canvas>
+            ${difficultySelectorHtml("flap-diff", this.difficulty)}
             <p id="flap-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;">Click/tap or press Space to flap.</p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="flap-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
@@ -72,6 +81,12 @@ export const FlappyGame = {
         document.addEventListener("keydown", this.keyHandler);
         this.root.querySelector("#flap-back").addEventListener("click", () => this.exit());
         this.root.querySelector("#flap-again").addEventListener("click", () => this.startGame());
+        wireDifficultySelector(this.root, "flap-diff", (d) => {
+            this.difficulty = d;
+            saveDifficulty(DIFFICULTY_KEY, d);
+            paintDifficultySelector(this.root, "flap-diff", d);
+            this.startGame();
+        });
 
         this.startGame();
     },
@@ -89,6 +104,7 @@ export const FlappyGame = {
     },
 
     startGame() {
+        this.preset = DIFFICULTY_PRESETS[this.difficulty] || DIFFICULTY_PRESETS.normal;
         this.birdY = HEIGHT / 2;
         this.birdVY = 0;
         this.pipes = [];
@@ -109,7 +125,7 @@ export const FlappyGame = {
 
     flap() {
         if (this.gameOver || !this.ready) return;
-        this.birdVY = FLAP_VELOCITY;
+        this.birdVY = this.preset.flap;
     },
 
     loop() {
@@ -121,14 +137,14 @@ export const FlappyGame = {
 
     update() {
         this.frame++;
-        this.birdVY += GRAVITY;
+        this.birdVY += this.preset.gravity;
         this.birdY += this.birdVY;
 
-        if (this.frame % PIPE_INTERVAL === 0) {
-            const gapY = 50 + Math.random() * (HEIGHT - 100 - PIPE_GAP);
+        if (this.frame % this.preset.pipeInterval === 0) {
+            const gapY = 50 + Math.random() * (HEIGHT - 100 - this.preset.gap);
             this.pipes.push({ x: WIDTH, gapY, passed: false });
         }
-        this.pipes.forEach((pipe) => (pipe.x -= PIPE_SPEED));
+        this.pipes.forEach((pipe) => (pipe.x -= this.preset.pipeSpeed));
         this.pipes = this.pipes.filter((pipe) => pipe.x > -PIPE_WIDTH);
 
         for (const pipe of this.pipes) {
@@ -138,7 +154,7 @@ export const FlappyGame = {
                 this.updateScore();
             }
             const withinX = BIRD_X + BIRD_R > pipe.x && BIRD_X - BIRD_R < pipe.x + PIPE_WIDTH;
-            const withinGap = this.birdY - BIRD_R > pipe.gapY && this.birdY + BIRD_R < pipe.gapY + PIPE_GAP;
+            const withinGap = this.birdY - BIRD_R > pipe.gapY && this.birdY + BIRD_R < pipe.gapY + this.preset.gap;
             if (withinX && !withinGap) {
                 return this.endGame();
             }
@@ -162,7 +178,7 @@ export const FlappyGame = {
         ctx.fillStyle = this.colors.pipe;
         this.pipes.forEach((pipe) => {
             ctx.fillRect(pipe.x, 0, PIPE_WIDTH, pipe.gapY);
-            ctx.fillRect(pipe.x, pipe.gapY + PIPE_GAP, PIPE_WIDTH, HEIGHT - pipe.gapY - PIPE_GAP);
+            ctx.fillRect(pipe.x, pipe.gapY + this.preset.gap, PIPE_WIDTH, HEIGHT - pipe.gapY - this.preset.gap);
         });
 
         ctx.fillStyle = this.colors.bird;

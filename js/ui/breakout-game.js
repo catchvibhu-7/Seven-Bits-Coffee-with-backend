@@ -7,7 +7,7 @@
  * (canvas can't resolve CSS vars itself): paddle = accent, bricks = cyan.
  */
 import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
+import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../features/game-fx.js";
 
 const WIDTH = 320;
 const HEIGHT = 400;
@@ -20,6 +20,12 @@ const BRICK_H = 16;
 const BRICK_GAP = 3;
 const BRICK_TOP = 30;
 const SENSITIVITY_KEY = "sb-arcade-breakout-sensitivity";
+const DIFFICULTY_KEY = "sb-arcade-breakout-difficulty";
+const DIFFICULTY_PRESETS = {
+    easy: { ballVX: 1.8, ballVY: -2.1, steerMax: 3 },
+    normal: { ballVX: 2.2, ballVY: -2.6, steerMax: 3.5 },
+    hard: { ballVX: 2.8, ballVY: -3.2, steerMax: 4.5 }
+};
 
 function loadSensitivity() {
     try {
@@ -58,10 +64,12 @@ export const BreakoutGame = {
     keyUpHandler: null,
     colors: null,
     paddleSpeed: 5,
+    difficulty: "normal",
 
     mount(root) {
         this.root = root;
         this.paddleSpeed = loadSensitivity();
+        this.difficulty = loadDifficulty(DIFFICULTY_KEY);
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">BREAKOUT</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="brk-score" style="color:var(--color-accent);">0</strong></p>
@@ -75,6 +83,7 @@ export const BreakoutGame = {
                 <input type="range" id="brk-sensitivity" min="2" max="10" step="1" value="${this.paddleSpeed}" style="flex:1;">
                 <strong id="brk-sensitivity-val" style="color:var(--color-accent); min-width:1.4em; text-align:right;">${this.paddleSpeed}</strong>
             </div>
+            ${difficultySelectorHtml("brk-diff", this.difficulty)}
             <p id="brk-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="brk-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
@@ -88,6 +97,12 @@ export const BreakoutGame = {
             this.paddleSpeed = parseInt(e.target.value, 10);
             this.root.querySelector("#brk-sensitivity-val").textContent = this.paddleSpeed;
             saveSensitivity(this.paddleSpeed);
+        });
+        wireDifficultySelector(this.root, "brk-diff", (d) => {
+            this.difficulty = d;
+            saveDifficulty(DIFFICULTY_KEY, d);
+            paintDifficultySelector(this.root, "brk-diff", d);
+            this.startGame();
         });
         this.colors = {
             bg: themeColor("--color-bg", "#0a0a0a"),
@@ -146,11 +161,12 @@ export const BreakoutGame = {
     },
 
     startGame() {
+        const preset = DIFFICULTY_PRESETS[this.difficulty] || DIFFICULTY_PRESETS.normal;
         this.paddleX = WIDTH / 2 - PADDLE_W / 2;
         this.ballX = WIDTH / 2;
         this.ballY = HEIGHT - 40;
-        this.ballVX = 2.5;
-        this.ballVY = -3;
+        this.ballVX = preset.ballVX;
+        this.ballVY = preset.ballVY;
         this.score = 0;
         this.gameOver = false;
         this.bricks = Array.from({ length: BRICK_ROWS * BRICK_COLS }, () => ({ alive: true }));
@@ -194,8 +210,9 @@ export const BreakoutGame = {
         ) {
             this.ballVY *= -1;
             // Steer based on where it hit the paddle, like a real Breakout.
+            const preset = DIFFICULTY_PRESETS[this.difficulty] || DIFFICULTY_PRESETS.normal;
             const hitPos = (this.ballX - (this.paddleX + PADDLE_W / 2)) / (PADDLE_W / 2);
-            this.ballVX = hitPos * 4;
+            this.ballVX = hitPos * preset.steerMax;
         }
 
         const bw = this.brickWidth();

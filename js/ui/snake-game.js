@@ -2,18 +2,27 @@
  * SEVEN BITS COFFEE - SNAKE (arcade)
  * Location: /js/ui/snake-game.js
  *
- * Single-player, canvas-rendered. Speed ramps up as the score grows (every
- * 5 points shaves 10ms off the tick interval, floored at 70ms) so it stays
- * a quick, casual round rather than dragging on. Body color is the live
- * theme accent (read via themeColor() since canvas can't resolve CSS vars
- * itself); food uses the secondary/cyan theme color for contrast.
+ * Single-player, canvas-rendered. Speed ramps up as food is eaten so it
+ * stays a quick, casual round rather than dragging on forever - but gently,
+ * per the EASY/NORMAL/HARD preset (an earlier version shaved time off every
+ * 5 SCORE points, which is every food eaten since food is worth 10, so it
+ * hit its speed floor after only 3-4 foods and felt unplayable). Body color
+ * is the live theme accent (read via themeColor() since canvas can't
+ * resolve CSS vars itself); food uses the secondary/cyan theme color.
  */
 import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
+import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../features/game-fx.js";
 
 const COLS = 18;
 const ROWS = 18;
 const CELL = 20;
+const DIFFICULTY_KEY = "sb-arcade-snake-difficulty";
+// { start/floor: tick interval in ms, stepPerFood: ms shaved off per food eaten }
+const DIFFICULTY_PRESETS = {
+    easy: { start: 170, floor: 120, stepPerFood: 3 },
+    normal: { start: 150, floor: 95, stepPerFood: 4 },
+    hard: { start: 130, floor: 70, stepPerFood: 6 }
+};
 
 export const SnakeGame = {
     root: null,
@@ -28,9 +37,12 @@ export const SnakeGame = {
     gameOver: false,
     keyHandler: null,
     colors: null,
+    difficulty: "normal",
+    foodsEaten: 0,
 
     mount(root) {
         this.root = root;
+        this.difficulty = loadDifficulty(DIFFICULTY_KEY);
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">SNAKE</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="snake-score" style="color:var(--color-accent);">0</strong></p>
@@ -39,6 +51,7 @@ export const SnakeGame = {
                 <div></div><button id="sn-up" class="admin-btn">↑</button><div></div>
                 <button id="sn-left" class="admin-btn">←</button><button id="sn-down" class="admin-btn">↓</button><button id="sn-right" class="admin-btn">→</button>
             </div>
+            ${difficultySelectorHtml("snake-diff", this.difficulty)}
             <p id="snake-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="snake-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
@@ -55,6 +68,12 @@ export const SnakeGame = {
         this.root.querySelector("#sn-right").addEventListener("click", () => this.setDirection(1, 0));
         this.root.querySelector("#snake-back").addEventListener("click", () => this.exit());
         this.root.querySelector("#snake-again").addEventListener("click", () => this.startGame());
+        wireDifficultySelector(this.root, "snake-diff", (d) => {
+            this.difficulty = d;
+            saveDifficulty(DIFFICULTY_KEY, d);
+            paintDifficultySelector(this.root, "snake-diff", d);
+            this.startGame();
+        });
 
         this.keyHandler = (e) => this.handleKey(e);
         document.addEventListener("keydown", this.keyHandler);
@@ -78,6 +97,7 @@ export const SnakeGame = {
         this.direction = { x: 1, y: 0 };
         this.nextDirection = { x: 1, y: 0 };
         this.score = 0;
+        this.foodsEaten = 0;
         this.gameOver = false;
         this.root.querySelector("#snake-message").textContent = "";
         this.root.querySelector("#snake-again").style.display = "none";
@@ -89,7 +109,8 @@ export const SnakeGame = {
 
     startTimer() {
         this.stopTimer();
-        const speed = Math.max(70, 140 - Math.floor(this.score / 5) * 10);
+        const preset = DIFFICULTY_PRESETS[this.difficulty] || DIFFICULTY_PRESETS.normal;
+        const speed = Math.max(preset.floor, preset.start - this.foodsEaten * preset.stepPerFood);
         this.tickTimer = setInterval(() => this.tick(), speed);
     },
 
@@ -140,9 +161,10 @@ export const SnakeGame = {
         this.snake.unshift(head);
         if (head.x === this.food.x && head.y === this.food.y) {
             this.score += 10;
+            this.foodsEaten += 1;
             this.updateScore();
             this.placeFood();
-            this.startTimer(); // speed ramps up as the score grows
+            this.startTimer(); // speed ramps up gently as food is eaten
         } else {
             this.snake.pop();
         }

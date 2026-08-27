@@ -11,13 +11,23 @@
  * resolve CSS vars itself): player paddle = accent, AI paddle = cyan.
  */
 import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
+import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../features/game-fx.js";
 
 const WIDTH = 400;
 const HEIGHT = 280;
 const PADDLE_W = 8;
 const PADDLE_H = 60;
 const SENSITIVITY_KEY = "sb-arcade-pong-sensitivity";
+const DIFFICULTY_KEY = "sb-arcade-pong-difficulty";
+// Ball speed grows `growth`x on every player hit (uncapped growth is what
+// made this "increase way too fast" before - a few good rallies compounded
+// into an unplayable speed) but is clamped to `max` so a long rally plateaus
+// instead of spiraling.
+const DIFFICULTY_PRESETS = {
+    easy: { initial: 3.0, growth: 1.02, max: 6.0 },
+    normal: { initial: 3.5, growth: 1.03, max: 7.5 },
+    hard: { initial: 4.2, growth: 1.05, max: 10 }
+};
 
 function loadSensitivity() {
     try {
@@ -56,10 +66,12 @@ export const PongGame = {
     keyUpHandler: null,
     colors: null,
     paddleSpeed: 5,
+    difficulty: "normal",
 
     mount(root) {
         this.root = root;
         this.paddleSpeed = loadSensitivity();
+        this.difficulty = loadDifficulty(DIFFICULTY_KEY);
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">PONG</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">RALLY: <strong id="pong-score" style="color:var(--color-accent);">0</strong></p>
@@ -73,6 +85,7 @@ export const PongGame = {
                 <input type="range" id="pong-sensitivity" min="2" max="10" step="1" value="${this.paddleSpeed}" style="flex:1;">
                 <strong id="pong-sensitivity-val" style="color:var(--color-accent); min-width:1.4em; text-align:right;">${this.paddleSpeed}</strong>
             </div>
+            ${difficultySelectorHtml("pong-diff", this.difficulty)}
             <p id="pong-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="pong-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
@@ -86,6 +99,12 @@ export const PongGame = {
             this.paddleSpeed = parseInt(e.target.value, 10);
             this.root.querySelector("#pong-sensitivity-val").textContent = this.paddleSpeed;
             saveSensitivity(this.paddleSpeed);
+        });
+        wireDifficultySelector(this.root, "pong-diff", (d) => {
+            this.difficulty = d;
+            saveDifficulty(DIFFICULTY_KEY, d);
+            paintDifficultySelector(this.root, "pong-diff", d);
+            this.startGame();
         });
         this.colors = {
             bg: themeColor("--color-bg", "#0a0a0a"),
@@ -162,10 +181,22 @@ export const PongGame = {
     resetBall(direction) {
         this.ballX = WIDTH / 2;
         this.ballY = HEIGHT / 2;
-        const speed = 3.5;
+        const preset = DIFFICULTY_PRESETS[this.difficulty] || DIFFICULTY_PRESETS.normal;
         const angle = Math.random() * 0.6 - 0.3;
-        this.ballVX = Math.cos(angle) * speed * direction;
-        this.ballVY = Math.sin(angle) * speed;
+        this.ballVX = Math.cos(angle) * preset.initial * direction;
+        this.ballVY = Math.sin(angle) * preset.initial;
+    },
+
+    // Scales vx/vy together so the ball's trajectory angle is preserved -
+    // only its speed is capped.
+    clampBallSpeed() {
+        const preset = DIFFICULTY_PRESETS[this.difficulty] || DIFFICULTY_PRESETS.normal;
+        const speed = Math.hypot(this.ballVX, this.ballVY);
+        if (speed > preset.max) {
+            const scale = preset.max / speed;
+            this.ballVX *= scale;
+            this.ballVY *= scale;
+        }
     },
 
     loop() {
@@ -200,7 +231,9 @@ export const PongGame = {
             this.ballY >= this.playerY &&
             this.ballY <= this.playerY + PADDLE_H
         ) {
-            this.ballVX *= -1.05;
+            const preset = DIFFICULTY_PRESETS[this.difficulty] || DIFFICULTY_PRESETS.normal;
+            this.ballVX *= -preset.growth;
+            this.clampBallSpeed();
             this.score += 1;
             this.updateScore();
         }
