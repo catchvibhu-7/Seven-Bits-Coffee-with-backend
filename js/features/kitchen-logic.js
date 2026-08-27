@@ -79,9 +79,12 @@ export const KitchenSystem = {
      * as any other station (register, another kitchen screen) changes an
      * order - no manual refresh or same-tab requirement needed anymore.
      */
-    connectLiveUpdates(onChange) {
+    connectLiveUpdates(onChange, onArcadeChange) {
         const source = new EventSource("/api/orders/stream");
         source.addEventListener("orders", () => onChange());
+        // Same stream, different event type - the arcade (Tic-Tac-Toe matches)
+        // piggybacks on this connection rather than opening a second one.
+        if (onArcadeChange) source.addEventListener("arcade", () => onArcadeChange());
         source.onerror = () => {
             // EventSource auto-reconnects; nothing to do here.
         };

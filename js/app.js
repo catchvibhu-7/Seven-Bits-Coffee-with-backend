@@ -406,6 +406,11 @@ window.showPage = async (pageId) => {
         await refreshOrderStatusWidget();
         if (TRACKING_ROLES.includes(session.role)) ensureOrdersStream();
     }
+    if (pageId === "games") {
+        const module = await ensureGamesPageLoaded();
+        await module.GamesPage.init();
+        ensureOrdersStream();
+    }
 };
 
 /**
@@ -485,19 +490,33 @@ async function refreshOrderStatusWidget() {
  * (kitchen screen, admin view) picks up changes made anywhere else without
  * needing a manual refresh.
  */
+let gamesPageModule = null;
+async function ensureGamesPageLoaded() {
+    if (!gamesPageModule) gamesPageModule = await import("./ui/games-page.js");
+    return gamesPageModule;
+}
+
 function ensureOrdersStream() {
     if (ordersStream) return;
-    ordersStream = KitchenSystem.connectLiveUpdates(async () => {
-        const kitchenPage = document.getElementById("page-kitchen") || document.getElementById("page-orders");
-        if (kitchenPage && kitchenPage.classList.contains("active")) {
-            await KitchenSystem.fetchOrders();
-            renderKitchen();
+    ordersStream = KitchenSystem.connectLiveUpdates(
+        async () => {
+            const kitchenPage = document.getElementById("page-kitchen") || document.getElementById("page-orders");
+            if (kitchenPage && kitchenPage.classList.contains("active")) {
+                await KitchenSystem.fetchOrders();
+                renderKitchen();
+            }
+            const homePage = document.getElementById("page-home");
+            if (homePage && homePage.classList.contains("active")) {
+                await refreshOrderStatusWidget();
+            }
+        },
+        () => {
+            const gamesPage = document.getElementById("page-games");
+            if (gamesPage && gamesPage.classList.contains("active") && gamesPageModule) {
+                gamesPageModule.GamesPage.onArcadeChanged();
+            }
         }
-        const homePage = document.getElementById("page-home");
-        if (homePage && homePage.classList.contains("active")) {
-            await refreshOrderStatusWidget();
-        }
-    });
+    );
 }
 
 /**

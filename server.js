@@ -90,6 +90,7 @@ const FAVORITES_FILE = path.join(DATA_DIR, "favorites.json");
 const COMBOS_FILE = path.join(DATA_DIR, "combos.json");
 const TABLE_SESSIONS_FILE = path.join(DATA_DIR, "table-sessions.json");
 const COUPONS_FILE = path.join(DATA_DIR, "coupons.json");
+const ARCADE_SCORES_FILE = path.join(DATA_DIR, "arcade-scores.json");
 
 if (!fs.existsSync(AUDIT_LOG_FILE)) writeJson(AUDIT_LOG_FILE, []);
 if (!fs.existsSync(BRANDING_PROFILES_FILE)) writeJson(BRANDING_PROFILES_FILE, {});
@@ -190,6 +191,14 @@ if (!fs.existsSync(CONFIG_FILE)) {
       enabled: true,
       pointsPerRupeeSpent: 0.1, // e.g. 0.1 = 1 point per Rs.10 spent
       rupeeValuePerPoint: 0.5 // e.g. 0.5 = each point is worth Rs.0.50 off
+    },
+    // In-store arcade (GAMES tab) - a customer/guest unlocks it for
+    // sessionHours after placing an order, admin-editable from Global
+    // Settings. This is deliberately in-store only: there's no reason to
+    // let someone play from home just because they ordered once.
+    arcade: {
+      enabled: true,
+      sessionHours: 2
     }
   });
 }
@@ -2136,6 +2145,12 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   if (body.customIcons && typeof body.customIcons === "object") {
     config.customIcons = { ...config.customIcons, ...body.customIcons };
   }
+  if (body.arcade && typeof body.arcade === "object") {
+    config.arcade = { ...config.arcade, ...body.arcade };
+    config.arcade.enabled = config.arcade.enabled !== false;
+    const hours = Number(config.arcade.sessionHours);
+    config.arcade.sessionHours = Number.isFinite(hours) && hours > 0 ? Math.min(hours, 24) : 2;
+  }
   writeJson(CONFIG_FILE, config);
   sendJson(res, 200, config);
 });
@@ -2558,6 +2573,201 @@ route("POST", /^\/api\/coupons\/validate\/?$/, async (req, res) => {
   if (!coupon) return sendJson(res, 404, { error: "Invalid or expired coupon code" });
   const subtotal = Number(body.subtotal) || 0;
   sendJson(res, 200, { code: coupon.code, type: coupon.type, value: coupon.value, discountAmount: computeCouponDiscount(coupon, subtotal) });
+});
+
+// ---------------------------------------------------------------------------
+// Arcade (GAMES tab) - in-store only. A customer/guest unlocks it for
+// config.arcade.sessionHours after placing an order (see arcadeAccessInfo).
+// Tic-Tac-Toe match state is in-memory, not persisted - a server restart
+// mid-match just ends it, an acceptable trade for a "something to do while
+// you wait" feature rather than anything stakes-bearing. High scores ARE
+// persisted (ARCADE_SCORES_FILE) since there's no ongoing state to lose.
+// ---------------------------------------------------------------------------
+
+function arcadeOwnerKey(session) {
+  return session.role === "customer" ? `customer:${session.userId}` : `guest:${session.phone}`;
+}
+
+function arcadeAccessInfo(session) {
+  const config = readJson(CONFIG_FILE, {});
+  const arcadeConfig = config.arcade || { enabled: true, sessionHours: 2 };
+  if (!arcadeConfig.enabled) {
+    return { allowed: false, reason: "The arcade isn't available right now." };
+  }
+  const orders = readJson(ORDERS_FILE, []);
+  let mine = [];
+  if (session.role === "customer") mine = orders.filter((o) => o.customerId === session.userId);
+  else if (session.role === "guest") mine = orders.filter((o) => o.customerPhone === session.phone);
+  if (mine.length === 0) {
+    return { allowed: false, reason: "Place an order to unlock the arcade." };
+  }
+  const latest = mine.reduce((a, b) => (new Date(a.createdAt) > new Date(b.createdAt) ? a : b));
+  const expiresAt = new Date(new Date(latest.createdAt).getTime() + arcadeConfig.sessionHours * 3600000);
+  const allowed = expiresAt.getTime() > Date.now();
+  return {
+    allowed,
+    expiresAt: expiresAt.toISOString(),
+    reason: allowed ? null : "Your arcade session has expired - place a new order to keep playing."
+  };
+}
+
+route("GET", /^\/api\/arcade\/access\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  sendJson(res, 200, arcadeAccessInfo(session));
+});
+
+route("GET", /^\/api\/arcade\/scores\/?$/, async (req, res, params, url) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const game = url.searchParams.get("game");
+  if (!game) return sendJson(res, 400, { error: "game is required" });
+  const scores = readJson(ARCADE_SCORES_FILE, [])
+    .filter((s) => s.game === game)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+  sendJson(res, 200, scores);
+});
+
+route("POST", /^\/api\/arcade\/scores\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const access = arcadeAccessInfo(session);
+  if (!access.allowed) return sendJson(res, 403, { error: access.reason });
+  const body = await readBody(req);
+  const game = String(body.game || "");
+  if (!["tetris", "tictactoe"].includes(game)) return sendJson(res, 400, { error: "Unknown game" });
+  const score = parseInt(body.score, 10);
+  if (!Number.isFinite(score) || score < 0 || score > 1000000) {
+    return sendJson(res, 400, { error: "Invalid score" });
+  }
+  const scores = readJson(ARCADE_SCORES_FILE, []);
+  scores.push({
+    id: scores.length ? Math.max(...scores.map((s) => s.id)) + 1 : 1,
+    game,
+    name: session.name || "Player",
+    score,
+    achievedAt: new Date().toISOString()
+  });
+  writeJson(ARCADE_SCORES_FILE, scores);
+  sendJson(res, 201, { ok: true });
+});
+
+// --- Tic-Tac-Toe vs another in-store player ---
+// A single waiting slot (not a full queue - this is a small in-store
+// arcade, not a matchmaking platform) pairs the next two players who ask.
+// Broadcasts on the same SSE channel orders use (see broadcastOrdersChanged/
+// sseClients) rather than opening a second stream - clients already
+// listening for "orders" events also listen for "arcade" ones and re-fetch
+// match state through the endpoints below.
+let arcadeWaitingPlayer = null; // { key, name } | null
+const arcadeMatches = new Map(); // matchId -> match
+let nextArcadeMatchId = 1;
+
+function broadcastArcadeChanged() {
+  for (const res of sseClients) {
+    res.write("event: arcade\ndata: changed\n\n");
+  }
+}
+
+function findArcadeMatchForPlayer(key) {
+  for (const match of arcadeMatches.values()) {
+    if (match.players.includes(key)) return match;
+  }
+  return null;
+}
+
+function checkTicTacToeWinner(board) {
+  const lines = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+  ];
+  for (const [a, b, c] of lines) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+  }
+  return board.every((cell) => cell) ? "draw" : null;
+}
+
+route("POST", /^\/api\/arcade\/tictactoe\/queue\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const access = arcadeAccessInfo(session);
+  if (!access.allowed) return sendJson(res, 403, { error: access.reason });
+
+  const key = arcadeOwnerKey(session);
+  const existingMatch = findArcadeMatchForPlayer(key);
+  if (existingMatch) return sendJson(res, 200, { status: "matched", matchId: existingMatch.id });
+
+  if (arcadeWaitingPlayer && arcadeWaitingPlayer.key !== key) {
+    const match = {
+      id: nextArcadeMatchId++,
+      players: [arcadeWaitingPlayer.key, key],
+      names: [arcadeWaitingPlayer.name, session.name || "Player"],
+      board: Array(9).fill(null),
+      turn: 0,
+      winner: null,
+      createdAt: new Date().toISOString()
+    };
+    arcadeMatches.set(match.id, match);
+    arcadeWaitingPlayer = null;
+    broadcastArcadeChanged();
+    return sendJson(res, 200, { status: "matched", matchId: match.id });
+  }
+
+  arcadeWaitingPlayer = { key, name: session.name || "Player" };
+  sendJson(res, 200, { status: "waiting" });
+});
+
+route("POST", /^\/api\/arcade\/tictactoe\/cancel\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const key = arcadeOwnerKey(session);
+  if (arcadeWaitingPlayer && arcadeWaitingPlayer.key === key) arcadeWaitingPlayer = null;
+  sendJson(res, 200, { ok: true });
+});
+
+route("GET", /^\/api\/arcade\/tictactoe\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const match = arcadeMatches.get(Number(params.id));
+  if (!match) return sendJson(res, 404, { error: "Match not found" });
+  const key = arcadeOwnerKey(session);
+  const you = match.players.indexOf(key);
+  if (you === -1) return sendJson(res, 403, { error: "Not your match" });
+  sendJson(res, 200, { ...match, you });
+});
+
+route("POST", /^\/api\/arcade\/tictactoe\/(?<id>\d+)\/move\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const match = arcadeMatches.get(Number(params.id));
+  if (!match) return sendJson(res, 404, { error: "Match not found" });
+  const key = arcadeOwnerKey(session);
+  const playerIndex = match.players.indexOf(key);
+  if (playerIndex === -1) return sendJson(res, 403, { error: "Not your match" });
+  if (match.winner) return sendJson(res, 400, { error: "Game already over" });
+  if (match.turn !== playerIndex) return sendJson(res, 400, { error: "Not your turn" });
+
+  const body = await readBody(req);
+  const cell = parseInt(body.cell, 10);
+  if (!Number.isFinite(cell) || cell < 0 || cell > 8 || match.board[cell]) {
+    return sendJson(res, 400, { error: "Invalid move" });
+  }
+
+  match.board[cell] = playerIndex === 0 ? "X" : "O";
+  match.winner = checkTicTacToeWinner(match.board);
+  match.turn = playerIndex === 0 ? 1 : 0;
+  broadcastArcadeChanged();
+  sendJson(res, 200, { ...match, you: playerIndex });
+});
+
+route("POST", /^\/api\/arcade\/tictactoe\/(?<id>\d+)\/leave\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  arcadeMatches.delete(Number(params.id));
+  broadcastArcadeChanged();
+  sendJson(res, 200, { ok: true });
 });
 
 // ---------------------------------------------------------------------------

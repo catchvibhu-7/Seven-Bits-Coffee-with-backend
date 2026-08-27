@@ -201,6 +201,17 @@ export const AdminPortal = {
                     <input type="text" id="cfg-upi-payee-name" value="${c.upiPayeeName || ""}" placeholder="${c.shopName || "Your Shop"}" />
                 </div>
 
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ARCADE (GAMES TAB)</h3>
+                <p class="admin-help-text" style="margin-bottom:10px;">In-store only: a customer/guest unlocks the arcade for the session length below, starting from their most recent order.</p>
+                <div class="control-group" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="cfg-arcade-enabled" ${(c.arcade?.enabled ?? true) ? "checked" : ""} style="width:auto;" />
+                    <label style="margin:0;" for="cfg-arcade-enabled">ENABLE ARCADE</label>
+                </div>
+                <div class="control-group">
+                    <label>SESSION LENGTH (hours)</label>
+                    <input type="text" id="cfg-arcade-hours" value="${c.arcade?.sessionHours ?? 2}" />
+                </div>
+
                 <p id="global-settings-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="cfg-save">SAVE SETTINGS</button>
             </div>
@@ -214,6 +225,7 @@ export const AdminPortal = {
             const serviceCharge = parseFloat(document.getElementById("cfg-service-charge").value) / 100;
             const tipAmount = parseFloat(document.getElementById("cfg-tip-amount").value);
             const tableCount = parseInt(document.getElementById("cfg-table-count").value, 10);
+            const arcadeHours = parseFloat(document.getElementById("cfg-arcade-hours").value);
 
             if ([cgst, sgst, serviceCharge, tipAmount].some((n) => !Number.isFinite(n) || n < 0)) {
                 errorEl.textContent = "Rates and amounts must be positive numbers.";
@@ -221,6 +233,10 @@ export const AdminPortal = {
             }
             if (!Number.isFinite(tableCount) || tableCount < 0) {
                 errorEl.textContent = "Number of tables must be zero or a positive whole number.";
+                return;
+            }
+            if (!Number.isFinite(arcadeHours) || arcadeHours <= 0) {
+                errorEl.textContent = "Arcade session length must be a positive number of hours.";
                 return;
             }
 
@@ -235,7 +251,8 @@ export const AdminPortal = {
                     serviceChargeRate: serviceCharge,
                     tableCount,
                     upiVpa: document.getElementById("cfg-upi-vpa").value.trim(),
-                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim()
+                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim(),
+                    arcade: { enabled: document.getElementById("cfg-arcade-enabled").checked, sessionHours: arcadeHours }
                 });
                 if (window.applyBranding) window.applyBranding(AdminConfig.settings);
                 ok("Settings saved");
