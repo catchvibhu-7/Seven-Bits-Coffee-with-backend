@@ -1,0 +1,36 @@
+[
+  {
+    "id": 1,
+    "name": "cookie and Caffaine 1",
+    "description": "cookie with a dose of healthy caffiene.",
+    "items": [
+      {
+        "id": 304,
+        "quantity": 1
+      },
+      {
+        "id": 102,
+        "quantity": 1
+      }
+    ],
+    "price": 350,
+    "active": true
+  },
+  {
+    "id": 2,
+    "name": "butter Delight",
+    "description": "buttery crossiant with a smooth flat white",
+    "items": [
+      {
+        "id": 115,
+        "quantity": 1
+      },
+      {
+        "id": 303,
+        "quantity": 1
+      }
+    ],
+    "price": 370,
+    "active": true
+  }
+]

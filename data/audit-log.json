@@ -1,1 +1,47 @@
-[]
+[
+  {
+    "timestamp": "2026-08-14T07:37:35.886Z",
+    "action": "payroll_paid",
+    "actorId": 1,
+    "actorName": "Owner",
+    "actorRole": "owner",
+    "targetId": 3,
+    "targetUsername": "barista"
+  },
+  {
+    "timestamp": "2026-08-14T07:37:40.537Z",
+    "action": "payroll_paid",
+    "actorId": 1,
+    "actorName": "Owner",
+    "actorRole": "owner",
+    "targetId": 4,
+    "targetUsername": "kitchen"
+  },
+  {
+    "timestamp": "2026-08-14T07:37:42.199Z",
+    "action": "payroll_paid",
+    "actorId": 1,
+    "actorName": "Owner",
+    "actorRole": "owner",
+    "targetId": 6,
+    "targetUsername": "Manager"
+  },
+  {
+    "timestamp": "2026-08-18T11:19:45.434Z",
+    "action": "payroll_paid",
+    "actorId": 1,
+    "actorName": "Owner",
+    "actorRole": "owner",
+    "targetId": 4,
+    "targetUsername": "kitchen"
+  },
+  {
+    "timestamp": "2026-08-24T10:35:45.597Z",
+    "action": "payroll_paid",
+    "actorId": 1,
+    "actorName": "Owner",
+    "actorRole": "owner",
+    "targetId": 4,
+    "targetUsername": "kitchen"
+  }
+]

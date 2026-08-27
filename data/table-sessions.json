@@ -1,0 +1,26 @@
+[
+  {
+    "id": "TBL-96F7D6",
+    "tableNumber": "2",
+    "note": "",
+    "openedBy": "Owner",
+    "openedAt": "2026-08-23T15:57:00.023Z",
+    "status": "closed",
+    "closedAt": "2026-08-23T16:07:17.209Z",
+    "closedBy": "Owner",
+    "isPaid": true
+  },
+  {
+    "id": "TBL-BCCA0C",
+    "tableNumber": 1,
+    "note": "",
+    "customerName": "",
+    "customerPhone": "",
+    "openedBy": "Owner",
+    "openedAt": "2026-08-24T10:51:11.584Z",
+    "status": "closed",
+    "closedAt": "2026-08-24T10:52:14.409Z",
+    "closedBy": "Owner",
+    "isPaid": true
+  }
+]

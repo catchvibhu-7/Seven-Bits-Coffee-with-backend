@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "userId": 3,
+    "periodKey": "2026-07-31_2026-08-31",
+    "periodType": "monthly",
+    "periodStart": "2026-07-31T18:30:00.000Z",
+    "periodEnd": "2026-08-31T18:29:59.999Z",
+    "hoursWorked": null,
+    "amountPaid": 9000,
+    "paidAt": "2026-08-14T07:37:35.885Z",
+    "paidBy": "Owner"
+  },
+  {
+    "id": 2,
+    "userId": 4,
+    "periodKey": "2026-08-09_2026-08-16",
+    "periodType": "weekly",
+    "periodStart": "2026-08-09T18:30:00.000Z",
+    "periodEnd": "2026-08-16T18:29:59.999Z",
+    "hoursWorked": null,
+    "amountPaid": 2500,
+    "paidAt": "2026-08-14T07:37:40.536Z",
+    "paidBy": "Owner"
+  },
+  {
+    "id": 3,
+    "userId": 6,
+    "periodKey": "2026-07-31_2026-08-31",
+    "periodType": "monthly",
+    "periodStart": "2026-07-31T18:30:00.000Z",
+    "periodEnd": "2026-08-31T18:29:59.999Z",
+    "hoursWorked": null,
+    "amountPaid": 15000,
+    "paidAt": "2026-08-14T07:37:42.198Z",
+    "paidBy": "Owner"
+  },
+  {
+    "id": 4,
+    "userId": 4,
+    "periodKey": "2026-08-16_2026-08-23",
+    "periodType": "weekly",
+    "periodStart": "2026-08-16T18:30:00.000Z",
+    "periodEnd": "2026-08-23T18:29:59.999Z",
+    "hoursWorked": null,
+    "amountPaid": 2500,
+    "paidAt": "2026-08-18T11:19:45.432Z",
+    "paidBy": "Owner"
+  },
+  {
+    "id": 5,
+    "userId": 4,
+    "periodKey": "2026-08-23_2026-08-30",
+    "periodType": "weekly",
+    "periodStart": "2026-08-23T18:30:00.000Z",
+    "periodEnd": "2026-08-30T18:29:59.999Z",
+    "hoursWorked": null,
+    "amountPaid": 2500,
+    "paidAt": "2026-08-24T10:35:45.595Z",
+    "paidBy": "Owner"
+  }
+]

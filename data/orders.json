@@ -289,7 +289,7 @@
     "id": "SB-694313",
     "createdAt": "2026-08-12T06:55:37.496Z",
     "method": "COUNTER",
-    "isPaid": false,
+    "isPaid": true,
     "tipApplied": true,
     "serviceChargeActive": true,
     "customerId": null,
@@ -301,7 +301,7 @@
         "price": 240,
         "quantity": 1,
         "station": "BARISTA",
-        "isDone": false
+        "isDone": true
       },
       {
         "id": 102,
@@ -309,7 +309,7 @@
         "price": 260,
         "quantity": 1,
         "station": "BARISTA",
-        "isDone": false
+        "isDone": true
       },
       {
         "id": 103,
@@ -317,7 +317,7 @@
         "price": 180,
         "quantity": 1,
         "station": "BARISTA",
-        "isDone": false
+        "isDone": true
       }
     ],
     "subtotal": 680,
@@ -326,6 +326,548 @@
     "serviceCharge": 13.6,
     "tipAmount": 7,
     "total": 768.6,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-B9474E",
+    "createdAt": "2026-08-14T07:23:48.773Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": null,
+    "customerPhone": "7230931024",
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "price": 240,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true
+      },
+      {
+        "id": 102,
+        "name": "1024 Cold Brew",
+        "price": 260,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true
+      },
+      {
+        "id": 115,
+        "name": "7-Bit Flat White",
+        "price": 230,
+        "quantity": 3,
+        "station": "BARISTA",
+        "isDone": true
+      },
+      {
+        "id": 305,
+        "name": "Matcha Tiramisu",
+        "price": 290,
+        "quantity": 1,
+        "station": "DESSERTS",
+        "isDone": true
+      },
+      {
+        "id": 304,
+        "name": "Ginger-Snap Cookies",
+        "price": 110,
+        "quantity": 2,
+        "station": "DESSERTS",
+        "isDone": true
+      }
+    ],
+    "subtotal": 1700,
+    "cgst": 85,
+    "sgst": 85,
+    "serviceCharge": 34,
+    "tipAmount": 0,
+    "total": 1904,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-25672C",
+    "createdAt": "2026-08-14T07:46:23.880Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": 5,
+    "customerPhone": "8825125275",
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "price": 240,
+        "quantity": 5,
+        "station": "BARISTA",
+        "isDone": true
+      }
+    ],
+    "subtotal": 1200,
+    "cgst": 60,
+    "sgst": 60,
+    "serviceCharge": 24,
+    "tipAmount": 0,
+    "total": 1344,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-7117EE",
+    "createdAt": "2026-08-17T11:45:55.553Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": null,
+    "customerPhone": "7230931024",
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 285,
+        "quantity": 2,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "oat",
+        "milkLabel": "Oat Milk",
+        "extras": [
+          {
+            "key": "extra-butter",
+            "label": "Extra Butter",
+            "priceDelta": 15
+          }
+        ],
+        "notes": "bla bla bla"
+      }
+    ],
+    "subtotal": 570,
+    "cgst": 28.5,
+    "sgst": 28.5,
+    "serviceCharge": 11.4,
+    "tipAmount": 0,
+    "total": 638.4,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-A42622",
+    "createdAt": "2026-08-18T09:51:47.291Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": null,
+    "customerPhone": "7230931024",
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 300,
+        "quantity": 2,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "large",
+        "sizeLabel": "Large",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [
+          {
+            "key": "whipped-cream",
+            "label": "Whipped Cream",
+            "priceDelta": 20
+          }
+        ],
+        "notes": ""
+      },
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 240,
+        "quantity": 2,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [],
+        "notes": ""
+      }
+    ],
+    "subtotal": 1080,
+    "cgst": 54,
+    "sgst": 54,
+    "serviceCharge": 21.6,
+    "tipAmount": 0,
+    "total": 1209.6,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-4F9E7B",
+    "createdAt": "2026-08-19T19:29:11.529Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": null,
+    "customerPhone": "7230930124",
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 240,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [],
+        "notes": ""
+      },
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 260,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [
+          {
+            "key": "whipped-cream",
+            "label": "Whipped Cream",
+            "priceDelta": 20
+          }
+        ],
+        "notes": ""
+      },
+      {
+        "id": 102,
+        "name": "1024 Cold Brew",
+        "basePrice": 260,
+        "price": 260,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [],
+        "notes": ""
+      },
+      {
+        "id": 102,
+        "name": "1024 Cold Brew",
+        "basePrice": 260,
+        "price": 300,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [
+          {
+            "key": "extra-shot",
+            "label": "Extra Espresso Shot",
+            "priceDelta": 40
+          }
+        ],
+        "notes": ""
+      }
+    ],
+    "subtotal": 1060,
+    "cgst": 53,
+    "sgst": 53,
+    "serviceCharge": 21.2,
+    "tipAmount": 0,
+    "total": 1187.2,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-02B5C4",
+    "createdAt": "2026-08-24T10:38:18.714Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": null,
+    "customerName": "Owner",
+    "customerPhone": "7230931024",
+    "placedByStaff": "Owner",
+    "tableSessionId": null,
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 240,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [],
+        "notes": ""
+      },
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 260,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [
+          {
+            "key": "extra-syrup",
+            "label": "Extra Flavor Syrup",
+            "priceDelta": 20
+          }
+        ],
+        "notes": ""
+      }
+    ],
+    "subtotal": 500,
+    "couponCode": "10BITSOFF",
+    "couponId": 1,
+    "discountAmount": 50,
+    "loyaltyPointsRedeemed": 0,
+    "loyaltyDiscount": 0,
+    "loyaltyPointsEarned": 0,
+    "cgst": 22.5,
+    "sgst": 22.5,
+    "serviceCharge": 9,
+    "tipAmount": 0,
+    "total": 504,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-C7E614",
+    "createdAt": "2026-08-27T07:58:10.889Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": 8,
+    "customerName": "abhinav",
+    "customerPhone": "8092790440",
+    "placedByStaff": null,
+    "tableSessionId": null,
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 240,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [],
+        "notes": ""
+      },
+      {
+        "id": 115,
+        "name": "7-Bit Flat White",
+        "basePrice": 230,
+        "price": 218.21,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": null,
+        "sizeLabel": null,
+        "milk": null,
+        "milkLabel": null,
+        "extras": [],
+        "notes": "",
+        "comboId": 2,
+        "comboName": "butter Delight"
+      },
+      {
+        "id": 303,
+        "name": "Butter Croissant",
+        "basePrice": 160,
+        "price": 151.79,
+        "quantity": 1,
+        "station": "DESSERTS",
+        "isDone": true,
+        "size": null,
+        "sizeLabel": null,
+        "milk": null,
+        "milkLabel": null,
+        "extras": [],
+        "notes": "",
+        "comboId": 2,
+        "comboName": "butter Delight"
+      }
+    ],
+    "subtotal": 610,
+    "couponCode": null,
+    "couponId": null,
+    "discountAmount": 0,
+    "loyaltyPointsRedeemed": 0,
+    "loyaltyDiscount": 0,
+    "loyaltyPointsEarned": 0,
+    "cgst": 30.5,
+    "sgst": 30.5,
+    "serviceCharge": 12.2,
+    "tipAmount": 0,
+    "total": 683.2,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-8898A1",
+    "createdAt": "2026-08-27T07:59:28.094Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": null,
+    "customerName": "Guest",
+    "customerPhone": "9876543210",
+    "placedByStaff": null,
+    "tableSessionId": null,
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 240,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [],
+        "notes": ""
+      }
+    ],
+    "subtotal": 240,
+    "couponCode": null,
+    "couponId": null,
+    "discountAmount": 0,
+    "loyaltyPointsRedeemed": 0,
+    "loyaltyDiscount": 0,
+    "loyaltyPointsEarned": 0,
+    "cgst": 12,
+    "sgst": 12,
+    "serviceCharge": 4.8,
+    "tipAmount": 0,
+    "total": 268.8,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-FD3B34",
+    "createdAt": "2026-08-27T07:59:28.133Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": null,
+    "customerName": "Guest",
+    "customerPhone": "9876543210",
+    "placedByStaff": null,
+    "tableSessionId": null,
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 240,
+        "quantity": 2,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [],
+        "notes": ""
+      }
+    ],
+    "subtotal": 480,
+    "couponCode": null,
+    "couponId": null,
+    "discountAmount": 0,
+    "loyaltyPointsRedeemed": 0,
+    "loyaltyDiscount": 0,
+    "loyaltyPointsEarned": 0,
+    "cgst": 24,
+    "sgst": 24,
+    "serviceCharge": 9.6,
+    "tipAmount": 0,
+    "total": 537.6,
+    "paymentQrUrl": null
+  },
+  {
+    "id": "SB-0FEADB",
+    "createdAt": "2026-08-27T08:32:41.663Z",
+    "method": "COUNTER",
+    "isPaid": true,
+    "tipApplied": false,
+    "serviceChargeActive": true,
+    "customerId": null,
+    "customerName": "Owner",
+    "customerPhone": "7230931024",
+    "placedByStaff": "Owner",
+    "tableSessionId": null,
+    "items": [
+      {
+        "id": 101,
+        "name": "G-Bit Latte",
+        "basePrice": 240,
+        "price": 240,
+        "quantity": 1,
+        "station": "BARISTA",
+        "isDone": true,
+        "size": "regular",
+        "sizeLabel": "Regular",
+        "milk": "regular",
+        "milkLabel": "Regular Milk",
+        "extras": [],
+        "notes": ""
+      }
+    ],
+    "subtotal": 240,
+    "couponCode": "10BITSOFF",
+    "couponId": 1,
+    "discountAmount": 24,
+    "loyaltyPointsRedeemed": 0,
+    "loyaltyDiscount": 0,
+    "loyaltyPointsEarned": 0,
+    "cgst": 10.8,
+    "sgst": 10.8,
+    "serviceCharge": 4.32,
+    "tipAmount": 0,
+    "total": 241.92,
     "paymentQrUrl": null
   }
 ]

@@ -24,7 +24,10 @@
     "hash": "117436ee0bb4a84d67fd2f9a1623248d737640af020726fd5fea6d6da09244b1c2490eb8e45e23a6080b7b581945b8257474526bb6d2417435e0dc7d0dc8cb61",
     "role": "employee",
     "name": "barista",
-    "phone": null
+    "phone": null,
+    "tag": "Barista",
+    "payRateType": "monthly",
+    "payRate": 9000
   },
   {
     "id": 4,
@@ -33,16 +36,61 @@
     "hash": "bbec13ab942b62b5c4658602620da4aa95793514d20e969fb81f0c1fee3dbefed6aac956f6f9f29076f574fa13b5b6bfa07948ba3d9e58ef8674434f19009bad",
     "role": "employee",
     "name": "kitchen staff",
-    "phone": null
+    "phone": null,
+    "tag": "Chef",
+    "payRateType": "weekly",
+    "payRate": 2500
   },
   {
     "id": 5,
     "username": "kumarjio",
-    "salt": "6a6e7eeeb94e5e6f8ee7c129e454b524",
-    "hash": "e6c7b3ff35108a9f06cc8067c608c1d805a64889d51302ecb02b65ffc27a90f1cb7146e388af05b4e3f2beda6abbf3ce59831ce13ebab5e2d09d08513bfdb0f5",
+    "salt": "3c60152a11cc599bea437ad15cf9ae27",
+    "hash": "28842ac942023825efeedf313a023188242a1cd90f67e59134a4232831bebba443adb6e6ca999b6d6177a4035b1fec748de2df5aac3a5da846c03eedea06ce6f",
     "role": "customer",
     "name": "kumar vaibhav",
     "phone": "8825125275",
     "mustChangePassword": false
+  },
+  {
+    "id": 6,
+    "username": "Manager",
+    "salt": "39e50e08be82444f74c87969c59525d4",
+    "hash": "c38dcb70601a2e251c163c64cf79b5310979f6d2b21a020beeffd984ed4953c0c0b70e56d2c39d26cb0bec39c8a086c26515617075b77ec57865ce011038efd2",
+    "role": "manager",
+    "name": "Manager",
+    "phone": null,
+    "mustChangePassword": false,
+    "storeId": 1,
+    "tag": "Manager",
+    "payRateType": "monthly",
+    "payRate": 15000
+  },
+  {
+    "id": 7,
+    "username": "Admin",
+    "salt": "e382eca3b56fe7e22d775ec31172043b",
+    "hash": "30a1d348a2a827396f6ec30c980580bf761d2cb45c1d83e9a642742e17d1daeeb15e11bdf5a4456290b9a9ff992d44b738386c6a3cf5aa7c0044b4e98b3e42f8",
+    "role": "admin",
+    "name": "Admin",
+    "phone": null,
+    "mustChangePassword": true,
+    "storeId": null,
+    "tag": "Admin",
+    "payRateType": "monthly",
+    "payRate": 2000
+  },
+  {
+    "id": 8,
+    "username": "Abhinav",
+    "salt": "f8870a87386fd64710ddc3e505f6bec6",
+    "hash": "aa8e18ba8bb95cd767e8aed12d7cd5054ffe57661622002d97767085bbd13aa3ae54b14f60e2072e48d95f0eb39de672af264b480e71a7a23728f70231d503b2",
+    "role": "customer",
+    "name": "abhinav",
+    "phone": "8092790440",
+    "mustChangePassword": false,
+    "storeId": null,
+    "tag": "",
+    "payRateType": null,
+    "payRate": null
   }
 ]
