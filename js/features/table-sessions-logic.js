@@ -43,12 +43,12 @@ export const TableSessionsSystem = {
         return data;
     },
 
-    async close(id, markPaid) {
+    async close(id, markPaid, paymentMethod = null) {
         const res = await fetch(`/api/table-sessions/${id}/close`, {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ markPaid })
+            body: JSON.stringify({ markPaid, paymentMethod })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not close table");

@@ -53,6 +53,7 @@ const MANAGER_UP_ROLES = ["manager", "admin", "owner"]; // Manager Dashboard + e
 const KITCHEN_ROLES = ["employee", "manager", "admin", "owner"];
 const TRACKING_ROLES = ["customer", "guest"];
 const PAYROLL_ROLES = ["employee", "manager"]; // who payroll/timeclock applies to
+const PAYMENT_METHODS = ["UPI", "Card", "Cash", "Wallet"]; // recorded on an order/table session once it's actually settled
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -956,6 +957,7 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
 }
 
 function orderStatusOf(order) {
+  if (order.servedAt) return "SERVED";
   if (!order.items.length) return "RECEIVED";
   return order.items.every((i) => i.isDone) ? "READY" : "PREPARING";
 }
@@ -1472,6 +1474,23 @@ route("GET", /^\/api\/timeclock\/status\/?$/, async (req, res) => {
   const shifts = readJson(TIMECLOCK_FILE, []);
   const open = shifts.find((s) => s.userId === session.userId && !s.clockOut);
   sendJson(res, 200, { clockedIn: !!open, since: open ? open.clockIn : null });
+});
+
+/** Live "who's clocked in right now" for the Admin dashboard's Crew widget -
+ *  distinct from /api/payroll, which is period earnings, not live status. */
+route("GET", /^\/api\/timeclock\/roster\/?$/, async (req, res) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const staff = visibleStaffFor(session);
+  const shifts = readJson(TIMECLOCK_FILE, []);
+  const roster = staff.map((u) => ({
+    userId: u.id,
+    name: u.name,
+    role: u.role,
+    tag: u.tag || null,
+    clockedIn: shifts.some((s) => s.userId === u.id && !s.clockOut)
+  }));
+  sendJson(res, 200, roster);
 });
 
 route("GET", /^\/api\/payroll\/?$/, async (req, res) => {
@@ -2306,6 +2325,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     createdAt: new Date().toISOString(),
     method,
     isPaid: method === "ONLINE" || staffMarkedPaid, // still trust-based until a real payment webhook is wired up - see README
+    paymentMethod: method === "ONLINE" ? "UPI" : staffMarkedPaid ? "Cash" : null,
     tipApplied,
     serviceChargeActive,
     customerId: session.role === "customer" ? session.userId : null,
@@ -2381,11 +2401,21 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
 
   if (body.action === "markPaid") {
     order.isPaid = true;
+    order.paymentMethod = PAYMENT_METHODS.includes(body.paymentMethod) ? body.paymentMethod : "Cash";
   } else if (body.action === "markDone") {
     const station = body.station;
     order.items.forEach((i) => {
       if (!station || station === "MASTER" || i.station === station) i.isDone = true;
     });
+  } else if (body.action === "markServed") {
+    // Only meaningful once every item is actually ready - staff hand off a
+    // partially-made order to nobody. Idempotent (re-marking an already-
+    // served order just no-ops) rather than erroring, since a double-tap
+    // shouldn't need special handling on the client.
+    if (!order.items.length || !order.items.every((i) => i.isDone)) {
+      return sendJson(res, 400, { error: "Order isn't ready yet" });
+    }
+    if (!order.servedAt) order.servedAt = new Date().toISOString();
   } else {
     return sendJson(res, 400, { error: "Unknown action" });
   }
@@ -3249,10 +3279,15 @@ route("POST", /^\/api\/table-sessions\/(?<id>[\w-]+)\/close\/?$/, async (req, re
   tableSession.closedBy = session.name;
 
   if (body.markPaid === true) {
+    const paymentMethod = PAYMENT_METHODS.includes(body.paymentMethod) ? body.paymentMethod : "Cash";
     tableSession.isPaid = true;
+    tableSession.paymentMethod = paymentMethod;
     const orders = readJson(ORDERS_FILE, []);
     orders.forEach((o) => {
-      if (o.tableSessionId === tableSession.id) o.isPaid = true;
+      if (o.tableSessionId === tableSession.id) {
+        o.isPaid = true;
+        o.paymentMethod = paymentMethod;
+      }
     });
     writeJson(ORDERS_FILE, orders);
     broadcastOrdersChanged();

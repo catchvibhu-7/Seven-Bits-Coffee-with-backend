@@ -27,19 +27,8 @@ function money(n) {
     return "₹" + Number(n || 0).toLocaleString("en-IN");
 }
 
-/** Mirrors server.js's orderStatusOf() - the staff order list (GET /api/orders)
- *  doesn't include a computed status the way /api/orders/mine does, so this
- *  page derives it the same way the server would. */
-function orderStatus(order) {
-    if (!order.items.length) return "RECEIVED";
-    return order.items.every((i) => i.isDone) ? "READY" : "PREPARING";
-}
-
-const STATUS_COLORS = {
-    RECEIVED: "var(--color-accent)",
-    PREPARING: "var(--color-cyan)",
-    READY: "var(--color-success)"
-};
+const orderStatus = (order) => KitchenSystem.statusOf(order);
+const STATUS_COLORS = KitchenSystem.STATUS_COLORS;
 
 function skeletonHtml() {
     // Mirrors the final layout's card shapes so there's no layout shift once
@@ -190,10 +179,7 @@ export async function renderStaffHome(session) {
 
     root.querySelector("#staff-home-new-order")?.addEventListener("click", () => window.showPage("menu"));
     root.querySelector("#staff-home-all-orders")?.addEventListener("click", () => window.showPage("kitchen"));
-    root.querySelector("#staff-home-billing")?.addEventListener("click", async () => {
-        await window.showPage("kitchen");
-        window.filterKitchen?.("TABLES");
-    });
+    root.querySelector("#staff-home-billing")?.addEventListener("click", () => window.showPage("billing"));
     root.querySelectorAll(".staff-home-order-row").forEach((row) => {
         row.addEventListener("click", () => window.showPage("kitchen"));
     });

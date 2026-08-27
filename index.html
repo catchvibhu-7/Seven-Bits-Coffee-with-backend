@@ -148,9 +148,20 @@
     </button>
 </div>
 
-    <div id="menu-root"></div>
+    <!-- Staff (employee/manager/admin/owner) get a persistent cart panel
+         beside the grid - see renderStaffCartPanel() in app.js - matching
+         the register-style workflow of adding many items back-to-back
+         without opening/closing a modal each time. Customers keep the
+         sticky footer cart bar + checkout modal below unchanged (better
+         suited to a phone). Desktop-only progressive enhancement: hidden
+         below the breakpoint in theme.css, where staff fall back to the
+         same footer-bar+modal flow customers use - still fully functional,
+         just less convenient on a small screen. -->
+    <div class="menu-layout">
+        <div id="menu-root"></div>
+        <aside id="staff-cart-panel" class="staff-cart-panel" style="display:none;"></aside>
+    </div>
 
-   
     <!-- UNIFIED ACTION FOOTER -->
 <div id="footer-actions" class="footer-container" style="display: none;">
     
@@ -220,6 +231,19 @@
 
             <!-- Target for dynamic KOT ticket injection -->
             <div id="kitchen-orders-root"></div>
+        </div>
+
+        <!-- PAGE: BILLING (staff-only - js/ui/billing-page.js) - a direct way
+             to settle any open table or standalone unpaid order with a
+             recorded payment method, alongside (not instead of) the
+             existing TABLES/TABS close-and-bill flow above. -->
+        <div id="page-billing" class="page">
+            <div style="padding:26px 28px 44px; max-width:1200px; margin:0 auto;">
+                <div style="border-bottom:2px solid var(--color-accent); padding-bottom:16px; margin-bottom:22px;">
+                    <h1 style="font-size:26px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">BILLING</h1>
+                </div>
+                <div id="billing-root"></div>
+            </div>
         </div>
 
         <!-- PAGE: ADMIN (System configuration and menu repository) -->

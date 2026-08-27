@@ -45,7 +45,7 @@ const TAB_DEFS = [
     { key: "staff-home", label: "Home", pageId: "staff-home" },
     { key: "menu", label: "Menu", pageId: "menu" },
     { key: "orders", label: "Orders", pageId: "kitchen" },
-    { key: "billing", label: "Billing", pageId: "kitchen", station: "TABLES" },
+    { key: "billing", label: "Billing", pageId: "billing" },
     { key: "admin", label: "Admin", pageId: "admin", managerUp: true }
 ];
 
@@ -84,10 +84,6 @@ export const StaffShell = {
     },
 
     setActiveFromPageId(pageId) {
-        // Orders and Billing share pageId "kitchen" (Billing is that page's
-        // TABLES sub-view for now, see TAB_DEFS) - .find() naturally resolves
-        // to "orders" here since it's listed first, which is the right
-        // default when we can't otherwise tell which sub-view is showing.
         const tab = TAB_DEFS.find((t) => t.pageId === pageId);
         if (tab) this.activeTab = tab.key;
     },

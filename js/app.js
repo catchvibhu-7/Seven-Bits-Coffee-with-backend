@@ -3,7 +3,7 @@
  * Location: /js/app.js
  */
 import { KitchenSystem } from "./features/kitchen-logic.js";
-import { discountedBasePrice } from "./features/cart-logic.js";
+import { CartSystem, discountedBasePrice } from "./features/cart-logic.js";
 import { AuthSystem } from "./features/auth-logic.js";
 import { AdminConfig } from "./features/config-logic.js";
 import { PayrollSystem } from "./features/payroll-logic.js";
@@ -20,6 +20,7 @@ import { SoundSystem } from "./features/sound-logic.js";
 import { NotificationSystem } from "./features/notification-logic.js";
 import { StaffShell } from "./ui/staff-shell.js";
 import { renderStaffHome } from "./ui/staff-home.js";
+import { renderBillingPage } from "./ui/billing-page.js";
 
 // --- System State ---
 let cart = [];
@@ -368,7 +369,7 @@ window.setViewMode = (mode) => {
 };
 
 window.showPage = async (pageId) => {
-    const needsKitchenRole = pageId === "kitchen" || pageId === "orders" || pageId === "staff-home";
+    const needsKitchenRole = pageId === "kitchen" || pageId === "orders" || pageId === "staff-home" || pageId === "billing";
     const needsAdminRole = pageId === "admin";
 
     if (needsKitchenRole || needsAdminRole) {
@@ -415,6 +416,10 @@ window.showPage = async (pageId) => {
 
     if (pageId === "staff-home") {
         await renderStaffHome(session);
+    }
+    if (pageId === "billing") {
+        await renderBillingPage();
+        ensureOrdersStream();
     }
     if (pageId === "admin") {
         const module = await import("./ui/admin-portal.js");
@@ -469,13 +474,14 @@ async function refreshOrderStatusWidget() {
     }
 
     const orders = await KitchenSystem.fetchMine();
-    // "Active" = still being made, or just became ready recently (so the
-    // customer still sees "come pick it up") - once it's been ready for a
-    // while, or once there's simply no order, this section just disappears
-    // rather than showing an empty/prompt state indefinitely.
+    // "Active" = still being made, or reached a terminal state (READY/
+    // SERVED) recently enough that the confirmation is still useful - once
+    // that's been true for a while, or once there's simply no order, this
+    // section just disappears rather than showing an empty/prompt state
+    // indefinitely.
     const READY_VISIBLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
     const activeOrder = orders.find((o) => {
-        if (o.status !== "READY") return true;
+        if (o.status !== "READY" && o.status !== "SERVED") return true;
         return Date.now() - new Date(o.createdAt).getTime() < READY_VISIBLE_WINDOW_MS;
     });
     if (!activeOrder) {
@@ -484,7 +490,8 @@ async function refreshOrderStatusWidget() {
     }
 
     const order = activeOrder;
-    const statusColor = order.status === "READY" ? "var(--color-success)" : order.status === "PREPARING" ? "var(--color-cyan)" : "var(--color-accent)";
+    const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
+    const statusColor = STATUS_COLORS[order.status] || "var(--color-accent)";
 
     // Only chime on the moment an order becomes READY (not on every poll
     // while it stays READY, and not for an order that was already READY the
@@ -1150,6 +1157,73 @@ function renderMenu(filterQuery = "") {
 
     if (footer) footer.style.display = "flex";
     if (cartBar) cartBar.style.display = cart.length > 0 ? "flex" : "none";
+
+    renderStaffCartPanel();
+}
+
+/**
+ * Persistent cart panel beside the menu grid, staff (KITCHEN_ROLES) only -
+ * see .staff-cart-panel in theme.css and the comment in index.html for why
+ * this exists alongside (not instead of) the footer cart bar + checkout
+ * modal customers use. Re-runs every time renderMenu() does, which already
+ * happens after every cart mutation (addCartLine/adjustCartLine/etc. all
+ * call renderMenu()), so this stays in sync for free rather than needing
+ * its own set of cart-change listeners.
+ */
+function renderStaffCartPanel() {
+    const panel = document.getElementById("staff-cart-panel");
+    if (!panel) return;
+    if (!KITCHEN_ROLES.includes(session.role)) {
+        panel.style.display = "none";
+        return;
+    }
+    panel.style.display = "flex";
+
+    const breakdown = CartSystem.calculateBreakdown(cart, siteConfig);
+    const totalItems = cart.reduce((sum, c) => sum + c.quantity, 0);
+
+    panel.innerHTML = `
+        <div style="padding:16px 18px 14px; border-bottom:1px dashed var(--color-border); flex:none;">
+            <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
+                <h2 style="font-size:12.5px; font-weight:bold; letter-spacing:.18em; margin:0; text-transform:uppercase; color:var(--color-accent);">Cart / KOT</h2>
+                <span style="font-size:10.5px; color:var(--color-text-muted);">${totalItems} item${totalItems === 1 ? "" : "s"}</span>
+            </div>
+        </div>
+        <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:4px 18px;">
+            ${
+                cart.length === 0
+                    ? `<p style="padding:36px 0; text-align:center; color:var(--color-text-muted); font-size:11px; line-height:1.8;">Cart is empty.<br>Tap an item to add it.</p>`
+                    : cart
+                          .map(
+                              (line) => `
+                <div style="display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px dashed var(--color-border);">
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:11.5px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(line.name)}</div>
+                        <div style="font-size:9.5px; color:var(--color-text-muted); margin-top:3px;">₹${line.price.toFixed(2)} each</div>
+                    </div>
+                    <div class="btn-qty-container">
+                        <button onclick="window.adjustCartLine('${line.cartKey}', -1)">-</button>
+                        <span>${line.quantity}</span>
+                        <button onclick="window.adjustCartLine('${line.cartKey}', 1)">+</button>
+                    </div>
+                    <span style="width:56px; flex:none; text-align:right; font-size:11px; font-weight:bold;">₹${(line.price * line.quantity).toFixed(2)}</span>
+                </div>
+            `
+                          )
+                          .join("")
+            }
+        </div>
+        <div style="padding:14px 18px 18px; border-top:1px solid var(--color-border); flex:none;">
+            <div style="display:flex; justify-content:space-between; gap:12px; font-size:10.5px; color:var(--color-text-muted); padding:2px 0;"><span>SUBTOTAL</span><span>₹${breakdown.subtotal.toFixed(2)}</span></div>
+            <div style="display:flex; justify-content:space-between; gap:12px; font-size:10.5px; color:var(--color-text-muted); padding:2px 0;"><span>TAX + SERVICE</span><span>₹${(breakdown.cgst + breakdown.sgst + breakdown.serviceCharge).toFixed(2)}</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:10px 0 14px; border-top:1px dashed var(--color-border); margin-top:6px;">
+                <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">TOTAL</span>
+                <span style="font-size:22px; font-weight:bold; color:var(--color-accent);">₹${breakdown.total.toFixed(2)}</span>
+            </div>
+            <button id="staff-cart-checkout-btn" ${cart.length === 0 ? "disabled" : ""} style="width:100%; padding:12px; background:${cart.length ? "var(--color-accent)" : "var(--color-border)"}; color:${cart.length ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:none; font-size:11.5px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:${cart.length ? "pointer" : "not-allowed"}; min-height:44px;">[ Checkout ]</button>
+        </div>
+    `;
+    panel.querySelector("#staff-cart-checkout-btn")?.addEventListener("click", () => window.handleCartStatusClick());
 }
 
 function paintFavoritesFilterStar() {
@@ -1397,10 +1471,14 @@ function renderKitchen() {
 
     sorted.forEach((order) => {
             const isMaster = currentKitchenStation === "MASTER";
-            const orderIsComplete = order.items.every((i) => i.isDone);
+            const allItemsDone = order.items.every((i) => i.isDone);
+            // "Complete" now means SERVED, not just prepped - a ready order
+            // still needs a human to hand it off, so it stays in ACTIVE
+            // (with a MARK SERVED action) until that actually happens.
+            const orderIsComplete = !!order.servedAt;
 
-            // ACTIVE hides fully-completed orders; HISTORY shows only
-            // completed ones; ALL shows everything regardless of status.
+            // ACTIVE hides served orders; HISTORY shows only served ones;
+            // ALL shows everything regardless of status.
             if (kitchenStatusFilter === "active" && orderIsComplete) return;
             if (kitchenStatusFilter === "history" && !orderIsComplete) return;
 
@@ -1415,9 +1493,12 @@ function renderKitchen() {
 
             visibleCount++;
             const hasPendingItems = itemsToDisplay.some((i) => !i.isDone);
+            const status = KitchenSystem.statusOf(order);
+            const statusColor = KitchenSystem.STATUS_COLORS[status];
 
             const ticket = document.createElement("div");
             ticket.className = "kot-ticket";
+            ticket.style.borderTop = `3px solid ${statusColor}`;
             const paidStatus = order.isPaid
                 ? "\u2713 PAID"
                 : `<button onclick="window.markPaid('${order.id}')" style="cursor:pointer; border:1px solid var(--color-accent); background:none; color:var(--color-accent); font-size:7pt;">MARK PAID</button>`;
@@ -1427,6 +1508,7 @@ function renderKitchen() {
                 <span>#${order.orderNumber || order.id}</span>
                 <span style="float:right;">${paidStatus}</span>
             </div>
+            <div style="display:inline-block; margin-bottom:6px; padding:2px 7px; font-size:7pt; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; border:1px solid ${statusColor}; color:${statusColor};">${status}</div>
             ${order.tableNumber ? `<div style="font-size:9pt; font-weight:bold; color:var(--color-accent); margin-bottom:4px;">TABLE ${escapeHtml(order.tableNumber)}</div>` : ""}
             <div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:6px;">${new Date(order.createdAt).toLocaleString()}</div>
             <div class="kot-body">
@@ -1454,7 +1536,15 @@ function renderKitchen() {
                     ${isMaster ? "MARK ALL DONE" : "MARK DONE"}
                 </button>
             `
-                    : ""
+                    : isMaster && allItemsDone && !order.servedAt
+                      ? `
+                <button class="btn-primary"
+                        style="width:100%; margin-top:10px; font-size:9pt; background:var(--color-success); color:#000; border:none; padding:8px; font-weight:bold; cursor:pointer;"
+                        onclick="window.markServed('${order.id}')">
+                    &gt; MARK SERVED
+                </button>
+            `
+                      : ""
             }
         `;
             root.appendChild(ticket);
@@ -1488,6 +1578,15 @@ window.markCompleted = async (orderId) => {
         window.triggerGingerAnimation(msg);
     }
 
+    renderKitchen();
+};
+
+window.markServed = async (orderId) => {
+    try {
+        await KitchenSystem.markServed(orderId);
+    } catch (e) {
+        window.showToast(e.message, "error");
+    }
     renderKitchen();
 };
 

@@ -43,6 +43,14 @@ export const PayrollSystem = {
         return res.json();
     },
 
+    /** Live clocked-in/out status for every staff member visible to this
+     *  session - distinct from fetchPayroll(), which is period earnings. */
+    async fetchTimeclockRoster() {
+        const res = await fetch("/api/timeclock/roster", { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+    },
+
     /** Manager-marked attendance - for staff who never log in themselves. */
     async fetchAttendance(userId = null) {
         const url = userId ? `/api/attendance?userId=${userId}` : "/api/attendance";

@@ -10,6 +10,7 @@
 import { AdminConfig } from "../features/config-logic.js";
 import { AuthSystem } from "../features/auth-logic.js";
 import { PayrollSystem } from "../features/payroll-logic.js";
+import { KitchenSystem } from "../features/kitchen-logic.js";
 import { renderAddStaffModal, renderEditStaffModal } from "./staff-modal.js";
 import { renderInfoModal } from "./info-modal.js";
 import { renderItemModal } from "./item-modal.js";
@@ -267,11 +268,18 @@ export const AdminPortal = {
     kpiRange: "7d",
 
     async renderKpiDashboard(root) {
-        const kpi = await PayrollSystem.fetchKpi(this.kpiRange);
+        const [kpi, roster] = await Promise.all([PayrollSystem.fetchKpi(this.kpiRange), PayrollSystem.fetchTimeclockRoster()]);
         if (!kpi) {
             root.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">Could not load dashboard data.</p>`;
             return;
         }
+        await KitchenSystem.fetchOrders();
+        const pendingByStation = { BARISTA: 0, KITCHEN: 0, DESSERTS: 0 };
+        KitchenSystem.orders.forEach((o) =>
+            o.items.forEach((i) => {
+                if (!i.isDone) pendingByStation[i.station || KitchenSystem.getStation(i)]++;
+            })
+        );
 
         const maxDaily = Math.max(1, ...kpi.chart.map((d) => d.revenue));
         const maxSeller = Math.max(1, ...kpi.bestSellers.map((s) => s.quantity));
@@ -340,6 +348,53 @@ export const AdminPortal = {
                                   )
                                   .join("")
                     }
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; margin-top:20px;">
+                <div>
+                    <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">CREW</h3>
+                    ${
+                        roster.length === 0
+                            ? `<p class="admin-help-text">No staff to show.</p>`
+                            : roster
+                                  .map((p) => {
+                                      const initials = (p.name || "?")
+                                          .split(" ")
+                                          .map((w) => w[0])
+                                          .filter(Boolean)
+                                          .slice(0, 2)
+                                          .join("")
+                                          .toUpperCase();
+                                      return `
+                                <div style="display:flex; align-items:center; gap:12px; padding:9px 0; border-top:1px dashed var(--color-border);">
+                                    <span style="width:30px; height:30px; flex:none; border:1px solid var(--color-accent); color:var(--color-accent); display:flex; align-items:center; justify-content:center; font-size:10pt; font-weight:bold;">${initials}</span>
+                                    <div style="flex:1; min-width:0;">
+                                        <div style="font-size:9pt; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${p.name}</div>
+                                        <div style="font-size:7pt; color:var(--color-text-muted); margin-top:2px; letter-spacing:.06em; text-transform:uppercase;">${p.role}${p.tag ? " &middot; " + p.tag : ""}</div>
+                                    </div>
+                                    <span style="flex:none; font-size:7pt; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; color:${p.clockedIn ? "var(--color-success)" : "var(--color-text-muted)"};">${p.clockedIn ? "● ON SHIFT" : "OFF SHIFT"}</span>
+                                </div>
+                            `;
+                                  })
+                                  .join("")
+                    }
+                </div>
+                <div>
+                    <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">STATIONS</h3>
+                    ${Object.entries(pendingByStation)
+                        .map(
+                            ([name, pending]) => `
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:9px 0; border-top:1px dashed var(--color-border);">
+                            <div style="min-width:0;">
+                                <div style="font-size:9pt; font-weight:bold; letter-spacing:.06em; text-transform:uppercase;">${name}</div>
+                                <div style="font-size:7pt; color:var(--color-text-muted); margin-top:2px; letter-spacing:.08em; text-transform:uppercase;">Pending items</div>
+                            </div>
+                            <span style="font-size:16pt; font-weight:bold; color:${pending > 0 ? "var(--color-accent)" : "var(--color-success)"};">${pending}</span>
+                        </div>
+                    `
+                        )
+                        .join("")}
                 </div>
             </div>
         `;
