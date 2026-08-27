@@ -776,7 +776,7 @@ function resolveComboLine(requested, menu, combos) {
 
   const components = combo.items
     .map((c) => ({ product: menu.items.find((i) => i.id === c.id), qty: c.quantity }))
-    .filter((c) => c.product && c.product.available !== false);
+    .filter((c) => c.product && c.product.available !== false && !(c.product.stockCount != null && c.product.stockCount <= 0));
   if (components.length === 0) return [];
 
   const baseUnitSum = components.reduce((sum, c) => sum + c.product.price * c.qty, 0);
@@ -830,6 +830,10 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
     const product = menu.items.find((i) => i.id === id);
     if (!product) continue; // ignore unknown items rather than trusting the client
     if (product.available === false) continue; // item was taken off the menu - never trust client to skip it itself
+    if (product.stockCount != null && product.stockCount <= 0) continue; // sold out - dropped silently, same as unavailable
+    if (product.stockCount != null && quantity > product.stockCount) {
+      throw new Error(`${product.name} only has ${product.stockCount} left in stock`);
+    }
 
     const custom = resolveCustomization(requested.customization, product);
     // authoritative: promo-discounted base price (or plain base price if no
@@ -1857,6 +1861,13 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
   if (body.imageUrl && String(body.imageUrl).length > 8000) {
     return sendJson(res, 400, { error: "Image URL is too long" });
   }
+  let stockCount = null;
+  if (body.stockCount !== undefined && body.stockCount !== null && body.stockCount !== "") {
+    stockCount = parseInt(body.stockCount, 10);
+    if (!Number.isFinite(stockCount) || stockCount < 0) {
+      return sendJson(res, 400, { error: "Stock count must be zero or a positive number, or left blank to not track stock" });
+    }
+  }
 
   const nextId = menu.items.length ? Math.max(...menu.items.map((i) => i.id)) + 1 : 1;
   const item = {
@@ -1867,7 +1878,8 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
     icon: body.icon || "espresso",
     imageUrl: body.imageUrl ? String(body.imageUrl).trim() : null,
     story: body.story || "",
-    promoDiscount: sanitizePromoDiscount(body.promoDiscount)
+    promoDiscount: sanitizePromoDiscount(body.promoDiscount),
+    stockCount
   };
   menu.items.push(item);
   writeJson(MENU_FILE, menu);
@@ -1907,6 +1919,18 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
   }
   if (body.deleted !== undefined) {
     item.deleted = Boolean(body.deleted); // restoring a soft-deleted item
+  }
+  if (body.stockCount !== undefined) {
+    if (body.stockCount === null || body.stockCount === "") {
+      item.stockCount = null; // stop tracking stock for this item
+    } else {
+      const stockCount = parseInt(body.stockCount, 10);
+      if (!Number.isFinite(stockCount) || stockCount < 0) {
+        return sendJson(res, 400, { error: "Stock count must be zero or a positive number, or left blank to not track stock" });
+      }
+      item.stockCount = stockCount;
+      if (stockCount > 0 && item.available === false) item.available = true; // restocking implicitly makes it orderable again
+    }
   }
   if (body.promoDiscount !== undefined) {
     if (body.promoDiscount === null) {
@@ -2311,6 +2335,23 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
       writeJson(USERS_FILE, users);
     }
   }
+  // Decrement stock for any tracked item (combo lines included - they carry
+  // the component's own menu id, so a combo purchase draws down its
+  // components' stock too). Items with stockCount === null are untracked
+  // and never touched here.
+  {
+    const menuForStock = readJson(MENU_FILE, { sections: [], items: [] });
+    let stockChanged = false;
+    for (const line of order.items) {
+      if (line.id == null) continue;
+      const product = menuForStock.items.find((i) => i.id === line.id);
+      if (!product || product.stockCount == null) continue;
+      product.stockCount = Math.max(0, product.stockCount - line.quantity);
+      if (product.stockCount === 0) product.available = false;
+      stockChanged = true;
+    }
+    if (stockChanged) writeJson(MENU_FILE, menuForStock);
+  }
 
   broadcastOrdersChanged();
   sendJson(res, 201, order);
@@ -2337,6 +2378,37 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
   writeJson(ORDERS_FILE, orders);
   broadcastOrdersChanged();
   sendJson(res, 200, order);
+});
+
+/** The customer/guest who placed the order rates it, once - same ownership
+ *  check as GET /api/orders/mine (never trust an id alone; a guest/customer
+ *  could otherwise rate any order by guessing its id). Re-submitting
+ *  overwrites the previous rating rather than erroring, so someone can
+ *  correct a misclick. */
+route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/feedback\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
+  const orders = readJson(ORDERS_FILE, []);
+  const order = orders.find((o) => o.id === params.id);
+  if (!order) return sendJson(res, 404, { error: "Order not found" });
+
+  const owns =
+    (session.role === "customer" && order.customerId === session.userId) ||
+    (session.role === "guest" && order.customerPhone === session.phone);
+  if (!owns) return sendJson(res, 403, { error: "This isn't your order" });
+
+  const rating = parseInt(body.rating, 10);
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+    return sendJson(res, 400, { error: "Rating must be between 1 and 5" });
+  }
+  const comment = String(body.comment || "").trim().slice(0, 500);
+
+  order.rating = rating;
+  order.feedbackComment = comment;
+  order.feedbackAt = new Date().toISOString();
+  writeJson(ORDERS_FILE, orders);
+  sendJson(res, 200, { rating: order.rating, comment: order.feedbackComment });
 });
 
 route("GET", /^\/api\/favorites\/?$/, async (req, res) => {

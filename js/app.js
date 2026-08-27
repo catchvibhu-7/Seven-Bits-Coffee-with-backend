@@ -17,6 +17,7 @@ import { renderMyOrdersModal } from "./ui/my-orders-modal.js";
 import { TableSessionsSystem } from "./features/table-sessions-logic.js";
 import { renderTableModal, renderTableBillModal } from "./ui/table-modal.js";
 import { SoundSystem } from "./features/sound-logic.js";
+import { NotificationSystem } from "./features/notification-logic.js";
 
 // --- System State ---
 let cart = [];
@@ -450,8 +451,17 @@ async function refreshOrderStatusWidget() {
     const previousStatus = lastSeenOrderStatuses[order.id];
     if (order.status === "READY" && previousStatus && previousStatus !== "READY") {
         SoundSystem.playReadyChime();
+        NotificationSystem.notifyOrderReady(order);
     }
     lastSeenOrderStatuses[order.id] = order.status;
+
+    // Only offer the "enable notifications" prompt when we haven't asked yet
+    // (permission === "default") - once granted or denied, the browser's
+    // own choice stands and nagging again would just be annoying.
+    const notifyPromptHtml =
+        NotificationSystem.permission() === "default"
+            ? `<button onclick="window.requestOrderNotifications(this)" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;" title="Get a notification when your order is ready">\u{1F514}</button>`
+            : "";
 
     section.style.display = "block";
     root.innerHTML = `
@@ -459,6 +469,7 @@ async function refreshOrderStatusWidget() {
             <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
                 <span>#${order.orderNumber || order.id}</span>
                 <span style="display:flex; align-items:center; gap:8px;">
+                    ${notifyPromptHtml}
                     <button onclick="window.toggleOrderSound(this)" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;">${SoundSystem.isMuted() ? "\u{1F507}" : "\u{1F50A}"}</button>
                     <span style="color:${statusColor}; font-weight:bold;">${order.status}</span>
                 </span>
@@ -969,7 +980,9 @@ function renderMenu(filterQuery = "") {
         itemsContainer.className = viewMode === "grid" ? "menu-grid" : "menu-list";
 
         items.forEach((item) => {
-            const isUnavailable = item.available === false;
+            const isSoldOut = item.stockCount === 0;
+            const isUnavailable = item.available === false || isSoldOut;
+            const isLowStock = item.stockCount != null && item.stockCount > 0 && item.stockCount <= 5;
 
             // A "default" (no size/milk/extras/notes) line is what ADD BIT quick-adds/removes.
             // Customize creates additional, separately-tracked lines for other combinations -
@@ -1053,7 +1066,7 @@ function renderMenu(filterQuery = "") {
             itemEl.innerHTML = `
                 ${itemImageMarkup(item)}
                 <div class="info">
-                    <div class="name">${favButton}${item.name}${isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
+                    <div class="name">${favButton}${item.name}${isSoldOut ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
                     ${isUnavailable ? "" : `<button class="btn-customize-link" onclick="window.openCustomize(${item.id})" style="background:none; border:none; color:var(--color-accent); text-decoration:underline; font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;">+ CUSTOMIZE (SIZE/MILK/EXTRAS)</button>`}
                     ${staffRequestHtml}
@@ -1423,6 +1436,13 @@ window.toggleOrderSound = (btn) => {
     SoundSystem.setMuted(muted);
     btn.textContent = muted ? "\u{1F507}" : "\u{1F50A}";
     btn.title = muted ? "Unmute order-ready sound" : "Mute order-ready sound";
+};
+window.requestOrderNotifications = async (btn) => {
+    await NotificationSystem.requestPermission();
+    // Either granted or denied, the browser's choice is final for this
+    // origin - re-render so the bell disappears (permission is no longer
+    // "default") instead of leaving a now-inert button in the widget.
+    btn.remove();
 };
 /**
  * Both of these used to closeModal() then re-trigger the cart bar's click

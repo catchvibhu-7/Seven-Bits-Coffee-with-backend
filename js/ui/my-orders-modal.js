@@ -9,6 +9,28 @@
  * order: the cart re-adds by item id, so checkout always recomputes fresh
  * from the current menu/config.
  */
+function starsHtml(order) {
+    if (order.rating) {
+        return `
+            <div style="margin-top:8px; font-size:9pt; color:var(--color-accent);">
+                YOUR RATING: ${"\u2605".repeat(order.rating)}${"\u2606".repeat(5 - order.rating)}
+                ${order.feedbackComment ? `<div style="font-size:8pt; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(order.feedbackComment)}"</div>` : ""}
+            </div>
+        `;
+    }
+    return `
+        <div class="mo-feedback" data-order-id="${order.id}" style="margin-top:8px;">
+            <div class="mo-stars" style="font-size:14pt; letter-spacing:2px; cursor:pointer;">
+                ${[1, 2, 3, 4, 5].map((n) => `<span class="mo-star" data-value="${n}" style="color:var(--color-text-muted);">\u2606</span>`).join("")}
+            </div>
+            <div style="display:none;" class="mo-comment-row">
+                <input type="text" class="mo-comment-input" placeholder="Add a comment (optional)" maxlength="500" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px; font-family:inherit; font-size:8pt; margin:6px 0;" />
+                <button class="mo-feedback-submit admin-btn" style="font-size:7pt;">SUBMIT RATING</button>
+            </div>
+        </div>
+    `;
+}
+
 export function renderMyOrdersModal(orders, { onReorder }) {
     document.getElementById("my-orders-overlay")?.remove();
 
@@ -28,6 +50,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
                 </div>
                 <div style="font-size:8pt; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
                 <button class="mo-reorder-btn" data-order-id="${order.id}" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 6px 12px; font-size: 7pt; cursor: pointer; text-transform: uppercase; font-family: inherit;">REORDER</button>
+                ${starsHtml(order)}
             </div>
         `
               )
@@ -49,6 +72,47 @@ export function renderMyOrdersModal(orders, { onReorder }) {
             const order = orders.find((o) => o.id === btn.dataset.orderId);
             if (order) onReorder(order);
             overlay.remove();
+        });
+    });
+
+    overlay.querySelectorAll(".mo-feedback").forEach((block) => {
+        let selected = 0;
+        const stars = block.querySelectorAll(".mo-star");
+        const commentRow = block.querySelector(".mo-comment-row");
+
+        const paint = () => {
+            stars.forEach((s, i) => {
+                s.textContent = i < selected ? "\u2605" : "\u2606";
+                s.style.color = i < selected ? "var(--color-accent)" : "var(--color-text-muted)";
+            });
+        };
+
+        stars.forEach((star, i) => {
+            star.addEventListener("click", () => {
+                selected = i + 1;
+                paint();
+                commentRow.style.display = "block";
+            });
+        });
+
+        block.querySelector(".mo-feedback-submit").addEventListener("click", async () => {
+            if (!selected) return;
+            const comment = block.querySelector(".mo-comment-input").value.trim();
+            const res = await fetch(`/api/orders/${encodeURIComponent(block.dataset.orderId)}/feedback`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ rating: selected, comment })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                block.outerHTML = `
+                    <div style="margin-top:8px; font-size:9pt; color:var(--color-accent);">
+                        YOUR RATING: ${"\u2605".repeat(data.rating)}${"\u2606".repeat(5 - data.rating)}
+                        ${data.comment ? `<div style="font-size:8pt; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(data.comment)}"</div>` : ""}
+                    </div>
+                `;
+            }
         });
     });
 }

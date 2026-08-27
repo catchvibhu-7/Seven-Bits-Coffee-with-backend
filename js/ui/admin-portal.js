@@ -570,12 +570,19 @@ export const AdminPortal = {
                 <td>${iconHtml(item)}</td>
                 <td>${escapeHtmlAttr(item.name)} <span style="color:var(--color-danger); font-size:7pt;">DELETED</span></td>
                 <td>\u20b9${item.price}</td>
+                <td></td>
                 <td style="text-align:right;">
                     <button class="admin-btn" data-restore="${item.id}">RESTORE</button>
                 </td>
             </tr>
         `;
             }
+            const stockCell =
+                item.stockCount == null
+                    ? `<span style="color:var(--color-text-muted); font-size:8pt;">\u221e</span>`
+                    : item.stockCount === 0
+                      ? `<span style="color:var(--color-danger); font-size:8pt;">OUT OF STOCK</span>`
+                      : `<span style="${item.stockCount <= 5 ? "color:var(--color-danger);" : ""} font-size:8pt;">${item.stockCount}</span>`;
             return `
             <tr style="${item.available === false ? "opacity:0.5;" : ""}">
                 <td>${iconHtml(item)}</td>
@@ -585,6 +592,7 @@ export const AdminPortal = {
                         ? `<br><span style="color: var(--color-accent); font-size: 7pt;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `\u20b9${item.promoDiscount.value} OFF`}</span>`
                         : ""
                 }</td>
+                <td>${stockCell}</td>
                 <td style="text-align:right;">
                     <button class="admin-btn" data-edit="${item.id}">EDIT</button>
                     <button class="admin-btn" data-toggle-available="${item.id}">${item.available === false ? "MARK AVAILABLE" : "MARK UNAVAILABLE"}</button>
@@ -627,7 +635,7 @@ export const AdminPortal = {
                         <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}">DELETE SECTION</button>
                     </div>
                     <table class="admin-table">
-                        <thead><tr><th>ICON</th><th>NAME</th><th>PRICE</th><th style="text-align:right;">ACTION</th></tr></thead>
+                        <thead><tr><th>ICON</th><th>NAME</th><th>PRICE</th><th>STOCK</th><th style="text-align:right;">ACTION</th></tr></thead>
                         <tbody>${pageItems.map(rowHtml).join("")}</tbody>
                     </table>
                     ${
@@ -1409,6 +1417,14 @@ export const AdminPortal = {
                     <span style="font-size:8pt;">Payment: <strong style="color:${order.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${order.isPaid ? "PAID" : "UNPAID"}</strong></span>
                     ${!order.isPaid ? `<button class="admin-btn admin-btn-primary" id="oh-mark-paid">MARK PAID</button>` : ""}
                 </div>
+                ${
+                    order.rating
+                        ? `<div style="margin-top:10px; font-size:8pt; color:var(--color-accent);">
+                    CUSTOMER RATING: ${"★".repeat(order.rating)}${"☆".repeat(5 - order.rating)}
+                    ${order.feedbackComment ? `<div style="color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtmlAttr(order.feedbackComment)}"</div>` : ""}
+                </div>`
+                        : ""
+                }
             `;
 
             const markPaidBtn = document.getElementById("oh-mark-paid");
