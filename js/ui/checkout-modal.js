@@ -9,14 +9,14 @@
  * response is what gets printed and what the online-payment QR is built
  * from, never this preview.
  */
-import { CartSystem } from "../features/cart-logic.js";
+import { CartSystem, discountedUnitPrice } from "../features/cart-logic.js";
 import { AdminConfig } from "../features/config-logic.js";
 import { AuthSystem } from "../features/auth-logic.js";
 
-export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApplied = false) {
+export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApplied = false, appliedCoupon = null) {
     const config = await AdminConfig.loadSettings();
     const session = await AuthSystem.getSession();
-    const breakdown = CartSystem.calculateBreakdown(cartItems, config);
+    const breakdown = CartSystem.calculateBreakdown(cartItems, config, appliedCoupon);
 
     let finalTotal = breakdown.total;
     if (!serviceChargeActive) finalTotal -= breakdown.serviceCharge;
@@ -29,20 +29,56 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
 
             <div class="cart-items-list" style="max-height: 200px; overflow-y: auto; margin: 15px 0;">
                 ${cartItems
-                    .map(
-                        (item) => `
+                    .map((item) => {
+                        const unitPrice = discountedUnitPrice(item);
+                        const onPromo = unitPrice < item.price;
+                        const priceLabel = onPromo
+                            ? `<span style="color: var(--color-text-muted); text-decoration: line-through;">\u20b9${item.price}</span> <span style="color: var(--color-accent);">\u20b9${unitPrice.toFixed(2)} PROMO</span>`
+                            : `<span style="color: var(--color-text-muted);">@\u20b9${item.price}</span>`;
+                        return `
                     <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 5px 0; font-size: 9pt; display: flex; justify-content: space-between;">
                         <span style="color: var(--color-accent); font-weight: bold; width: 35px; display: inline-block;">${item.quantity}x</span>
-                        <span style="flex: 1; text-align: left;">${item.name} <span style="color: var(--color-text-muted);">@\u20b9${item.price}</span></span>
-                        <span style="font-weight: bold;">\u20b9${(item.price * item.quantity).toFixed(2)}</span>
+                        <span style="flex: 1; text-align: left;">${item.name} ${priceLabel}</span>
+                        <span style="font-weight: bold;">\u20b9${(unitPrice * item.quantity).toFixed(2)}</span>
                     </div>
-                `
-                    )
+                `;
+                    })
                     .join("")}
+            </div>
+
+            <div class="coupon-window" style="margin-bottom: 15px;">
+                ${
+                    breakdown.hasPromoItem
+                        ? `<p style="font-size: 7pt; color: var(--color-text-muted); margin: 0;">Coupons can't be combined with promotional items in this cart.</p>`
+                        : appliedCoupon
+                          ? `
+                    <div style="display:flex; justify-content:space-between; align-items:center; border:1px solid var(--color-accent); padding:8px; font-size:8pt;">
+                        <span style="color:var(--color-accent);">COUPON "${appliedCoupon.code}" APPLIED</span>
+                        <button onclick="window.removeCoupon()" style="background:none; border:none; color:var(--color-text-muted); cursor:pointer; text-decoration:underline; font-family:inherit; font-size:7pt;">REMOVE</button>
+                    </div>`
+                          : `
+                    <div style="display:flex; gap:6px;">
+                        <input id="coupon-code-input" type="text" placeholder="COUPON CODE" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; text-transform:uppercase; font-size:9pt;" />
+                        <button onclick="window.applyCouponCode()" style="background: var(--color-border); color: var(--color-text); border: none; padding: 8px 12px; cursor: pointer; text-transform: uppercase; font-family:inherit; font-size:8pt;">APPLY</button>
+                    </div>
+                    <p id="coupon-error" style="color:var(--color-danger); font-size: 7pt; min-height: 10px; margin: 4px 0 0;"></p>
+                    <button onclick="window.toggleShowCoupons()" style="background:none; border:none; color:var(--color-text-muted); font-size: 7pt; cursor:pointer; text-decoration: underline; font-family: inherit; padding:0; margin-top:4px;">SHOW AVAILABLE CODES</button>
+                    <div id="public-coupons-list" style="display:none; margin-top:6px; font-size:7pt; color:var(--color-text-muted);"></div>`
+                }
             </div>
 
             <div class="breakdown-window" style="background: var(--color-bg); padding: 10px; border: 1px solid var(--color-border); margin-bottom: 20px;">
                 <div class="calc-row" style="display: flex; justify-content: space-between; margin-bottom: 5px;">SUBTOTAL: <span>\u20b9${breakdown.subtotal.toFixed(2)}</span></div>
+                ${
+                    breakdown.promoDiscountTotal > 0
+                        ? `<div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-accent);">PROMO SAVINGS: <span>-\u20b9${breakdown.promoDiscountTotal.toFixed(2)}</span></div>`
+                        : ""
+                }
+                ${
+                    breakdown.couponDiscount > 0
+                        ? `<div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-accent);">COUPON SAVINGS: <span>-\u20b9${breakdown.couponDiscount.toFixed(2)}</span></div>`
+                        : ""
+                }
                 <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">CGST (${(config.cgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.cgst.toFixed(2)}</span></div>
                 <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">SGST (${(config.sgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.sgst.toFixed(2)}</span></div>
 
@@ -121,7 +157,7 @@ export function renderPaymentConfirmation(order, method) {
     overlay.innerHTML = `
         <div class="modal-content" style="text-align: center; background: var(--color-surface); padding: 30px; border: 2px solid var(--color-accent);">
             <h2 style="color: var(--color-accent); font-size: 1.2rem; font-family: 'Courier New', monospace;">${isOnline ? "UPI GATEWAY" : "COUNTER READY"}</h2>
-            <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt;">ORDER #${order.id} &middot; TOTAL: \u20b9${order.total.toFixed(2)}</p>
+            <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt;">ORDER #${order.orderNumber || order.id} &middot; TOTAL: \u20b9${order.total.toFixed(2)}</p>
 
             ${
                 isOnline

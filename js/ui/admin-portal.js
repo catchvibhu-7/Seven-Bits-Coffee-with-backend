@@ -12,11 +12,13 @@ import { AuthSystem } from "../features/auth-logic.js";
 import { renderAddStaffModal } from "./staff-modal.js";
 import { renderInfoModal } from "./info-modal.js";
 import { renderItemModal } from "./item-modal.js";
+import { renderCouponModal } from "./coupon-modal.js";
 import { renderAccountSettingsModal } from "./account-settings-modal.js";
 
 const TABS = [
     { id: "global", label: "Global Settings" },
     { id: "menu", label: "Menu Items" },
+    { id: "discounts", label: "Discounts" },
     { id: "orders", label: "Order History" },
     { id: "staff", label: "User Management" },
     { id: "branding", label: "Branding" }
@@ -72,6 +74,7 @@ export const AdminPortal = {
         if (!root) return;
         if (this.activeTab === "global") return this.renderGlobalSettings(root);
         if (this.activeTab === "menu") return this.renderMenuItems(root);
+        if (this.activeTab === "discounts") return this.renderDiscounts(root);
         if (this.activeTab === "orders") return this.renderOrderHistory(root);
         if (this.activeTab === "staff") return this.renderStaffManagement(root);
         if (this.activeTab === "branding") return this.renderBranding(root);
@@ -195,7 +198,11 @@ export const AdminPortal = {
                             }</td>
                             <td>${item.name}</td>
                             <td style="color: var(--color-text-muted); font-size: 8pt;">${sectionById[item.section] || item.section}</td>
-                            <td>\u20b9${item.price}</td>
+                            <td>\u20b9${item.price}${
+                                item.promoDiscount
+                                    ? `<br><span style="color: var(--color-accent); font-size: 7pt;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `\u20b9${item.promoDiscount.value} OFF`}</span>`
+                                    : ""
+                            }</td>
                             <td style="text-align:right;">
                                 <button class="admin-btn" data-edit="${item.id}">EDIT</button>
                                 <button class="admin-btn admin-btn-danger" data-delete="${item.id}">DELETE</button>
@@ -255,6 +262,110 @@ export const AdminPortal = {
         });
     },
 
+    // ------------------------------------------------------------ DISCOUNTS (COUPONS)
+    async renderDiscounts(root) {
+        const res = await fetch("/api/coupons", { credentials: "include" });
+        const coupons = res.ok ? await res.json() : [];
+
+        root.innerHTML = `
+            <div class="admin-toolbar">
+                <button class="admin-btn-primary" id="coupon-add">+ ADD COUPON</button>
+            </div>
+            <table class="admin-table">
+                <thead>
+                    <tr><th>CODE</th><th>DISCOUNT</th><th>VISIBILITY</th><th>USES</th><th>EXPIRES</th><th>STATUS</th><th style="text-align:right;">ACTION</th></tr>
+                </thead>
+                <tbody>
+                    ${
+                        coupons.length === 0
+                            ? `<tr><td colspan="7" style="color:var(--color-text-muted); font-size:9pt;">No coupons yet.</td></tr>`
+                            : coupons
+                                  .map(
+                                      (c) => `
+                        <tr>
+                            <td><strong>${c.code}</strong></td>
+                            <td>${c.type === "percent" ? `${c.value}% OFF` : `₹${c.value} OFF`}</td>
+                            <td style="color: var(--color-text-muted); font-size: 8pt;">${c.private ? "PRIVATE" : "PUBLIC"}</td>
+                            <td style="color: var(--color-text-muted); font-size: 8pt;">${c.usedCount}${c.maxUses != null ? ` / ${c.maxUses}` : ""}</td>
+                            <td style="color: var(--color-text-muted); font-size: 8pt;">${c.expiresAt ? new Date(c.expiresAt).toLocaleDateString() : "Never"}</td>
+                            <td style="color:${c.active ? "var(--color-success)" : "var(--color-text-muted)"};">${c.active ? "ACTIVE" : "DISABLED"}</td>
+                            <td style="text-align:right;">
+                                <button class="admin-btn" data-toggle="${c.id}" data-active="${c.active}">${c.active ? "DISABLE" : "ENABLE"}</button>
+                                <button class="admin-btn" data-edit-coupon="${c.id}">EDIT</button>
+                                <button class="admin-btn admin-btn-danger" data-delete-coupon="${c.id}">DELETE</button>
+                            </td>
+                        </tr>
+                    `
+                                  )
+                                  .join("")
+                    }
+                </tbody>
+            </table>
+        `;
+
+        document.getElementById("coupon-add").addEventListener("click", () => this.openCouponModal(null, coupons));
+        root.querySelectorAll("[data-edit-coupon]").forEach((btn) =>
+            btn.addEventListener("click", () => this.openCouponModal(Number(btn.dataset.editCoupon), coupons))
+        );
+        root.querySelectorAll("[data-delete-coupon]").forEach((btn) => btn.addEventListener("click", () => this.deleteCoupon(Number(btn.dataset.deleteCoupon))));
+        root.querySelectorAll("[data-toggle]").forEach((btn) =>
+            btn.addEventListener("click", () => this.toggleCoupon(Number(btn.dataset.toggle), btn.dataset.active !== "true"))
+        );
+    },
+
+    openCouponModal(couponId, coupons) {
+        const coupon = couponId ? coupons.find((c) => c.id === couponId) : null;
+        renderCouponModal({
+            coupon,
+            onSave: async (payload) => {
+                const url = coupon ? `/api/coupons/${coupon.id}` : "/api/coupons";
+                const res = await fetch(url, {
+                    method: coupon ? "PATCH" : "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || "Could not save coupon");
+                await this.renderActiveTab();
+                ok(coupon ? "Coupon updated" : "Coupon added");
+            }
+        });
+    },
+
+    async toggleCoupon(id, active) {
+        const res = await fetch(`/api/coupons/${id}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ active })
+        });
+        if (res.ok) {
+            await this.renderActiveTab();
+            ok(active ? "Coupon enabled" : "Coupon disabled");
+        } else {
+            fail("Could not update coupon");
+        }
+    },
+
+    async deleteCoupon(id) {
+        renderInfoModal({
+            title: "DELETE COUPON",
+            message: "Confirm permanent deletion of this coupon?",
+            confirmText: "DELETE",
+            cancelText: "CANCEL",
+            onConfirm: async () => {
+                const res = await fetch(`/api/coupons/${id}`, { method: "DELETE", credentials: "include" });
+                if (res.ok) {
+                    await this.renderActiveTab();
+                    ok("Coupon deleted");
+                } else {
+                    fail("Could not delete coupon");
+                }
+            }
+        });
+    },
+
     // ------------------------------------------------------------ ORDER HISTORY
     orderHistorySort: "newest",
     orderHistoryFilter: "all",
@@ -302,7 +413,7 @@ export const AdminPortal = {
                     return `
                     <div class="order-history-card">
                         <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                            <strong>#${o.id}</strong>
+                            <strong>#${o.orderNumber || o.id}</strong>
                             <span style="color:${complete ? "var(--color-success)" : "var(--color-cyan)"};">${complete ? "COMPLETED" : "ACTIVE"}</span>
                         </div>
                         <div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:6px;">${new Date(o.createdAt).toLocaleString()} \u00b7 ${o.method}</div>

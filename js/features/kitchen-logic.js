@@ -23,7 +23,7 @@ export const KitchenSystem = {
         return res.json();
     },
 
-    async pushOrder(cartItems, method, { serviceChargeActive = true, tipApplied = false, phone = null } = {}) {
+    async pushOrder(cartItems, method, { serviceChargeActive = true, tipApplied = false, phone = null, couponCode = null } = {}) {
         const res = await fetch("/api/orders", {
             method: "POST",
             credentials: "include",
@@ -33,7 +33,8 @@ export const KitchenSystem = {
                 method,
                 serviceChargeActive,
                 tipApplied,
-                phone
+                phone,
+                couponCode
             })
         });
         const data = await res.json();

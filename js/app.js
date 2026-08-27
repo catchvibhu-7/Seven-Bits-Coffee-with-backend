@@ -3,6 +3,8 @@
  * Location: /js/app.js
  */
 import { KitchenSystem } from "./features/kitchen-logic.js";
+import { discountedUnitPrice } from "./features/cart-logic.js";
+import { SoundSystem } from "./features/sound-logic.js";
 import { AuthSystem } from "./features/auth-logic.js";
 import { AdminConfig } from "./features/config-logic.js";
 import { renderCheckoutModal, renderPaymentConfirmation } from "./ui/checkout-modal.js";
@@ -13,6 +15,8 @@ import { renderAccountSettingsModal } from "./ui/account-settings-modal.js";
 let cart = [];
 let serviceChargeActive = true;
 let tipApplied = false;
+let appliedCoupon = null; // {code, type, value} from a validated /api/coupons/validate response, or null
+let lastSeenOrderStatuses = {}; // orderId -> last status seen by refreshOrderStatusWidget, so the ready chime fires once per transition, not on every poll
 let currentKitchenStation = "MASTER"; // matches the "ALL" tab that's marked active by default in index.html
 let viewMode = "list";
 let menuData = { sections: [], items: [] };
@@ -328,12 +332,25 @@ async function refreshOrderStatusWidget() {
     const order = activeOrder;
     const statusColor = order.status === "READY" ? "var(--color-success)" : order.status === "PREPARING" ? "var(--color-cyan)" : "var(--color-accent)";
 
+    // Only chime on the moment an order becomes READY (not on every poll
+    // while it stays READY, and not for an order that was already READY the
+    // first time we ever saw it - e.g. a page refresh after pickup was
+    // already announced).
+    const previousStatus = lastSeenOrderStatuses[order.id];
+    if (order.status === "READY" && previousStatus && previousStatus !== "READY") {
+        SoundSystem.playReadyChime();
+    }
+    lastSeenOrderStatuses[order.id] = order.status;
+
     section.style.display = "block";
     root.innerHTML = `
         <div class="status-card" style="border:1px solid var(--color-accent); padding:15px; font-family:'Courier New',monospace;">
             <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                <span>#${order.id}</span>
-                <span style="color:${statusColor}; font-weight:bold;">${order.status}</span>
+                <span>#${order.orderNumber || order.id}</span>
+                <span style="display:flex; align-items:center; gap:8px;">
+                    <button onclick="window.toggleOrderSound(this)" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;">${SoundSystem.isMuted() ? "\u{1F507}" : "\u{1F50A}"}</button>
+                    <span style="color:${statusColor}; font-weight:bold;">${order.status}</span>
+                </span>
             </div>
             <div style="font-size:9pt; color:var(--color-text-muted);">${order.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")}</div>
             <div style="font-size:9pt; margin-top:8px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 \u20b9${order.total.toFixed(2)}</div>
@@ -415,7 +432,7 @@ window.printBill = (order) => {
         <body onload="window.print(); window.close();">
             <div class="center">
                 <h3>SEVEN BITS COFFEE</h3>
-                <p style="font-size: 8pt;">Hazaribagh, Jharkhand<br>#${order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
+                <p style="font-size: 8pt;">Hazaribagh, Jharkhand<br>#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
             </div>
             <div class="hr"></div>
             ${order.items
@@ -430,6 +447,8 @@ window.printBill = (order) => {
                 .join("")}
             <div class="hr"></div>
             <div class="row">SUBTOTAL: <span>\u20b9${order.subtotal.toFixed(2)}</span></div>
+            ${order.promoDiscountTotal > 0 ? `<div class="row">PROMO SAVINGS: <span>-\u20b9${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
+            ${order.couponDiscount > 0 ? `<div class="row">COUPON (${order.couponCode}): <span>-\u20b9${order.couponDiscount.toFixed(2)}</span></div>` : ""}
             <div class="row">TAX (CGST+SGST): <span>\u20b9${(order.cgst + order.sgst).toFixed(2)}</span></div>
             ${order.serviceChargeActive ? `<div class="row">SVC CHG: <span>\u20b9${order.serviceCharge.toFixed(2)}</span></div>` : ""}
             ${order.tipApplied ? `<div class="row">GINGER TIP: <span>\u20b9${order.tipAmount.toFixed(2)}</span></div>` : ""}
@@ -456,7 +475,7 @@ window.printKOT = (order) => {
         <body onload="window.print(); window.close();">
             <div class="header">
                 <h2>KITCHEN TICKET</h2>
-                <p>#${order.id} | TYPE: ${order.method}</p>
+                <p>#${order.orderNumber || order.id} | TYPE: ${order.method}</p>
             </div>
             ${order.items
                 .map(
@@ -496,7 +515,7 @@ window.startCheckout = async (method) => {
     }
 
     try {
-        const order = await KitchenSystem.pushOrder(cart, method, { serviceChargeActive, tipApplied, phone });
+        const order = await KitchenSystem.pushOrder(cart, method, { serviceChargeActive, tipApplied, phone, couponCode: appliedCoupon?.code || null });
         pendingOrder = order;
         renderPaymentConfirmation(order, method);
     } catch (e) {
@@ -516,6 +535,7 @@ window.finalizeAndPrint = () => {
     cart = [];
     serviceChargeActive = true;
     tipApplied = false;
+    appliedCoupon = null;
     updateCartUI();
     document.getElementById("payment-overlay")?.remove();
     window.closeModal();
@@ -630,16 +650,22 @@ function renderMenu(filterQuery = "") {
                 </div>`
                     : `<button class="btn-add-fixed" onclick="window.addToCart(${item.id})">ADD BIT</button>`;
 
+            const unitPrice = discountedUnitPrice(item);
+            const onPromo = unitPrice < item.price;
+            const priceHTML = onPromo
+                ? `<span style="text-decoration:line-through; color:var(--color-text-muted); font-size:0.8em;">\u20b9${item.price}</span> \u20b9${unitPrice.toFixed(2)}`
+                : `\u20b9${item.price}`;
+
             const itemEl = document.createElement("div");
             itemEl.className = "menu-item";
             itemEl.innerHTML = `
                 ${iconMarkup(item.icon)}
                 <div class="info">
-                    <div class="name">${item.name}</div>
+                    <div class="name">${item.name}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
                 </div>
                 <div class="item-controls">
-                    <div class="price-fixed">\u20b9${item.price}</div>
+                    <div class="price-fixed">${priceHTML}</div>
                     <div class="action-fixed">${buttonHTML}</div>
                 </div>
             `;
@@ -673,14 +699,14 @@ window.handleCartStatusClick = async () => {
         renderLoginModal(
             (loginResult) =>
                 afterLoginSuccess(loginResult, async () => {
-                    await renderCheckoutModal(cart, serviceChargeActive, tipApplied);
+                    await renderCheckoutModal(cart, serviceChargeActive, tipApplied, appliedCoupon);
                 }),
             { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
         );
         return;
     }
 
-    await renderCheckoutModal(cart, serviceChargeActive, tipApplied);
+    await renderCheckoutModal(cart, serviceChargeActive, tipApplied, appliedCoupon);
 };
 
 /**
@@ -756,7 +782,7 @@ function renderKitchen() {
 
             ticket.innerHTML = `
             <div class="kot-header">
-                <span>#${order.id}</span>
+                <span>#${order.orderNumber || order.id}</span>
                 <span style="float:right;">${paidStatus}</span>
             </div>
             <div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:6px;">${new Date(order.createdAt).toLocaleString()}</div>
@@ -803,7 +829,7 @@ window.markCompleted = async (orderId) => {
     const order = KitchenSystem.orders.find((o) => o.id === orderId);
 
     if (order) {
-        let msg = `Order #${orderId}: `;
+        let msg = `Order #${order.orderNumber || orderId}: `;
         const allDone = order.items.every((i) => i.isDone);
 
         if (allDone) {
@@ -823,6 +849,12 @@ window.markCompleted = async (orderId) => {
  * UI HELPERS & MODALS
  */
 window.closeModal = () => document.getElementById("modal-overlay")?.remove();
+window.toggleOrderSound = (btn) => {
+    const muted = !SoundSystem.isMuted();
+    SoundSystem.setMuted(muted);
+    btn.textContent = muted ? "\u{1F507}" : "\u{1F50A}";
+    btn.title = muted ? "Unmute order-ready sound" : "Mute order-ready sound";
+};
 window.toggleTip = (check) => {
     tipApplied = check;
     window.closeModal();
@@ -832,6 +864,58 @@ window.removeServiceCharge = () => {
     serviceChargeActive = false;
     window.closeModal();
     document.getElementById("cart-status").click();
+};
+
+window.applyCouponCode = async () => {
+    const input = document.getElementById("coupon-code-input");
+    const errorEl = document.getElementById("coupon-error");
+    const code = input?.value.trim();
+    if (!code) return;
+
+    try {
+        const res = await fetch("/api/coupons/validate", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Invalid coupon");
+        appliedCoupon = data;
+        window.closeModal();
+        document.getElementById("cart-status").click();
+    } catch (e) {
+        if (errorEl) errorEl.textContent = e.message;
+    }
+};
+
+window.removeCoupon = () => {
+    appliedCoupon = null;
+    window.closeModal();
+    document.getElementById("cart-status").click();
+};
+
+window.toggleShowCoupons = async () => {
+    const listEl = document.getElementById("public-coupons-list");
+    if (!listEl) return;
+    if (listEl.style.display !== "none") {
+        listEl.style.display = "none";
+        return;
+    }
+    listEl.style.display = "block";
+    listEl.innerHTML = "Loading...";
+    const res = await fetch("/api/coupons/public", { credentials: "include" });
+    const coupons = res.ok ? await res.json() : [];
+    if (coupons.length === 0) {
+        listEl.innerHTML = "No public codes available right now.";
+        return;
+    }
+    listEl.innerHTML = coupons
+        .map(
+            (c) =>
+                `<div style="cursor:pointer; padding:3px 0; text-decoration:underline;" onclick="document.getElementById('coupon-code-input').value='${c.code}'">${c.code} - ${c.type === "percent" ? `${c.value}% OFF` : `₹${c.value} OFF`}</div>`
+        )
+        .join("");
 };
 
 window.triggerGingerAnimation = (message) => {
@@ -953,6 +1037,7 @@ window.pickFromHome = (itemId) => {
  * BOOT
  */
 (async () => {
+    document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
     await loadMenu();
     await refreshSession();
     const config = await AdminConfig.loadSettings();

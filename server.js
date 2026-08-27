@@ -79,6 +79,7 @@ const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const AUDIT_LOG_FILE = path.join(DATA_DIR, "audit-log.json");
 const BRANDING_PROFILES_FILE = path.join(DATA_DIR, "branding-profiles.json");
+const COUPONS_FILE = path.join(DATA_DIR, "coupons.json");
 
 if (!fs.existsSync(AUDIT_LOG_FILE)) writeJson(AUDIT_LOG_FILE, []);
 if (!fs.existsSync(BRANDING_PROFILES_FILE)) writeJson(BRANDING_PROFILES_FILE, {});
@@ -546,7 +547,90 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-function computeOrder(items, method, serviceChargeActive, tipApplied) {
+// Validates a menu item's promo-discount payload, returning null for "no
+// promo" (including invalid input, so a bad request just drops the promo
+// rather than saving garbage). percent is capped at 100; flat just needs to
+// be a positive rupee amount - computeOrder() clamps the resulting price to
+// a floor of 0 regardless.
+function sanitizePromoDiscount(input) {
+  if (!input) return null;
+  const type = input.type === "flat" ? "flat" : input.type === "percent" ? "percent" : null;
+  const value = Number(input.value);
+  if (!type || !Number.isFinite(value) || value <= 0) return null;
+  if (type === "percent" && value > 100) return null;
+  return { type, value };
+}
+
+// A menu item "on promotion" auto-applies its discount to every line for
+// that item - no coupon code needed. (This codebase has no coupon system to
+// be mutually exclusive with; if one is added later, block coupon
+// application whenever any cart line carries a promoDiscount.)
+function promoUnitPrice(product) {
+  const promo = product.promoDiscount;
+  if (!promo) return product.price;
+  const discounted = promo.type === "percent" ? product.price * (1 - promo.value / 100) : product.price - promo.value;
+  return round2(Math.max(0, discounted));
+}
+
+// Coupons are order-wide (applied to the subtotal) and mutually exclusive
+// with per-item promos - a cart with any promo-discounted line can't also
+// redeem a coupon code, so the two discount mechanisms never stack.
+function findValidCoupon(code) {
+  if (!code) return null;
+  const normalized = String(code).trim().toUpperCase();
+  if (!normalized) return null;
+  const coupon = readJson(COUPONS_FILE, []).find((c) => c.code === normalized);
+  if (!coupon) return null;
+  if (!coupon.active) return null;
+  if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now()) return null;
+  if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses) return null;
+  return coupon;
+}
+
+function computeCouponDiscount(coupon, subtotal) {
+  const raw = coupon.type === "percent" ? subtotal * (coupon.value / 100) : coupon.value;
+  return round2(Math.max(0, Math.min(subtotal, raw)));
+}
+
+function sanitizeCouponInput(body, existingCoupons, ignoreId = null) {
+  const code = String(body.code || "").trim().toUpperCase();
+  const type = body.type === "flat" ? "flat" : body.type === "percent" ? "percent" : null;
+  const value = Number(body.value);
+  if (!code) return { error: "Code is required" };
+  if (existingCoupons.some((c) => c.code === code && c.id !== ignoreId)) return { error: "That code is already in use" };
+  if (!type || !Number.isFinite(value) || value <= 0) return { error: "Enter a valid discount type and value" };
+  if (type === "percent" && value > 100) return { error: "Percent discount can't exceed 100" };
+  let maxUses = null;
+  if (body.maxUses !== undefined && body.maxUses !== null && body.maxUses !== "") {
+    maxUses = parseInt(body.maxUses, 10);
+    if (!Number.isFinite(maxUses) || maxUses <= 0) return { error: "Max uses must be a positive number" };
+  }
+  let expiresAt = null;
+  if (body.expiresAt) {
+    const d = new Date(body.expiresAt);
+    if (Number.isNaN(d.getTime())) return { error: "Invalid expiry date" };
+    expiresAt = d.toISOString();
+  }
+  return { value: { code, type, value, private: !!body.private, maxUses, expiresAt } };
+}
+
+// Customer/staff-facing display number, separate from `id` (the internal
+// primary key). Format: SB + YYMMDD + a 2-digit per-day counter that resets
+// at midnight because it's derived from today's date prefix, e.g. SB26082401,
+// SB26082402. Safe without locking: server.js handles one request at a time
+// and this runs synchronously between the readJson/writeJson in the order
+// creation route, so two orders can never see the same existing count.
+function generateOrderNumber(existingOrders) {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const datePrefix = `SB${yy}${mm}${dd}`;
+  const todayCount = existingOrders.filter((o) => o.orderNumber && o.orderNumber.startsWith(datePrefix)).length;
+  return `${datePrefix}${String(todayCount + 1).padStart(2, "0")}`;
+}
+
+function computeOrder(items, method, serviceChargeActive, tipApplied, couponCode) {
   const menu = readJson(MENU_FILE, { items: [] });
   const config = readJson(CONFIG_FILE, {});
 
@@ -560,7 +644,9 @@ function computeOrder(items, method, serviceChargeActive, tipApplied) {
     resolvedItems.push({
       id: product.id,
       name: product.name,
-      price: product.price, // authoritative price from server menu, never from client
+      price: promoUnitPrice(product), // authoritative price from server menu (promo applied), never from client
+      originalPrice: product.price,
+      promoDiscount: product.promoDiscount || null,
       quantity,
       station: getStation(product),
       isDone: false
@@ -572,11 +658,27 @@ function computeOrder(items, method, serviceChargeActive, tipApplied) {
   }
 
   const subtotal = resolvedItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const cgst = subtotal * (config.cgstRate ?? 0.05);
-  const sgst = subtotal * (config.sgstRate ?? 0.05);
-  const serviceCharge = serviceChargeActive ? subtotal * (config.serviceChargeRate ?? 0.02) : 0;
+  const promoDiscountTotal = resolvedItems.reduce((sum, i) => sum + (i.originalPrice - i.price) * i.quantity, 0);
+
+  const hasPromoItem = resolvedItems.some((i) => i.promoDiscount);
+  let coupon = null;
+  if (couponCode) {
+    if (hasPromoItem) {
+      throw new Error("Coupon codes can't be combined with promotional items in your cart");
+    }
+    coupon = findValidCoupon(couponCode);
+    if (!coupon) {
+      throw new Error("Invalid, expired, or exhausted coupon code");
+    }
+  }
+  const couponDiscount = coupon ? computeCouponDiscount(coupon, subtotal) : 0;
+  const taxableAmount = subtotal - couponDiscount;
+
+  const cgst = taxableAmount * (config.cgstRate ?? 0.05);
+  const sgst = taxableAmount * (config.sgstRate ?? 0.05);
+  const serviceCharge = serviceChargeActive ? taxableAmount * (config.serviceChargeRate ?? 0.02) : 0;
   const tipAmount = config.tipEnabled && tipApplied ? config.tipAmount || 0 : 0;
-  const total = subtotal + cgst + sgst + serviceCharge + tipAmount;
+  const total = taxableAmount + cgst + sgst + serviceCharge + tipAmount;
 
   let paymentQrUrl = null;
   const upiVpa = config.upiVpa || UPI_VPA; // config is the source of truth; env only matters before first save
@@ -589,6 +691,10 @@ function computeOrder(items, method, serviceChargeActive, tipApplied) {
   return {
     items: resolvedItems,
     subtotal: round2(subtotal),
+    promoDiscountTotal: round2(promoDiscountTotal),
+    couponCode: coupon ? coupon.code : null,
+    couponId: coupon ? coupon.id : null,
+    couponDiscount: round2(couponDiscount),
     cgst: round2(cgst),
     sgst: round2(sgst),
     serviceCharge: round2(serviceCharge),
@@ -907,9 +1013,20 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
   if (!menu.sections.some((s) => s.id === section)) {
     return sendJson(res, 400, { error: "Unknown section" });
   }
+  if (body.promoDiscount && !sanitizePromoDiscount(body.promoDiscount)) {
+    return sendJson(res, 400, { error: "Invalid promo discount" });
+  }
 
   const nextId = menu.items.length ? Math.max(...menu.items.map((i) => i.id)) + 1 : 1;
-  const item = { id: nextId, section, name, price, icon: body.icon || "espresso", story: body.story || "" };
+  const item = {
+    id: nextId,
+    section,
+    name,
+    price,
+    icon: body.icon || "espresso",
+    story: body.story || "",
+    promoDiscount: sanitizePromoDiscount(body.promoDiscount)
+  };
   menu.items.push(item);
   writeJson(MENU_FILE, menu);
   sendJson(res, 201, item);
@@ -935,6 +1052,15 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
     const price = Number(body.price);
     if (!Number.isFinite(price) || price <= 0) return sendJson(res, 400, { error: "Invalid price" });
     item.price = price;
+  }
+  if (body.promoDiscount !== undefined) {
+    if (body.promoDiscount === null) {
+      item.promoDiscount = null;
+    } else {
+      const sanitized = sanitizePromoDiscount(body.promoDiscount);
+      if (!sanitized) return sendJson(res, 400, { error: "Invalid promo discount" });
+      item.promoDiscount = sanitized;
+    }
   }
   writeJson(MENU_FILE, menu);
   sendJson(res, 200, item);
@@ -1064,6 +1190,77 @@ route("DELETE", /^\/api\/branding-profiles\/(?<name>[^/]+)\/?$/, async (req, res
   sendJson(res, 200, profiles);
 });
 
+// --- Coupons ---
+route("GET", /^\/api\/coupons\/?$/, async (req, res) => {
+  // Manager/owner only - returns everything, including private/inactive/
+  // exhausted codes. The public listing below is a separate, filtered route.
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  sendJson(res, 200, readJson(COUPONS_FILE, []));
+});
+
+route("GET", /^\/api\/coupons\/public\/?$/, async (req, res) => {
+  // No auth beyond a session (same level as coupon validation) - lets a
+  // customer self-serve the list of codes worth trying. Private coupons and
+  // anything inactive/expired/exhausted never appear here.
+  const session = currentSession(req);
+  if (!session) return sendJson(res, 401, { error: "Not signed in" });
+  const now = Date.now();
+  const coupons = readJson(COUPONS_FILE, [])
+    .filter((c) => c.active && !c.private)
+    .filter((c) => !c.expiresAt || new Date(c.expiresAt).getTime() >= now)
+    .filter((c) => c.maxUses == null || c.usedCount < c.maxUses)
+    .map((c) => ({ code: c.code, type: c.type, value: c.value, expiresAt: c.expiresAt }));
+  sendJson(res, 200, coupons);
+});
+
+route("POST", /^\/api\/coupons\/validate\/?$/, async (req, res) => {
+  const session = currentSession(req);
+  if (!session) return sendJson(res, 401, { error: "Not signed in" });
+  const body = await readBody(req);
+  const coupon = findValidCoupon(body.code);
+  if (!coupon) return sendJson(res, 404, { error: "Invalid, expired, or exhausted coupon code" });
+  sendJson(res, 200, { code: coupon.code, type: coupon.type, value: coupon.value });
+});
+
+route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  const body = await readBody(req);
+  const coupons = readJson(COUPONS_FILE, []);
+  const result = sanitizeCouponInput(body, coupons);
+  if (result.error) return sendJson(res, 400, { error: result.error });
+
+  const nextId = coupons.length ? Math.max(...coupons.map((c) => c.id)) + 1 : 1;
+  const coupon = { id: nextId, ...result.value, active: true, usedCount: 0, createdAt: new Date().toISOString() };
+  coupons.push(coupon);
+  writeJson(COUPONS_FILE, coupons);
+  sendJson(res, 201, coupon);
+});
+
+route("PATCH", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  const body = await readBody(req);
+  const coupons = readJson(COUPONS_FILE, []);
+  const coupon = coupons.find((c) => c.id === Number(params.id));
+  if (!coupon) return sendJson(res, 404, { error: "Coupon not found" });
+
+  if (body.active !== undefined) {
+    coupon.active = !!body.active;
+  } else {
+    const result = sanitizeCouponInput(body, coupons, coupon.id);
+    if (result.error) return sendJson(res, 400, { error: result.error });
+    Object.assign(coupon, result.value);
+  }
+  writeJson(COUPONS_FILE, coupons);
+  sendJson(res, 200, coupon);
+});
+
+route("DELETE", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  const coupons = readJson(COUPONS_FILE, []).filter((c) => c.id !== Number(params.id));
+  writeJson(COUPONS_FILE, coupons);
+  sendJson(res, 200, { ok: true });
+});
+
 // --- Orders ---
 route("GET", /^\/api\/orders\/?$/, async (req, res) => {
   // Full order list is for staff running the register/kitchen/admin views only.
@@ -1112,7 +1309,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
 
   let computed;
   try {
-    computed = computeOrder(Array.isArray(body.items) ? body.items : [], method, serviceChargeActive, tipApplied);
+    computed = computeOrder(Array.isArray(body.items) ? body.items : [], method, serviceChargeActive, tipApplied, body.couponCode);
   } catch (e) {
     return sendJson(res, 400, { error: e.message });
   }
@@ -1120,6 +1317,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   const orders = readJson(ORDERS_FILE, []);
   const order = {
     id: `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+    orderNumber: generateOrderNumber(orders),
     createdAt: new Date().toISOString(),
     method,
     isPaid: method === "ONLINE", // still trust-based until a real payment webhook is wired up - see README
@@ -1131,6 +1329,15 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   };
   orders.push(order);
   writeJson(ORDERS_FILE, orders);
+
+  if (computed.couponId != null) {
+    const coupons = readJson(COUPONS_FILE, []);
+    const coupon = coupons.find((c) => c.id === computed.couponId);
+    if (coupon) {
+      coupon.usedCount = (coupon.usedCount || 0) + 1;
+      writeJson(COUPONS_FILE, coupons);
+    }
+  }
   broadcastOrdersChanged();
   sendJson(res, 201, order);
 });
