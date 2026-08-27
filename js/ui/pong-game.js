@@ -7,8 +7,11 @@
  * paddle-position sync over the request/SSE stack this server has would
  * feel laggy, and vs-AI is what actually plays well). Score is the length
  * of the current rally (successful player hits), submitted on game over.
+ * Colors are read live from the theme (themeColor(), since canvas can't
+ * resolve CSS vars itself): player paddle = accent, AI paddle = cyan.
  */
 import { ArcadeSystem } from "../features/arcade-logic.js";
+import { themeColor } from "../features/theme-colors.js";
 
 const WIDTH = 400;
 const HEIGHT = 280;
@@ -33,6 +36,7 @@ export const PongGame = {
     rafId: null,
     keyDownHandler: null,
     keyUpHandler: null,
+    colors: null,
 
     mount(root) {
         this.root = root;
@@ -44,13 +48,22 @@ export const PongGame = {
                 <button id="pong-up" class="admin-btn">↑</button>
                 <button id="pong-down" class="admin-btn">↓</button>
             </div>
-            <div style="text-align:center; margin-top:10px;">
+            <p id="pong-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
+            <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
+                <button id="pong-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
                 <button id="pong-back" class="admin-btn">BACK</button>
             </div>
             <p style="text-align:center; font-size:7pt; color:var(--color-text-muted); margin-top:8px;">Arrow keys (or the buttons) to move your paddle.</p>
         `;
         this.canvas = this.root.querySelector("#pong-canvas");
         this.ctx = this.canvas.getContext("2d");
+        this.colors = {
+            bg: themeColor("--color-bg", "#0a0a0a"),
+            border: themeColor("--color-border", "#333333"),
+            player: themeColor("--color-accent", "#d97706"),
+            ai: themeColor("--color-cyan", "#22d3ee"),
+            ball: themeColor("--color-text", "#f9fafb")
+        };
 
         this.keys = {};
         this.keyDownHandler = (e) => {
@@ -83,6 +96,7 @@ export const PongGame = {
         downBtn.addEventListener("touchend", () => (this.touchDown = false));
 
         this.root.querySelector("#pong-back").addEventListener("click", () => this.exit());
+        this.root.querySelector("#pong-again").addEventListener("click", () => this.startGame());
 
         this.startGame();
     },
@@ -106,6 +120,8 @@ export const PongGame = {
         this.aiY = HEIGHT / 2 - PADDLE_H / 2;
         this.score = 0;
         this.gameOver = false;
+        this.root.querySelector("#pong-message").textContent = "";
+        this.root.querySelector("#pong-again").style.display = "none";
         this.resetBall(1);
         this.updateScore();
         if (this.rafId) cancelAnimationFrame(this.rafId);
@@ -184,9 +200,9 @@ export const PongGame = {
 
     draw() {
         const ctx = this.ctx;
-        ctx.fillStyle = "#0a0a0a";
+        ctx.fillStyle = this.colors.bg;
         ctx.fillRect(0, 0, WIDTH, HEIGHT);
-        ctx.strokeStyle = "#333";
+        ctx.strokeStyle = this.colors.border;
         ctx.setLineDash([6, 6]);
         ctx.beginPath();
         ctx.moveTo(WIDTH / 2, 0);
@@ -194,12 +210,12 @@ export const PongGame = {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        ctx.fillStyle = "#d97706";
+        ctx.fillStyle = this.colors.player;
         ctx.fillRect(16, this.playerY, PADDLE_W, PADDLE_H);
-        ctx.fillStyle = "#22d3ee";
+        ctx.fillStyle = this.colors.ai;
         ctx.fillRect(WIDTH - 16 - PADDLE_W, this.aiY, PADDLE_W, PADDLE_H);
 
-        ctx.fillStyle = "#f9fafb";
+        ctx.fillStyle = this.colors.ball;
         ctx.beginPath();
         ctx.arc(this.ballX, this.ballY, 5, 0, Math.PI * 2);
         ctx.fill();
@@ -210,19 +226,8 @@ export const PongGame = {
         if (this.rafId) cancelAnimationFrame(this.rafId);
         await ArcadeSystem.submitScore("pong", this.score);
         if (this.onScoreSubmitted) this.onScoreSubmitted();
-        const overlay = document.createElement("div");
-        overlay.style.cssText = "text-align:center; margin-top:16px;";
-        overlay.innerHTML = `
-            <p style="font-size:1.1rem; color:var(--color-danger); margin-bottom:10px;">GAME OVER - RALLY: ${this.score}</p>
-            <div style="display:grid; gap:10px; max-width:200px; margin:0 auto;">
-                <button id="pong-again" class="admin-btn-primary">PLAY AGAIN</button>
-            </div>
-        `;
-        this.root.querySelector("#pong-back").insertAdjacentElement("beforebegin", overlay);
-        overlay.querySelector("#pong-again").addEventListener("click", () => {
-            overlay.remove();
-            this.startGame();
-        });
+        this.root.querySelector("#pong-message").textContent = `GAME OVER - RALLY: ${this.score}`;
+        this.root.querySelector("#pong-again").style.display = "";
     },
 
     onExit: () => {},

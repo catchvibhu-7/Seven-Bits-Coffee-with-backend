@@ -7,31 +7,37 @@
  * but doesn't recompute it, same trust level as the rest of this "fun while
  * you wait" feature). Canvas-rendered 10x20 well; simple rotation (no SRS
  * wall-kicks) since that's plenty for a casual arcade game.
+ *
+ * Piece colors: two of the seven pieces are tied to the live theme
+ * (accent/cyan, read via themeColor() since canvas can't resolve CSS vars
+ * itself) - the rest stay fixed distinct hues, because Tetris genuinely
+ * needs 7 visually-distinguishable piece colors to be playable, not just
+ * "on brand". Making every piece the same accent color would look tidy but
+ * make the game harder to read.
  */
 import { ArcadeSystem } from "../features/arcade-logic.js";
+import { themeColor } from "../features/theme-colors.js";
 
 const COLS = 10;
 const ROWS = 20;
 const CELL = 24;
 
-const PIECES = {
-    I: { shape: [[1, 1, 1, 1]], color: "#22d3ee" },
-    O: { shape: [[1, 1], [1, 1]], color: "#d97706" },
-    T: { shape: [[0, 1, 0], [1, 1, 1]], color: "#a855f7" },
-    S: { shape: [[0, 1, 1], [1, 1, 0]], color: "#22c55e" },
-    Z: { shape: [[1, 1, 0], [0, 1, 1]], color: "#ef4444" },
-    J: { shape: [[1, 0, 0], [1, 1, 1]], color: "#3b82f6" },
-    L: { shape: [[0, 0, 1], [1, 1, 1]], color: "#f97316" }
-};
-const PIECE_KEYS = Object.keys(PIECES);
+function buildPieces() {
+    const accent = themeColor("--color-accent", "#d97706");
+    const cyan = themeColor("--color-cyan", "#22d3ee");
+    return {
+        I: { shape: [[1, 1, 1, 1]], color: cyan },
+        O: { shape: [[1, 1], [1, 1]], color: accent },
+        T: { shape: [[0, 1, 0], [1, 1, 1]], color: "#a855f7" },
+        S: { shape: [[0, 1, 1], [1, 1, 0]], color: "#22c55e" },
+        Z: { shape: [[1, 1, 0], [0, 1, 1]], color: "#ef4444" },
+        J: { shape: [[1, 0, 0], [1, 1, 1]], color: "#3b82f6" },
+        L: { shape: [[0, 0, 1], [1, 1, 1]], color: "#f97316" }
+    };
+}
 
 function rotateClockwise(shape) {
     return shape[0].map((_, col) => shape.map((row) => row[col]).reverse());
-}
-
-function randomPiece() {
-    const key = PIECE_KEYS[Math.floor(Math.random() * PIECE_KEYS.length)];
-    return { shape: PIECES[key].shape.map((r) => [...r]), color: PIECES[key].color };
 }
 
 export const TetrisGame = {
@@ -39,6 +45,8 @@ export const TetrisGame = {
     canvas: null,
     ctx: null,
     board: null,
+    pieces: null,
+    pieceKeys: null,
     piece: null,
     px: 0,
     py: 0,
@@ -64,7 +72,9 @@ export const TetrisGame = {
                 <button id="tt-right" class="admin-btn">→</button>
                 <button id="tt-down" class="admin-btn">↓</button>
             </div>
-            <div style="text-align:center; margin-top:10px;">
+            <p id="tetris-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
+            <div style="display:grid; gap:10px; max-width:${COLS * CELL}px; margin:8px auto 0;">
+                <button id="tetris-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
                 <button id="tetris-back" class="admin-btn">BACK</button>
             </div>
             <p style="text-align:center; font-size:7pt; color:var(--color-text-muted); margin-top:8px;">Arrow keys to move/rotate, Space to hard-drop.</p>
@@ -76,6 +86,7 @@ export const TetrisGame = {
         this.root.querySelector("#tt-down").addEventListener("click", () => this.softDrop());
         this.root.querySelector("#tt-rotate").addEventListener("click", () => this.rotate());
         this.root.querySelector("#tetris-back").addEventListener("click", () => this.exit());
+        this.root.querySelector("#tetris-again").addEventListener("click", () => this.startGame());
 
         this.keyHandler = (e) => this.handleKey(e);
         document.addEventListener("keydown", this.keyHandler);
@@ -95,15 +106,25 @@ export const TetrisGame = {
     },
 
     startGame() {
+        this.pieces = buildPieces();
+        this.pieceKeys = Object.keys(this.pieces);
         this.board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
         this.score = 0;
         this.lines = 0;
         this.level = 1;
         this.gameOver = false;
+        this.root.querySelector("#tetris-message").textContent = "";
+        this.root.querySelector("#tetris-again").style.display = "none";
         this.spawnPiece();
         this.updateStats();
         this.draw();
         this.startDropTimer();
+    },
+
+    randomPiece() {
+        const key = this.pieceKeys[Math.floor(Math.random() * this.pieceKeys.length)];
+        const def = this.pieces[key];
+        return { shape: def.shape.map((r) => [...r]), color: def.color };
     },
 
     startDropTimer() {
@@ -120,7 +141,7 @@ export const TetrisGame = {
     },
 
     spawnPiece() {
-        this.piece = randomPiece();
+        this.piece = this.randomPiece();
         this.px = Math.floor((COLS - this.piece.shape[0].length) / 2);
         this.py = 0;
         if (this.collides(this.piece.shape, this.px, this.py)) {
@@ -276,19 +297,8 @@ export const TetrisGame = {
         this.stopDropTimer();
         await ArcadeSystem.submitScore("tetris", this.score);
         if (this.onScoreSubmitted) this.onScoreSubmitted();
-        const overlay = document.createElement("div");
-        overlay.style.cssText = "text-align:center; margin-top:16px;";
-        overlay.innerHTML = `
-            <p style="font-size:1.1rem; color:var(--color-danger); margin-bottom:10px;">GAME OVER - SCORE: ${this.score}</p>
-            <div style="display:grid; gap:10px; max-width:${COLS * CELL}px; margin:0 auto;">
-                <button id="tetris-again" class="admin-btn-primary">PLAY AGAIN</button>
-            </div>
-        `;
-        this.root.querySelector("#tetris-back").insertAdjacentElement("beforebegin", overlay);
-        overlay.querySelector("#tetris-again").addEventListener("click", () => {
-            overlay.remove();
-            this.startGame();
-        });
+        this.root.querySelector("#tetris-message").textContent = `GAME OVER - SCORE: ${this.score}`;
+        this.root.querySelector("#tetris-again").style.display = "";
     },
 
     onExit: () => {},

@@ -4,9 +4,12 @@
  *
  * Single-player, canvas-rendered. Speed ramps up as the score grows (every
  * 5 points shaves 10ms off the tick interval, floored at 70ms) so it stays
- * a quick, casual round rather than dragging on.
+ * a quick, casual round rather than dragging on. Body color is the live
+ * theme accent (read via themeColor() since canvas can't resolve CSS vars
+ * itself); food uses the secondary/cyan theme color for contrast.
  */
 import { ArcadeSystem } from "../features/arcade-logic.js";
+import { themeColor } from "../features/theme-colors.js";
 
 const COLS = 18;
 const ROWS = 18;
@@ -24,6 +27,7 @@ export const SnakeGame = {
     tickTimer: null,
     gameOver: false,
     keyHandler: null,
+    colors: null,
 
     mount(root) {
         this.root = root;
@@ -35,18 +39,22 @@ export const SnakeGame = {
                 <div></div><button id="sn-up" class="admin-btn">↑</button><div></div>
                 <button id="sn-left" class="admin-btn">←</button><button id="sn-down" class="admin-btn">↓</button><button id="sn-right" class="admin-btn">→</button>
             </div>
-            <div style="text-align:center; margin-top:10px;">
+            <p id="snake-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
+            <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
+                <button id="snake-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
                 <button id="snake-back" class="admin-btn">BACK</button>
             </div>
             <p style="text-align:center; font-size:7pt; color:var(--color-text-muted); margin-top:8px;">Arrow keys to steer.</p>
         `;
         this.canvas = this.root.querySelector("#snake-canvas");
         this.ctx = this.canvas.getContext("2d");
+        this.colors = { head: themeColor("--color-accent", "#d97706"), food: themeColor("--color-cyan", "#22d3ee") };
         this.root.querySelector("#sn-up").addEventListener("click", () => this.setDirection(0, -1));
         this.root.querySelector("#sn-down").addEventListener("click", () => this.setDirection(0, 1));
         this.root.querySelector("#sn-left").addEventListener("click", () => this.setDirection(-1, 0));
         this.root.querySelector("#sn-right").addEventListener("click", () => this.setDirection(1, 0));
         this.root.querySelector("#snake-back").addEventListener("click", () => this.exit());
+        this.root.querySelector("#snake-again").addEventListener("click", () => this.startGame());
 
         this.keyHandler = (e) => this.handleKey(e);
         document.addEventListener("keydown", this.keyHandler);
@@ -71,6 +79,8 @@ export const SnakeGame = {
         this.nextDirection = { x: 1, y: 0 };
         this.score = 0;
         this.gameOver = false;
+        this.root.querySelector("#snake-message").textContent = "";
+        this.root.querySelector("#snake-again").style.display = "none";
         this.placeFood();
         this.updateScore();
         this.draw();
@@ -147,12 +157,14 @@ export const SnakeGame = {
     draw() {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        ctx.fillStyle = "#ef4444";
+        ctx.fillStyle = this.colors.food;
         ctx.fillRect(this.food.x * CELL + 2, this.food.y * CELL + 2, CELL - 4, CELL - 4);
         this.snake.forEach((seg, i) => {
-            ctx.fillStyle = i === 0 ? "#22c55e" : "#16a34a";
+            ctx.fillStyle = this.colors.head;
+            ctx.globalAlpha = i === 0 ? 1 : 0.75;
             ctx.fillRect(seg.x * CELL + 1, seg.y * CELL + 1, CELL - 2, CELL - 2);
         });
+        ctx.globalAlpha = 1;
     },
 
     async endGame() {
@@ -160,19 +172,8 @@ export const SnakeGame = {
         this.stopTimer();
         await ArcadeSystem.submitScore("snake", this.score);
         if (this.onScoreSubmitted) this.onScoreSubmitted();
-        const overlay = document.createElement("div");
-        overlay.style.cssText = "text-align:center; margin-top:16px;";
-        overlay.innerHTML = `
-            <p style="font-size:1.1rem; color:var(--color-danger); margin-bottom:10px;">GAME OVER - SCORE: ${this.score}</p>
-            <div style="display:grid; gap:10px; max-width:200px; margin:0 auto;">
-                <button id="snake-again" class="admin-btn-primary">PLAY AGAIN</button>
-            </div>
-        `;
-        this.root.querySelector("#snake-back").insertAdjacentElement("beforebegin", overlay);
-        overlay.querySelector("#snake-again").addEventListener("click", () => {
-            overlay.remove();
-            this.startGame();
-        });
+        this.root.querySelector("#snake-message").textContent = `GAME OVER - SCORE: ${this.score}`;
+        this.root.querySelector("#snake-again").style.display = "";
     },
 
     onExit: () => {},

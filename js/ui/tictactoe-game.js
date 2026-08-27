@@ -58,7 +58,7 @@ function gridHtml(board, disabled) {
             ${board
                 .map(
                     (cell, i) => `
-                <div class="ttt-cell" data-cell="${i}" style="${cellStyle()} ${disabled || cell ? "cursor:default;" : ""} color:${cell === "X" ? "var(--color-accent)" : "var(--color-cyan)"};">${cell || ""}</div>
+                <div class="ttt-cell" data-cell="${i}" style="${cellStyle()} ${disabled || cell ? "cursor:default;" : ""} color:${cell === "X" ? "var(--color-accent)" : "var(--color-text)"};">${cell || ""}</div>
             `
                 )
                 .join("")}
