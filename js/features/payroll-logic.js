@@ -112,5 +112,17 @@ export const PayrollSystem = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not add store");
         return data;
+    },
+
+    async updateStore(id, patch) {
+        const res = await fetch(`/api/stores/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not update store");
+        return data;
     }
 };

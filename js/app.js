@@ -129,6 +129,18 @@ function updateNavForSession() {
 }
 
 /**
+ * Re-fetches config and re-applies branding - a staff session tied to a
+ * store gets that store's branding merged in server-side (configForSession),
+ * but the client only sees it by asking again. Needed after login/logout
+ * since the initial boot fetch happens before anyone's signed in.
+ */
+async function refreshBranding() {
+    const config = await AdminConfig.loadSettings();
+    window.applyBranding(config);
+    window.renderFooter(config);
+}
+
+/**
  * If the account that just logged in has a temporary/reset password, force
  * a change before letting them proceed anywhere - the temp password is
  * meant to work exactly once.
@@ -138,17 +150,20 @@ async function afterLoginSuccess(loginResult, proceed) {
         renderForceChangePasswordModal(
             async () => {
                 await refreshSession();
+                await refreshBranding();
                 await proceed();
             },
             async () => {
                 await AuthSystem.logout();
                 await refreshSession();
+                await refreshBranding();
                 window.showPage("home");
             }
         );
         return;
     }
     await refreshSession();
+    await refreshBranding();
     await proceed();
 }
 
@@ -379,6 +394,7 @@ window.renderAccountMenu = (triggerBtnId = "nav-account") => {
 function doLogout() {
     AuthSystem.logout().then(async () => {
         await refreshSession();
+        await refreshBranding();
         window.showPage("home");
     });
 }

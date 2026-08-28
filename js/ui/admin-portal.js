@@ -336,19 +336,21 @@ export const AdminPortal = {
     // Pulled out of the Branding tab, where it had nothing to do with
     // colors/copy - multi-location structure belongs with the other
     // business-structure tools in Store Setup.
+    expandedStoreBranding: {},
+
     async renderStores(root) {
         const isOwner = this.session.role === "owner";
         root.innerHTML = `
             <div class="config-controls">
                 <h3 style="margin-top:0;">STORES</h3>
-                <p class="admin-help-text">Right now everything runs as one store - add another here when you're ready to expand, then assign managers/employees to it from User Management.</p>
+                <p class="admin-help-text">Every store sells the same menu - use "EDIT BRANDING" to give a store its own name, logo, colors, hero image, and hours (staff assigned to that store will see it instead of the global default). Leave a field blank to fall back to the global setting.</p>
                 <div id="stores-list" style="margin-bottom:10px;"></div>
                 ${
                     isOwner
                         ? `
                 <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-store-name" placeholder="Store name" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" id="new-store-address" placeholder="Address (optional)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" id="new-store-name" maxlength="60" placeholder="Store name" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" id="new-store-address" maxlength="200" placeholder="Address (optional)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
                     <button class="admin-btn" id="add-store">ADD STORE</button>
                 </div>`
                         : `<p class="admin-help-text">Only the owner can add stores.</p>`
@@ -356,11 +358,133 @@ export const AdminPortal = {
             </div>
         `;
 
+        const colorField = (id, label, value) => `
+            <div class="control-group" style="flex:0 0 auto;">
+                <label>${label}</label>
+                <input type="color" id="${id}" value="${value}" />
+            </div>
+        `;
+
         const renderStoresList = async () => {
             const stores = await PayrollSystem.fetchStores();
             document.getElementById("stores-list").innerHTML = stores
-                .map((s) => `<div style="padding:6px 0; border-bottom:1px solid var(--color-border); font-size:8pt;">${s.name}${s.address ? ` — ${s.address}` : ""}</div>`)
+                .map((s) => {
+                    const b = s.branding || {};
+                    const colors = b.colors || {};
+                    const footer = b.footer || {};
+                    const expanded = !!this.expandedStoreBranding[s.id];
+                    return `
+                    <div style="border-bottom:1px solid var(--color-border); padding:8px 0;">
+                        <div style="display:flex; align-items:center; gap:10px; font-size:8pt;">
+                            <span style="flex:1;">${escapeHtmlAttr(s.name)}${s.address ? ` — ${escapeHtmlAttr(s.address)}` : ""}</span>
+                            ${isOwner ? `<button class="admin-btn-secondary" data-toggle-branding="${s.id}" style="padding:4px 8px; font-size:7pt;">${expanded ? "CLOSE" : "EDIT BRANDING"}</button>` : ""}
+                        </div>
+                        ${
+                            expanded
+                                ? `
+                        <div style="margin-top:10px; padding:12px; border:1px solid var(--color-border); background:var(--color-bg);">
+                            <div class="control-group">
+                                <label>STORE-SPECIFIC SHOP NAME (blank = use global)</label>
+                                <input type="text" id="store-${s.id}-name" maxlength="60" value="${escapeHtmlAttr(b.shopName || "")}" />
+                            </div>
+                            <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+                                ${colorField(`store-${s.id}-accent`, "ACCENT", colors.accent || "#d97706")}
+                                ${colorField(`store-${s.id}-background`, "BACKGROUND", colors.background || "#0a0a0a")}
+                                ${colorField(`store-${s.id}-surface`, "SURFACE", colors.surface || "#111111")}
+                                ${colorField(`store-${s.id}-text`, "TEXT", colors.text || "#f9fafb")}
+                                ${colorField(`store-${s.id}-secondary`, "SECONDARY", colors.secondary || "#22d3ee")}
+                                <button type="button" class="admin-btn-secondary" data-reset-colors="${s.id}" style="padding:6px 10px; font-size:7pt;">USE GLOBAL COLORS</button>
+                            </div>
+                            <div class="control-group" style="margin-top:10px;">
+                                <label>LOGO IMAGE (blank = use global)</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="text" id="store-${s.id}-logo" maxlength="500" value="${escapeHtmlAttr(b.logoUrl || "")}" style="flex:1;" />
+                                    <button type="button" class="admin-btn-secondary" data-pick-logo="${s.id}" style="white-space:nowrap;">BROWSE</button>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <label>HERO / STOREFRONT IMAGE (blank = use global)</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="text" id="store-${s.id}-hero" maxlength="500" value="${escapeHtmlAttr(b.heroImageUrl || "")}" style="flex:1;" />
+                                    <button type="button" class="admin-btn-secondary" data-pick-hero="${s.id}" style="white-space:nowrap;">BROWSE</button>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <label>HOURS (blank = use global)</label>
+                                <input type="text" id="store-${s.id}-hours" maxlength="60" value="${escapeHtmlAttr(footer.hours || "")}" placeholder="Mon-Sat: 8am - 8pm" />
+                            </div>
+                            <p id="store-${s.id}-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:6px;"></p>
+                            <button class="admin-btn-primary" data-save-branding="${s.id}">SAVE STORE BRANDING</button>
+                        </div>
+                        `
+                                : ""
+                        }
+                    </div>
+                `;
+                })
                 .join("");
+
+            if (!isOwner) return;
+
+            root.querySelectorAll("[data-toggle-branding]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = Number(btn.dataset.toggleBranding);
+                    this.expandedStoreBranding[id] = !this.expandedStoreBranding[id];
+                    renderStoresList();
+                });
+            });
+
+            root.querySelectorAll("[data-reset-colors]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = btn.dataset.resetColors;
+                    ["accent", "background", "surface", "text", "secondary"].forEach((k) => {
+                        const preset = { accent: "#d97706", background: "#0a0a0a", surface: "#111111", text: "#f9fafb", secondary: "#22d3ee" };
+                        document.getElementById(`store-${id}-${k}`).value = preset[k];
+                    });
+                });
+            });
+
+            root.querySelectorAll("[data-pick-logo]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = btn.dataset.pickLogo;
+                    renderImagePickerModal({ onSelect: (url) => (document.getElementById(`store-${id}-logo`).value = url) });
+                });
+            });
+            root.querySelectorAll("[data-pick-hero]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = btn.dataset.pickHero;
+                    renderImagePickerModal({ onSelect: (url) => (document.getElementById(`store-${id}-hero`).value = url) });
+                });
+            });
+
+            root.querySelectorAll("[data-save-branding]").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    const id = btn.dataset.saveBranding;
+                    const errorEl = document.getElementById(`store-${id}-error`);
+                    errorEl.textContent = "";
+                    try {
+                        await PayrollSystem.updateStore(id, {
+                            branding: {
+                                shopName: document.getElementById(`store-${id}-name`).value.trim(),
+                                logoUrl: document.getElementById(`store-${id}-logo`).value.trim(),
+                                heroImageUrl: document.getElementById(`store-${id}-hero`).value.trim(),
+                                colors: {
+                                    accent: document.getElementById(`store-${id}-accent`).value,
+                                    background: document.getElementById(`store-${id}-background`).value,
+                                    surface: document.getElementById(`store-${id}-surface`).value,
+                                    text: document.getElementById(`store-${id}-text`).value,
+                                    secondary: document.getElementById(`store-${id}-secondary`).value
+                                },
+                                footer: { hours: document.getElementById(`store-${id}-hours`).value.trim() }
+                            }
+                        });
+                        ok("Store branding saved");
+                    } catch (e) {
+                        errorEl.textContent = e.message;
+                        fail(e.message);
+                    }
+                });
+            });
         };
         await renderStoresList();
 
@@ -908,11 +1032,18 @@ export const AdminPortal = {
     // buttons per row, was the main source of "cluttered/intimidating"
     // feedback on this tab. Keyed by section id, true = expanded.
     expandedMenuSections: {},
+    // Per-item per-store availability panel (only shown when there's more
+    // than one store) - keyed by item id, true = expanded.
+    expandedItemStores: {},
 
-    renderMenuItems(root) {
+    async renderMenuItems(root) {
         const sectionById = Object.fromEntries(this.menu.sections.map((s) => [s.id, s.title]));
         const customIcons = AdminConfig.settings.customIcons || {};
         const PAGE_SIZE = 10;
+        // The menu is shared across stores by design - this only matters once
+        // there's more than one store to disable an item at.
+        const stores = await PayrollSystem.fetchStores();
+        const multiStore = stores.length > 1;
 
         const pendingRequestItems = this.menu.items.filter((i) => (i.disableRequests || []).length > 0);
 
@@ -943,10 +1074,12 @@ export const AdminPortal = {
                     : item.stockCount === 0
                       ? `<span style="color:var(--color-danger); font-size:8pt;">OUT OF STOCK</span>`
                       : `<span style="${item.stockCount <= 5 ? "color:var(--color-danger);" : ""} font-size:8pt;">${item.stockCount}</span>`;
+            const disabledStores = item.disabledStores || [];
+            const storesExpanded = !!this.expandedItemStores[item.id];
             return `
             <tr style="${item.available === false ? "opacity:0.5;" : ""}">
                 <td>${iconHtml(item)}</td>
-                <td>${escapeHtmlAttr(item.name)}${item.available === false ? ' <span style="color:var(--color-danger); font-size:7pt;">UNAVAILABLE</span>' : ""}</td>
+                <td>${escapeHtmlAttr(item.name)}${item.available === false ? ' <span style="color:var(--color-danger); font-size:7pt;">UNAVAILABLE</span>' : ""}${disabledStores.length ? ` <span style="color:var(--color-text-muted); font-size:7pt;">OUT AT ${disabledStores.length} STORE${disabledStores.length > 1 ? "S" : ""}</span>` : ""}</td>
                 <td>\u20b9${item.price}${
                     item.promoDiscount
                         ? `<br><span style="color: var(--color-accent); font-size: 7pt;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `\u20b9${item.promoDiscount.value} OFF`}</span>`
@@ -956,9 +1089,36 @@ export const AdminPortal = {
                 <td style="text-align:right; white-space:nowrap;">
                     <button class="admin-btn" data-edit="${item.id}" style="padding:4px 8px; font-size:7pt;">EDIT</button>
                     <button class="admin-btn" data-toggle-available="${item.id}" style="padding:4px 8px; font-size:7pt;" title="${item.available === false ? "Mark available" : "Mark unavailable"}">${item.available === false ? "SHOW" : "HIDE"}</button>
+                    ${multiStore ? `<button class="admin-btn" data-toggle-item-stores="${item.id}" style="padding:4px 8px; font-size:7pt;">STORES</button>` : ""}
                     <button class="admin-btn admin-btn-danger" data-delete="${item.id}" style="padding:4px 8px; font-size:7pt;">DEL</button>
                 </td>
             </tr>
+            ${
+                multiStore && storesExpanded
+                    ? `
+            <tr>
+                <td colspan="5" style="background:var(--color-bg);">
+                    <div style="padding:8px 10px;">
+                        <p class="admin-help-text" style="margin:0 0 6px;">Uncheck a store to take "${escapeHtmlAttr(item.name)}" off the menu there only (e.g. out of stock at that location).</p>
+                        <div style="display:flex; flex-wrap:wrap; gap:12px;">
+                            ${stores
+                                .map(
+                                    (s) => `
+                                <label style="display:flex; align-items:center; gap:5px; font-size:8pt; cursor:pointer;">
+                                    <input type="checkbox" data-item-store="${item.id}" value="${s.id}" ${disabledStores.includes(s.id) ? "" : "checked"} style="width:auto;" />
+                                    ${escapeHtmlAttr(s.name)}
+                                </label>
+                            `
+                                )
+                                .join("")}
+                        </div>
+                        <button class="admin-btn-primary" data-save-item-stores="${item.id}" style="margin-top:8px; padding:4px 8px; font-size:7pt;">SAVE</button>
+                    </div>
+                </td>
+            </tr>
+            `
+                    : ""
+            }
         `;
         };
 
@@ -1085,6 +1245,16 @@ export const AdminPortal = {
         root.querySelectorAll("[data-toggle-available]").forEach((btn) =>
             btn.addEventListener("click", () => this.toggleItemAvailable(Number(btn.dataset.toggleAvailable), root))
         );
+        root.querySelectorAll("[data-toggle-item-stores]").forEach((btn) =>
+            btn.addEventListener("click", () => {
+                const id = Number(btn.dataset.toggleItemStores);
+                this.expandedItemStores[id] = !this.expandedItemStores[id];
+                this.renderMenuItems(root);
+            })
+        );
+        root.querySelectorAll("[data-save-item-stores]").forEach((btn) =>
+            btn.addEventListener("click", () => this.saveItemStores(Number(btn.dataset.saveItemStores), root))
+        );
         root.querySelectorAll("[data-delete-section]").forEach((btn) =>
             btn.addEventListener("click", (e) => {
                 e.stopPropagation(); // sits inside the collapsible header - don't also toggle it
@@ -1191,6 +1361,29 @@ export const AdminPortal = {
             await this.loadMenu();
             this.renderMenuItems(root);
             ok(nextAvailable ? "Item marked available" : "Item marked unavailable");
+        } catch (e) {
+            fail(e.message);
+        }
+    },
+
+    /** Saves which stores an item is disabled at, from the STORES panel's
+     *  checkboxes (unchecked = disabled there). */
+    async saveItemStores(itemId, root) {
+        const checkboxes = root.querySelectorAll(`[data-item-store="${itemId}"]`);
+        const disabledStores = Array.from(checkboxes)
+            .filter((cb) => !cb.checked)
+            .map((cb) => Number(cb.value));
+        try {
+            const res = await fetch(`/api/menu/${itemId}`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ disabledStores })
+            });
+            if (!res.ok) throw new Error((await res.json()).error || "Could not update item");
+            await this.loadMenu();
+            this.renderMenuItems(root);
+            ok("Store availability saved");
         } catch (e) {
             fail(e.message);
         }

@@ -860,7 +860,7 @@ function resolveComboLine(requested, menu, combos) {
   return lines;
 }
 
-function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCode = null, redeemPoints = 0, customerId = null } = {}) {
+function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCode = null, redeemPoints = 0, customerId = null, storeId = null } = {}) {
   const menu = readJson(MENU_FILE, { items: [] });
   const config = readJson(CONFIG_FILE, {});
   const combos = readJson(COMBOS_FILE, []);
@@ -878,6 +878,7 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
     const product = menu.items.find((i) => i.id === id);
     if (!product) continue; // ignore unknown items rather than trusting the client
     if (product.available === false) continue; // item was taken off the menu - never trust client to skip it itself
+    if (storeId != null && (product.disabledStores || []).includes(storeId)) continue; // out of stock at this store specifically
     if (product.stockCount != null && product.stockCount <= 0) continue; // sold out - dropped silently, same as unavailable
     if (product.stockCount != null && quantity > product.stockCount) {
       throw new Error(`${product.name} only has ${product.stockCount} left in stock`);
@@ -1402,6 +1403,32 @@ route("POST", /^\/api\/stores\/?$/, async (req, res) => {
   sendJson(res, 201, store);
 });
 
+// Per-store branding override (shopName/logo/hero/colors/footer/etc,
+// anything Branding & Content also sets globally) - fields left unset here
+// fall back to the global config, see configForSession() above. Owner-only,
+// same as opening a new store - this is a business-structure change, not
+// day-to-day config a manager should be able to touch.
+route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, ["owner"])) return;
+  const stores = readJson(STORES_FILE, []);
+  const store = stores.find((s) => s.id === Number(params.id));
+  if (!store) return sendJson(res, 404, { error: "Store not found" });
+  const body = await readBody(req);
+  if (typeof body.name === "string") {
+    const name = body.name.trim();
+    if (!name) return sendJson(res, 400, { error: "Store name is required" });
+    store.name = name.slice(0, 60);
+  }
+  if (typeof body.address === "string") store.address = body.address.trim().slice(0, 200);
+  if (body.branding && typeof body.branding === "object") {
+    store.branding = { ...store.branding, ...body.branding };
+    if (body.branding.colors) store.branding.colors = { ...(store.branding.colors || {}), ...body.branding.colors };
+    if (body.branding.footer) store.branding.footer = { ...(store.branding.footer || {}), ...body.branding.footer };
+  }
+  writeJson(STORES_FILE, stores);
+  sendJson(res, 200, store);
+});
+
 route("GET", /^\/api\/audit-log\/?$/, async (req, res) => {
   // Owner-only, intentionally - this exists specifically so an owner can
   // see what admins have been doing to other accounts (password resets,
@@ -1923,7 +1950,19 @@ route("GET", /^\/api\/menu\/?$/, async (req, res, params, url) => {
   // Soft-deleted items are hidden from the public/customer menu by default -
   // only the admin Menu Items screen passes includeDeleted to manage/restore them.
   const includeDeleted = url.searchParams.get("includeDeleted") === "true";
-  const items = includeDeleted ? menu.items : menu.items.filter((i) => !i.deleted);
+  let items = includeDeleted ? menu.items : menu.items.filter((i) => !i.deleted);
+  // The menu itself is shared across every store (per the "branding-only"
+  // multi-store decision - see configForSession()), but a store can still
+  // be out of stock on a shared item without affecting other locations.
+  // Only applies to a session tied to a store (staff assigned to one) - a
+  // customer/guest browsing has no storeId, so they see the item's plain
+  // global availability regardless of any one store's stock.
+  const session = currentSession(req);
+  if (session && session.storeId != null) {
+    items = items.map((i) =>
+      (i.disabledStores || []).includes(session.storeId) ? { ...i, available: false, disabledAtThisStore: true } : i
+    );
+  }
   sendJson(res, 200, { ...menu, items });
 });
 
@@ -2061,6 +2100,13 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
       item.promoDiscount = sanitized;
     }
   }
+  if (body.disabledStores !== undefined) {
+    const validIds = new Set(readJson(STORES_FILE, []).map((s) => s.id));
+    const disabledStores = (Array.isArray(body.disabledStores) ? body.disabledStores : [])
+      .map((id) => Number(id))
+      .filter((id) => validIds.has(id));
+    item.disabledStores = [...new Set(disabledStores)];
+  }
   writeJson(MENU_FILE, menu);
   sendJson(res, 200, item);
 });
@@ -2185,8 +2231,27 @@ route("DELETE", /^\/api\/combos\/(?<id>\d+)\/?$/, async (req, res, params) => {
 });
 
 // --- Config ---
+// Per-store branding is layered on top of the global config when the
+// requester's own session is tied to a store (staff assigned to a
+// location) - a customer/guest session has no storeId, so they always see
+// the plain global config. This keeps the merge entirely server-side: the
+// client's existing applyBranding()/AdminConfig flow doesn't need to know
+// stores exist at all, it just receives whatever's already effective.
+function configForSession(session) {
+  const config = readJson(CONFIG_FILE, {});
+  if (!session || session.storeId == null) return config;
+  const store = readJson(STORES_FILE, []).find((s) => s.id === session.storeId);
+  if (!store || !store.branding) return config;
+  return {
+    ...config,
+    ...store.branding,
+    colors: { ...config.colors, ...(store.branding.colors || {}) },
+    footer: { ...config.footer, ...(store.branding.footer || {}) }
+  };
+}
+
 route("GET", /^\/api\/config\/?$/, async (req, res) => {
-  sendJson(res, 200, readJson(CONFIG_FILE, {}));
+  sendJson(res, 200, configForSession(currentSession(req)));
 });
 
 route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
@@ -2642,7 +2707,8 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     computed = computeOrder(Array.isArray(body.items) ? body.items : [], method, serviceChargeActive, tipApplied, {
       couponCode: body.couponCode || null,
       redeemPoints: parseInt(body.redeemPoints, 10) || 0,
-      customerId
+      customerId,
+      storeId: session.storeId != null ? session.storeId : null
     });
   } catch (e) {
     return sendJson(res, 400, { error: e.message });
