@@ -917,8 +917,9 @@ window.startCheckout = async (method) => {
     const errorBox = document.getElementById("checkout-error");
     if (errorBox) errorBox.textContent = "";
 
+    const guestOrder = document.getElementById("checkout-guest-order")?.checked || false;
     const phone = document.getElementById("checkout-phone")?.value || "";
-    if (!phone.trim()) {
+    if (!guestOrder && !phone.trim()) {
         if (errorBox) errorBox.textContent = "Enter a phone number so this order can be tracked.";
         return;
     }
@@ -939,7 +940,8 @@ window.startCheckout = async (method) => {
             markPaidNow,
             tableSessionId,
             couponCode: discount.couponCode || null,
-            redeemPoints: discount.redeemPoints || 0
+            redeemPoints: discount.redeemPoints || 0,
+            guestOrder
         });
         pendingOrder = order;
         renderPaymentConfirmation(order, method, { isCustomerFacing: TRACKING_ROLES.includes(session.role) });

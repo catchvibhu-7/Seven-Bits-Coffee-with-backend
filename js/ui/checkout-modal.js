@@ -15,6 +15,13 @@ import { AuthSystem } from "../features/auth-logic.js";
 import { CustomizationSystem } from "../features/customization-logic.js";
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
 
+// Mirrors app.js's KITCHEN_ROLES - inlined rather than imported since app.js
+// isn't set up as a module other files pull constants from (same pattern
+// as account-settings-modal.js's own copy). Only staff taking an order on
+// someone else's behalf get the "guest, no phone" bypass - a customer/guest
+// checking themselves out always already has an identity from the session.
+const STAFF_ROLES = ["employee", "manager", "admin", "owner"];
+
 function customizationDetailLines(item) {
     if (item.isCombo) return [];
     return CustomizationSystem.describeLineWithAmounts(item);
@@ -156,7 +163,18 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                 <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">ORDER TRACKING PHONE:</label>
                 <input id="checkout-phone" type="tel" value="${session.phone || ""}" ${session.role === "customer" ? "readonly" : ""}
                     placeholder="PHONE NUMBER" style="width: 100%; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:${session.role === "customer" ? "var(--color-text-muted)" : "var(--color-text)"}; padding: 10px; font-family: inherit;" />
+                <p style="font-size: 7pt; color: var(--color-text-muted); margin: 4px 0 0;">If this matches an existing customer account, the order is credited to it (loyalty points, order history).</p>
             </div>
+
+            ${
+                STAFF_ROLES.includes(session.role)
+                    ? `
+            <label style="display:flex; align-items:center; gap:6px; font-size: 8pt; color: var(--color-text-muted); margin: -8px 0 15px; cursor:pointer;">
+                <input type="checkbox" id="checkout-guest-order" style="width:auto;" />
+                Guest order (customer declined to give a phone number - can't be tracked afterward)
+            </label>`
+                    : ""
+            }
 
             ${
                 breakdown.hasPromoItem
@@ -261,6 +279,12 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             finalLine.style.display = "none";
         }
     }
+
+    document.getElementById("checkout-guest-order")?.addEventListener("change", (e) => {
+        const phoneInput = document.getElementById("checkout-phone");
+        phoneInput.disabled = e.target.checked;
+        if (e.target.checked) phoneInput.value = "";
+    });
 
     document.getElementById("checkout-apply-coupon")?.addEventListener("click", async () => {
         const code = document.getElementById("checkout-coupon-code").value.trim();

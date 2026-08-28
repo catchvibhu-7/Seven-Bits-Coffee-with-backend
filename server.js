@@ -340,6 +340,16 @@ function findUserByUsername(username) {
   return users.find((u) => u.username.toLowerCase() === String(username || "").toLowerCase());
 }
 
+// Digits-only comparison so "98765 43210", "+91 9876543210", and
+// "9876543210" all match the same stored number regardless of how either
+// side happened to be formatted/punctuated.
+function findUserByPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return null;
+  const users = readJson(USERS_FILE, []);
+  return users.find((u) => u.phone && String(u.phone).replace(/\D/g, "") === digits);
+}
+
 function findUserById(id) {
   const users = readJson(USERS_FILE, []);
   return users.find((u) => u.id === id);
@@ -1050,7 +1060,12 @@ route("POST", /^\/api\/auth\/login\/?$/, async (req, res) => {
   }
 
   const body = await readBody(req);
-  const user = findUserByUsername(body.username);
+  // The login field accepts either a username or a phone number,
+  // auto-detected by trying username first (usernames and phone numbers
+  // can never collide - phone lookup only ever matches digits) rather than
+  // guessing from the input's shape, which would misfire on an all-numeric
+  // username.
+  const user = findUserByUsername(body.username) || findUserByPhone(body.username);
 
   if (!user || !verifyPassword(body.password, user.salt, user.hash)) {
     recordAuthFailure(ip);
@@ -1195,6 +1210,55 @@ function canManageTarget(session, targetUser) {
   if (session.role === "manager") return targetUser.role === "employee" && targetUser.storeId === session.storeId;
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Customer accounts (admin view) - staff-facing search/profile/order-history/
+// loyalty lookup, separate from /api/users (staff accounts only). Read-only:
+// there's no edit-customer-from-admin action here, just visibility.
+// ---------------------------------------------------------------------------
+route("GET", /^\/api\/admin\/customers\/?$/, async (req, res, params, url) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const search = (url.searchParams.get("search") || "").trim().toLowerCase();
+  const orders = readJson(ORDERS_FILE, []);
+  let customers = readJson(USERS_FILE, []).filter((u) => u.role === "customer");
+  if (search) {
+    const searchDigits = search.replace(/\D/g, "");
+    customers = customers.filter((u) => {
+      const nameMatch = (u.name || "").toLowerCase().includes(search);
+      const usernameMatch = (u.username || "").toLowerCase().includes(search);
+      const phoneMatch = searchDigits && (u.phone || "").replace(/\D/g, "").includes(searchDigits);
+      return nameMatch || usernameMatch || phoneMatch;
+    });
+  }
+  sendJson(
+    res,
+    200,
+    customers.map((u) => ({
+      id: u.id,
+      username: u.username,
+      name: u.name,
+      phone: u.phone,
+      loyaltyPoints: u.loyaltyPoints || 0,
+      orderCount: orders.filter((o) => o.customerId === u.id).length
+    }))
+  );
+});
+
+route("GET", /^\/api\/admin\/customers\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const user = readJson(USERS_FILE, []).find((u) => u.id === Number(params.id) && u.role === "customer");
+  if (!user) return sendJson(res, 404, { error: "Customer not found" });
+  const orders = readJson(ORDERS_FILE, [])
+    .filter((o) => o.customerId === user.id)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  sendJson(res, 200, {
+    profile: publicUser(user),
+    orders,
+    totalSpent: round2(orders.reduce((sum, o) => sum + (o.isPaid ? o.total : 0), 0))
+  });
+});
 
 route("GET", /^\/api\/users\/?$/, async (req, res) => {
   const session = requireRole(req, res, MANAGER_UP_ROLES);
@@ -2544,8 +2608,15 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     return sendJson(res, 400, { error: e.message });
   }
 
-  const phone = normalizePhone(body.phone || session.phone);
-  if (!phone) {
+  // Staff taking a counter order can mark it explicitly as a walk-in guest
+  // who doesn't want to give a number - only staff get this bypass, since a
+  // self-checkout customer/guest session always has some identity already
+  // (a login, or the guest session's own phone). A guest order like this
+  // can never be tracked/looked-up afterward (no phone, no account) - an
+  // accepted trade-off for someone who declines to give a number.
+  const isGuestOrder = KITCHEN_ROLES.includes(session.role) && body.guestOrder === true;
+  const phone = isGuestOrder ? null : normalizePhone(body.phone || session.phone);
+  if (!isGuestOrder && !phone) {
     return sendJson(res, 400, { error: "A valid phone number is required to place an order" });
   }
 
@@ -2553,9 +2624,21 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   const serviceChargeActive = body.serviceChargeActive !== false;
   const tipApplied = !!body.tipApplied;
 
+  // Staff placing an order on someone's behalf: if the phone they typed
+  // matches a registered customer account, attribute the order to that
+  // account (loyalty points, "My Orders" history) instead of leaving it a
+  // phone-only record only that customer's own guest-lookup could ever see.
+  // A customer/guest session placing their own order already has the
+  // correct identity from the session itself.
+  let matchedCustomer = null;
+  if (KITCHEN_ROLES.includes(session.role) && phone) {
+    const staffEnteredUser = findUserByPhone(phone);
+    if (staffEnteredUser && staffEnteredUser.role === "customer") matchedCustomer = staffEnteredUser;
+  }
+
   let computed;
   try {
-    const customerId = session.role === "customer" ? session.userId : null;
+    const customerId = session.role === "customer" ? session.userId : matchedCustomer ? matchedCustomer.id : null;
     computed = computeOrder(Array.isArray(body.items) ? body.items : [], method, serviceChargeActive, tipApplied, {
       couponCode: body.couponCode || null,
       redeemPoints: parseInt(body.redeemPoints, 10) || 0,
@@ -2579,8 +2662,11 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     paymentMethod: method === "ONLINE" ? "UPI" : staffMarkedPaid ? "Cash" : null,
     tipApplied,
     serviceChargeActive,
-    customerId: session.role === "customer" ? session.userId : null,
-    customerName: session.name || null,
+    // Was `session.name || null`, which for a staff-placed order recorded
+    // the STAFF MEMBER's own name as the "customer" - placedByStaff already
+    // covers who took the order; this should be who it's actually for.
+    customerId: session.role === "customer" ? session.userId : matchedCustomer ? matchedCustomer.id : null,
+    customerName: session.role === "customer" ? session.name : matchedCustomer ? matchedCustomer.name : isGuestOrder ? "Guest" : null,
     customerPhone: phone,
     placedByStaff: KITCHEN_ROLES.includes(session.role) ? session.name : null,
     // Only staff can tag an order to an open table tab, and only if that

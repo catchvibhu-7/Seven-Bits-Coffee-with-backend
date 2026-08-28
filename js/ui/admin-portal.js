@@ -41,6 +41,7 @@ function tabGroupsForRole(role) {
         {
             label: "SALES",
             tabs: [
+                { id: "customers", label: "Customers" },
                 { id: "discounts", label: "Discounts & Loyalty" },
                 { id: "orders", label: "Order History" },
                 { id: "reports", label: "Reports & Export" }
@@ -177,6 +178,7 @@ export const AdminPortal = {
         }
         if (this.activeTab === "combos") return this.renderCombos(root);
         if (this.activeTab === "customization") return this.renderCustomizationPricing(root);
+        if (this.activeTab === "customers") return this.renderCustomers(root);
         if (this.activeTab === "discounts") return this.renderDiscountsLoyalty(root);
         if (this.activeTab === "orders") return this.renderOrderHistory(root);
         if (this.activeTab === "payroll") return this.renderPayroll(root);
@@ -1365,6 +1367,129 @@ export const AdminPortal = {
         } catch (e) {
             errorEl.textContent = e.message || "Could not save";
         }
+    },
+
+    // ------------------------------------------------------------ CUSTOMERS
+    customerSearchQuery: "",
+    viewingCustomerId: null,
+
+    async renderCustomers(root) {
+        root.innerHTML = `
+            <div class="control-group" style="max-width:320px;">
+                <label>SEARCH BY NAME, USERNAME, OR PHONE</label>
+                <input type="text" id="customer-search" value="${escapeHtmlAttr(this.customerSearchQuery)}" placeholder="Start typing..." />
+            </div>
+            <div id="customers-results"></div>
+        `;
+
+        const searchInput = document.getElementById("customer-search");
+        let debounceTimer;
+        searchInput.addEventListener("input", () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                this.customerSearchQuery = searchInput.value;
+                this.renderCustomerResults(root);
+            }, 200);
+        });
+        searchInput.focus();
+        searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+
+        await this.renderCustomerResults(root);
+    },
+
+    async renderCustomerResults(root) {
+        const resultsEl = document.getElementById("customers-results");
+        if (!resultsEl) return;
+        if (this.viewingCustomerId) return this.renderCustomerDetail(root);
+
+        const res = await fetch(`/api/admin/customers?search=${encodeURIComponent(this.customerSearchQuery)}`, { credentials: "include" });
+        const customers = res.ok ? await res.json() : [];
+
+        resultsEl.innerHTML =
+            customers.length === 0
+                ? `<p class="admin-help-text" style="margin-top:14px;">${this.customerSearchQuery ? "No matching customers." : "No customer accounts yet."}</p>`
+                : `
+                <table class="admin-table" style="margin-top:14px;">
+                    <thead><tr><th>NAME</th><th>USERNAME</th><th>PHONE</th><th>LOYALTY PTS</th><th>ORDERS</th><th></th></tr></thead>
+                    <tbody>
+                        ${customers
+                            .map(
+                                (c) => `
+                            <tr>
+                                <td>${escapeHtmlAttr(c.name || "—")}</td>
+                                <td style="color:var(--color-text-muted); font-size:8pt;">${escapeHtmlAttr(c.username || "—")}</td>
+                                <td style="font-size:8pt;">${escapeHtmlAttr(c.phone || "—")}</td>
+                                <td>${c.loyaltyPoints}</td>
+                                <td>${c.orderCount}</td>
+                                <td style="text-align:right;"><button class="admin-btn" data-view-customer="${c.id}" style="padding:4px 8px; font-size:7pt;">VIEW</button></td>
+                            </tr>
+                        `
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+            `;
+
+        resultsEl.querySelectorAll("[data-view-customer]").forEach((btn) =>
+            btn.addEventListener("click", () => {
+                this.viewingCustomerId = Number(btn.dataset.viewCustomer);
+                this.renderCustomerDetail(root);
+            })
+        );
+    },
+
+    async renderCustomerDetail(root) {
+        const resultsEl = document.getElementById("customers-results");
+        if (!resultsEl) return;
+        resultsEl.innerHTML = `<p class="admin-help-text" style="margin-top:14px;">Loading&hellip;</p>`;
+
+        const res = await fetch(`/api/admin/customers/${this.viewingCustomerId}`, { credentials: "include" });
+        if (!res.ok) {
+            resultsEl.innerHTML = `<p style="color:var(--color-danger); font-size:9pt; margin-top:14px;">Could not load that customer.</p>`;
+            return;
+        }
+        const { profile, orders, totalSpent } = await res.json();
+
+        resultsEl.innerHTML = `
+            <button type="button" class="admin-btn-secondary" id="customer-back" style="margin:14px 0;">&larr; BACK TO SEARCH</button>
+            <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom:16px;">
+                <div class="stat-card"><div class="stat-label">NAME</div><div class="stat-value" style="font-size:14pt;">${escapeHtmlAttr(profile.name || "—")}</div></div>
+                <div class="stat-card"><div class="stat-label">LOYALTY POINTS</div><div class="stat-value">${profile.loyaltyPoints || 0}</div></div>
+                <div class="stat-card"><div class="stat-label">ORDERS</div><div class="stat-value">${orders.length}</div></div>
+                <div class="stat-card"><div class="stat-label">TOTAL SPENT (PAID)</div><div class="stat-value">₹${totalSpent.toFixed(0)}</div></div>
+            </div>
+            <p style="font-size:8pt; color:var(--color-text-muted); margin-bottom:14px;">USERNAME: ${escapeHtmlAttr(profile.username || "—")} &middot; PHONE: ${escapeHtmlAttr(profile.phone || "—")}</p>
+            <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:8px;">ORDER HISTORY</h3>
+            ${
+                orders.length === 0
+                    ? `<p class="admin-help-text">No orders yet.</p>`
+                    : `
+                <table class="admin-table">
+                    <thead><tr><th>ORDER #</th><th>DATE</th><th>ITEMS</th><th>TOTAL</th><th>STATUS</th></tr></thead>
+                    <tbody>
+                        ${orders
+                            .map(
+                                (o) => `
+                            <tr>
+                                <td>${escapeHtmlAttr(o.orderNumber || o.id)}</td>
+                                <td style="font-size:8pt;">${new Date(o.createdAt).toLocaleString()}</td>
+                                <td style="font-size:8pt;">${escapeHtmlAttr(o.items.map((i) => `${i.quantity}x ${i.name}`).join(", "))}</td>
+                                <td>₹${o.total.toFixed(2)}</td>
+                                <td style="font-size:8pt; color:${o.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${o.isPaid ? "PAID" : "UNPAID"}</td>
+                            </tr>
+                        `
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+            `
+            }
+        `;
+
+        document.getElementById("customer-back").addEventListener("click", () => {
+            this.viewingCustomerId = null;
+            this.renderCustomerResults(root);
+        });
     },
 
     // ------------------------------------------------------------ DISCOUNTS & LOYALTY

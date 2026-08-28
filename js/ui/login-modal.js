@@ -39,7 +39,7 @@ export function renderLoginModal(onSuccess, options = {}) {
         let fields = "";
         if (mode === "login") {
             fields = `
-                <input id="lf-username" type="text" placeholder="USERNAME" autocomplete="username" style="${fieldStyle()}" />
+                <input id="lf-username" type="text" placeholder="USERNAME OR PHONE" autocomplete="username" style="${fieldStyle()}" />
                 <input id="lf-password" type="password" placeholder="PASSWORD" autocomplete="current-password" style="${fieldStyle("margin-bottom:8px;")}" />
                 <button id="lf-forgot-link" type="button" style="background:none; border:none; color:var(--color-text-muted); font-size:7pt; text-decoration:underline; cursor:pointer; padding:0; margin-bottom:10px; font-family:inherit;">Forgot password?</button>
             `;
