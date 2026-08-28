@@ -459,10 +459,16 @@ window.showPage = async (pageId) => {
         }
     });
 
-    // Keep the staff shell's highlighted tab in sync no matter what
-    // triggered this navigation (its own nav buttons, or e.g. staff-home's
-    // "NEW ORDER" button calling showPage('menu') directly).
-    if (KITCHEN_ROLES.includes(session.role)) {
+    // Keep the shell's highlighted tab in sync no matter what triggered
+    // this navigation (its own nav buttons, or e.g. staff-home's "NEW
+    // ORDER" button calling showPage('menu') directly). The shell is active
+    // for ANY real session now (customer/guest included, see
+    // updateStaffShellForSession()), not just staff - this used to check
+    // KITCHEN_ROLES only, a leftover from when it was staff-exclusive, so a
+    // customer's clicked tab updated StaffShell.activeTab in memory (see
+    // wireButtons()) but the nav DOM never actually re-rendered to show it -
+    // Home stayed visually highlighted forever after the first paint.
+    if (session.role) {
         StaffShell.setActiveFromPageId(pageId);
         StaffShell.render();
     }
