@@ -86,6 +86,23 @@ export const KitchenSystem = {
         return data;
     },
 
+    /** Staff toggling service charge/tip and applying a coupon/loyalty
+     *  redemption from the Billing page - recomputed and persisted
+     *  server-side (never trust a client-computed total), same tax/discount
+     *  math as placing a fresh order. */
+    async adjustBill(orderId, { serviceChargeActive, tipApplied, couponCode, redeemPoints }) {
+        const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "adjustBill", serviceChargeActive, tipApplied, couponCode, redeemPoints })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not update bill");
+        await this.fetchOrders();
+        return data;
+    },
+
     async markPaid(orderId, paymentMethod = null) {
         const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
             method: "PATCH",

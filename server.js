@@ -2887,6 +2887,112 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
     if (typeof body.tableNumber === "string") {
       order.tableNumber = body.tableNumber.trim().slice(0, 20) || null;
     }
+  } else if (body.action === "adjustBill") {
+    // Staff toggling service charge/tip and applying a coupon/loyalty
+    // redemption from the Billing page, for an order that reached billing
+    // without them (a guest checkout, or one staff placed without asking).
+    // Recomputed the same way computeOrder() prices a fresh cart - just
+    // starting from this order's already-locked subtotal/items instead of a
+    // live cart, so re-adjusting (or clearing) it repeatedly is always safe.
+    if (order.isPaid) return sendJson(res, 400, { error: "This bill is already settled" });
+    const config = readJson(CONFIG_FILE, {});
+
+    // Undo this order's CURRENT coupon/loyalty side effects first, so a
+    // second adjustment (or removing what was just applied) never double-
+    // counts against the coupon's usage limit or the customer's balance.
+    if (order.couponId) {
+      const coupons = readJson(COUPONS_FILE, []);
+      const c = coupons.find((x) => x.id === order.couponId);
+      if (c) {
+        c.usedCount = Math.max(0, (c.usedCount || 0) - 1);
+        writeJson(COUPONS_FILE, coupons);
+      }
+    }
+    if (order.customerId && (order.loyaltyPointsRedeemed > 0 || order.loyaltyPointsEarned > 0)) {
+      const users = readJson(USERS_FILE, []);
+      const user = users.find((u) => u.id === order.customerId);
+      if (user) {
+        user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) + (order.loyaltyPointsRedeemed || 0) - (order.loyaltyPointsEarned || 0));
+        writeJson(USERS_FILE, users);
+      }
+    }
+
+    const serviceChargeActive = body.serviceChargeActive !== false;
+    const tipApplied = !!body.tipApplied;
+    const couponCodeInput = typeof body.couponCode === "string" ? body.couponCode.trim() : "";
+    const redeemPointsInput = parseInt(body.redeemPoints, 10) || 0;
+
+    const hasPromoItem = order.items.some((i) => i.promoDiscount);
+    let coupon = null;
+    if (couponCodeInput) {
+      if (hasPromoItem) return sendJson(res, 400, { error: "Coupon codes can't be combined with promotional items" });
+      const coupons = readJson(COUPONS_FILE, []);
+      coupon = findValidCoupon(couponCodeInput, coupons);
+      if (!coupon) return sendJson(res, 400, { error: "Invalid or expired code" });
+    }
+    const couponDiscount = coupon ? computeCouponDiscount(coupon, order.subtotal) : 0;
+
+    const loyaltyConfig = config.loyalty || {};
+    let loyaltyPointsRedeemed = 0;
+    let loyaltyDiscount = 0;
+    if (order.customerId && redeemPointsInput > 0 && loyaltyConfig.enabled) {
+      const users = readJson(USERS_FILE, []);
+      const user = users.find((u) => u.id === order.customerId);
+      const available = user ? user.loyaltyPoints || 0 : 0;
+      const requested = Math.min(Math.max(0, redeemPointsInput), available);
+      const rupeeValuePerPoint = loyaltyConfig.rupeeValuePerPoint ?? 0.5;
+      const remaining = Math.max(0, order.subtotal - couponDiscount);
+      const candidateDiscount = round2(requested * rupeeValuePerPoint);
+      if (candidateDiscount > remaining && rupeeValuePerPoint > 0) {
+        loyaltyPointsRedeemed = Math.floor(remaining / rupeeValuePerPoint);
+        loyaltyDiscount = round2(loyaltyPointsRedeemed * rupeeValuePerPoint);
+      } else {
+        loyaltyPointsRedeemed = requested;
+        loyaltyDiscount = candidateDiscount;
+      }
+    }
+
+    const discountAmount = round2(couponDiscount + loyaltyDiscount);
+    const taxableAmount = Math.max(0, order.subtotal - discountAmount);
+    const loyaltyPointsEarned = order.customerId && loyaltyConfig.enabled ? Math.floor(taxableAmount * (loyaltyConfig.pointsPerRupeeSpent ?? 0.1)) : 0;
+
+    const cgst = taxableAmount * (config.cgstRate ?? 0.05);
+    const sgst = taxableAmount * (config.sgstRate ?? 0.05);
+    const serviceCharge = serviceChargeActive ? taxableAmount * (config.serviceChargeRate ?? 0.02) : 0;
+    const tipAmount = config.tipEnabled && tipApplied ? config.tipAmount || 0 : 0;
+    const total = taxableAmount + cgst + sgst + serviceCharge + tipAmount;
+
+    order.serviceChargeActive = serviceChargeActive;
+    order.tipApplied = tipApplied;
+    order.couponCode = coupon ? coupon.code : null;
+    order.couponId = coupon ? coupon.id : null;
+    order.discountAmount = discountAmount;
+    order.loyaltyPointsRedeemed = loyaltyPointsRedeemed;
+    order.loyaltyDiscount = loyaltyDiscount;
+    order.loyaltyPointsEarned = loyaltyPointsEarned;
+    order.cgst = round2(cgst);
+    order.sgst = round2(sgst);
+    order.serviceCharge = round2(serviceCharge);
+    order.tipAmount = round2(tipAmount);
+    order.total = round2(total);
+
+    // Re-apply the new side effects with the freshly recomputed numbers.
+    if (order.couponId) {
+      const coupons = readJson(COUPONS_FILE, []);
+      const c = coupons.find((x) => x.id === order.couponId);
+      if (c) {
+        c.usedCount = (c.usedCount || 0) + 1;
+        writeJson(COUPONS_FILE, coupons);
+      }
+    }
+    if (order.customerId && (order.loyaltyPointsRedeemed > 0 || order.loyaltyPointsEarned > 0)) {
+      const users = readJson(USERS_FILE, []);
+      const user = users.find((u) => u.id === order.customerId);
+      if (user) {
+        user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) - order.loyaltyPointsRedeemed + order.loyaltyPointsEarned);
+        writeJson(USERS_FILE, users);
+      }
+    }
   } else {
     return sendJson(res, 400, { error: "Unknown action" });
   }

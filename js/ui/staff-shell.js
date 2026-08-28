@@ -339,12 +339,15 @@ export const StaffShell = {
         const rail = document.getElementById("staff-rail");
         if (!rail) return;
         rail.innerHTML = `
-            <div class="staff-rail-logo" style="display:flex; align-items:center; gap:10px;">
-                ${logoImageHtml(36)}
+            <div class="staff-rail-logo" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
                 <div style="min-width:0;">
                     <div class="staff-rail-logo-mark">${shopWordmarkLines().join("<br>")}<span style="color:var(--color-text);">_</span></div>
                     <div class="staff-rail-sub">${this.isStaffSession() ? "Staff Terminal" : "Order Terminal"}</div>
                     <div class="staff-rail-status">&#9679; SYS.ONLINE</div>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:flex-start; gap:6px; flex:none; padding-left:10px;">
+                    ${logoImageHtml(36)}
+                    <span style="font-size:9px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted);">${shopShortForm()}</span>
                 </div>
             </div>
             <nav class="staff-nav-list" aria-label="Site navigation">
