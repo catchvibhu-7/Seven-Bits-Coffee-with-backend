@@ -613,18 +613,80 @@ header {
    .menu-item itself, so a customized-variant row appended below it (see
    renderMenu in app.js) is visually part of the same bordered card instead
    of floating as an unstyled strip that can look like it bleeds into the
-   neighboring card. */
+   neighboring card. Sharp corners, flat surface, border-color hover - the
+   same brutalist-terminal card language as the rest of the redesigned
+   staff shell (see .staff-widget-card etc.), no rounded corners or
+   scale/zoom transforms anywhere in that language. */
 .menu-item-wrapper {
     background: #111;
     padding: 15px;
-    border-radius: 4px;
     border: 1px solid #222;
-    transition: transform 0.2s, background 0.2s;
+    transition: border-color 0.15s, background 0.15s;
 }
 
 .menu-item-wrapper:hover {
-    transform: scale(1.02);
+    border-color: var(--color-accent);
     background: #1a1a1a;
+}
+
+/* Category filter chips above the menu grid/list - mirrors the mockup's
+   category-pill row exactly (same padding/letter-spacing/border treatment
+   as .staff-nav-btn's active state uses for its accent tint). */
+.menu-cat-chips {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin: 0 0 18px;
+}
+.menu-cat-chip {
+    padding: 8px 13px;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    min-height: 36px;
+}
+.menu-cat-chip:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+.menu-cat-chip.active {
+    background: rgba(217, 119, 6, 0.1);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+/* Full-width banner above the item's name/story in grid view only - list
+   view leaves .menu-item-banner unstyled (the icon/photo stays small and
+   inline there, via .menu-list .icon below). The item's real photo
+   (Admin > Menu Items) fills it if it has one, else the built-in icon
+   centers over a diagonal hatch pattern echoing the mockup's placeholder
+   "product shot" panel. */
+.menu-grid .menu-item-banner {
+    height: 84px;
+    width: calc(100% + 30px);
+    margin: -15px -15px 13px;
+    background-image: repeating-linear-gradient(135deg, rgba(249, 250, 251, .05) 0 5px, rgba(0, 0, 0, 0) 5px 11px);
+    border-bottom: 1px dashed #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.menu-grid .menu-item-banner img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.menu-grid .menu-item-banner .icon {
+    width: 40px;
+    height: 40px;
+    margin: 0;
 }
 
 .menu-item {
@@ -661,19 +723,21 @@ header {
     font-weight: bold;
 }
 
-/* Grid View Specifics */
+/* Grid View Specifics - mirrors the mockup's product-card layout: a
+   full-bleed image/icon banner, then left-aligned name/story, then a
+   dashed-divider price+add row. Text is left-aligned (not centered) to
+   match - a centered card was never how the mockup laid this out. */
 .menu-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(min(232px, 100%), 1fr));
+    gap: 14px;
     padding: 20px 0;
 }
 
 .menu-grid .menu-item {
     flex-direction: column;
-    text-align: center;
-    justify-content: center;
-    align-items: center;
+    text-align: left;
+    align-items: stretch;
     min-height: 240px;
 }
 
@@ -686,25 +750,28 @@ header {
 }
 
 .menu-grid .name {
-    font-size: 1.2rem;
-    margin-top: 10px;
+    font-size: 14px;
+    margin-top: 0;
 }
 
 .menu-grid .price {
-    margin: 10px 0;
+    margin: 0;
     color: var(--color-accent);
     font-weight: bold;
 }
 .menu-grid .info {
     margin-bottom: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .menu-grid .item-controls {
     width: 100%;
     justify-content: space-between;
-    margin-top: 20px;
+    margin-top: 11px;
     border-top: 1px dashed #333;
-    padding-top: 15px;
+    padding-top: 11px;
 }
 
 /* Item Iconography */
@@ -720,11 +787,20 @@ header {
 .menu-list .icon {
     margin-right: 15px;
 }
-.menu-grid .icon {
-    width: 60px;
-    height: 60px;
-    margin-bottom: 15px;
+/* An item's own photo (Admin > Menu Items) - sized like the icon it
+   replaces in list view; grid view's .menu-item-banner img rule (below)
+   overrides this to fill the full-bleed banner instead. */
+.menu-item-photo {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    flex-shrink: 0;
+    margin-right: 15px;
 }
+.menu-grid .menu-item-photo {
+    margin-right: 0;
+}
+
 
 .menu-controls {
     display: flex !important;
@@ -1376,23 +1452,40 @@ header {
 }
 
 #kitchen-orders-root {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(276px, 100%), 1fr));
+    gap: 14px;
     margin-top: 20px;
+    align-items: start;
 }
 .kot-ticket {
-    /* Was a plain white card with black text - the only screen in the app that
-       broke the black/orange terminal theme. Now matches the rest of the UI. */
+    /* Flat terminal-ticket card matching the mockup's ORDER.QUEUE screen -
+       a colored top border carries the status (set inline per-order from
+       KitchenSystem.STATUS_COLORS), no drop shadow or fixed width - this
+       used to be a hard-shadow "sticker" card, the only screen in the app
+       that didn't match the rest of the redesign's flat terminal look. */
     background: var(--color-surface);
     color: var(--color-text);
     border: 1px solid var(--color-border);
-    padding: 15px;
-    width: 250px;
+    padding: 15px 16px 14px;
     font-family: "Courier New";
-    box-shadow: 5px 5px var(--color-accent);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
-.kot-header { border-bottom: 1px solid var(--color-border); padding-bottom: 8px; margin-bottom: 8px; font-weight: bold; }
+.kot-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px dashed var(--color-border);
+    padding-bottom: 10px;
+}
+.kot-body {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
 .item-pending { color: var(--color-cyan); }
 .item-done { color: var(--color-text-muted); text-decoration: line-through; opacity: 0.6; }
 

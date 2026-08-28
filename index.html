@@ -148,6 +148,11 @@
     </button>
 </div>
 
+    <!-- Category filter chips - populated in renderMenuCategoryChips() (app.js)
+         once menuData.sections loads, since the section list isn't known
+         until then. -->
+    <div id="menu-cat-chips" class="menu-cat-chips"></div>
+
     <!-- Staff (employee/manager/admin/owner) get a persistent cart panel
          beside the grid - see renderStaffCartPanel() in app.js - matching
          the register-style workflow of adding many items back-to-back

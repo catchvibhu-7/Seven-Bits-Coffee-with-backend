@@ -35,6 +35,7 @@ let ordersStream = null; // SSE connection, opened once after the first authenti
 let session = { authenticated: false, role: null, name: null, phone: null }; // current login state
 let favoritesFilterActive = false;
 let comboData = [];
+let activeCategory = "All"; // menu-cat-chips selection; "All" shows every section
 let lastSeenOrderStatuses = {}; // orderId -> last status seen by refreshOrderStatusWidget, so the ready chime fires once per transition, not on every poll
 
 const KITCHEN_ROLES = ["employee", "manager", "admin", "owner"];
@@ -968,17 +969,40 @@ function iconMarkup(iconKey) {
  *  don't have a real photo yet, not meant to be shown alongside one. */
 function itemImageMarkup(item) {
     if (item.imageUrl) {
-        return `<img src="${item.imageUrl}" alt="" class="menu-item-photo" style="width:56px; height:56px; object-fit:cover; border-radius:6px; flex-shrink:0;" />`;
+        return `<img src="${item.imageUrl}" alt="" class="menu-item-photo" />`;
     }
     return iconMarkup(item.icon);
+}
+
+/** Category pill row above the menu grid/list, mirroring the mockup's
+ *  category-chip filter - built fresh each render since it needs to reflect
+ *  the current activeCategory highlight, and menuData.sections is small. */
+function renderMenuCategoryChips() {
+    const root = document.getElementById("menu-cat-chips");
+    if (!root) return;
+    const cats = ["All", ...menuData.sections.map((s) => s.title)];
+    root.innerHTML = cats
+        .map(
+            (name) => `
+        <button type="button" class="menu-cat-chip${activeCategory === name ? " active" : ""}" data-cat="${escapeHtml(name)}">${escapeHtml(name)}</button>
+    `
+        )
+        .join("");
+    root.querySelectorAll(".menu-cat-chip").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            activeCategory = btn.dataset.cat;
+            renderMenu(document.getElementById("menu-search")?.value || "");
+        });
+    });
 }
 
 function renderMenu(filterQuery = "") {
     const root = document.getElementById("menu-root");
     if (!root) return;
     root.innerHTML = "";
+    renderMenuCategoryChips();
 
-    if (!favoritesFilterActive && !filterQuery && comboData.length > 0) {
+    if (!favoritesFilterActive && !filterQuery && activeCategory === "All" && comboData.length > 0) {
         const comboSection = document.createElement("section");
         comboSection.id = "section-combos";
         comboSection.className = "section-container";
@@ -1005,7 +1029,7 @@ function renderMenu(filterQuery = "") {
             const comboEl = document.createElement("div");
             comboEl.className = "menu-item";
             comboEl.innerHTML = `
-                <span class="icon icon-cake"></span>
+                <div class="menu-item-banner"><span class="icon icon-cake"></span></div>
                 <div class="info">
                     <div class="name">${escapeHtml(combo.name)}</div>
                     <div class="story">${itemList}${combo.description ? ` &middot; ${escapeHtml(combo.description)}` : ""}</div>
@@ -1025,6 +1049,7 @@ function renderMenu(filterQuery = "") {
     }
 
     menuData.sections.forEach((section) => {
+        if (activeCategory !== "All" && activeCategory !== section.title) return;
         const items = menuData.items.filter(
             (item) =>
                 item.section === section.id &&
@@ -1127,7 +1152,7 @@ function renderMenu(filterQuery = "") {
             itemEl.className = "menu-item";
             if (isUnavailable) itemEl.style.opacity = "0.45";
             itemEl.innerHTML = `
-                ${itemImageMarkup(item)}
+                <div class="menu-item-banner">${itemImageMarkup(item)}</div>
                 <div class="info">
                     <div class="name">${favButton}${item.name}${isSoldOut ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
@@ -1498,54 +1523,42 @@ function renderKitchen() {
 
             const ticket = document.createElement("div");
             ticket.className = "kot-ticket";
-            ticket.style.borderTop = `3px solid ${statusColor}`;
-            const paidStatus = order.isPaid
-                ? "\u2713 PAID"
-                : `<button onclick="window.markPaid('${order.id}')" style="cursor:pointer; border:1px solid var(--color-accent); background:none; color:var(--color-accent); font-size:7pt;">MARK PAID</button>`;
+            ticket.style.borderTop = `4px solid ${statusColor}`;
+
+            const primaryActionHtml = hasPendingItems
+                ? `<button style="flex:1; padding:10px; background:var(--color-accent); border:2px solid var(--color-accent); color:var(--color-accent-contrast); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;" onclick="window.markCompleted('${order.id}')">${isMaster ? "Mark all done" : "Mark done"}</button>`
+                : isMaster && allItemsDone && !order.servedAt
+                  ? `<button style="flex:1; padding:10px; background:var(--color-success); border:2px solid var(--color-success); color:#000; font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;" onclick="window.markServed('${order.id}')">&gt; Mark served</button>`
+                  : `<span style="flex:1; padding:10px; text-align:center; font-size:11px; color:var(--color-text-muted); letter-spacing:.08em; text-transform:uppercase;">// served</span>`;
+
+            const paidActionHtml = order.isPaid
+                ? `<span style="padding:10px 13px; background:none; border:2px solid var(--color-border); color:var(--color-success); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase;">\u2713 Paid</span>`
+                : `<button style="padding:10px 13px; background:#000; border:2px solid var(--color-border); color:var(--color-text); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;" onclick="window.markPaid('${order.id}')">Bill</button>`;
 
             ticket.innerHTML = `
             <div class="kot-header">
-                <span>#${order.orderNumber || order.id}</span>
-                <span style="float:right;">${paidStatus}</span>
+                <div style="min-width:0;">
+                    <div style="font-size:11px; color:var(--color-text-muted); letter-spacing:.08em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">#${escapeHtml(order.orderNumber || order.id)} &middot; ${new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                    <div style="font-size:15px; font-weight:bold; margin-top:6px; letter-spacing:.08em; text-transform:uppercase;">${order.tableNumber ? `TABLE ${escapeHtml(order.tableNumber)}` : "COUNTER"}</div>
+                </div>
+                <span style="flex:none; padding:5px 8px; font-size:10px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; border:1px solid ${statusColor}; color:${statusColor};">${status}</span>
             </div>
-            <div style="display:inline-block; margin-bottom:6px; padding:2px 7px; font-size:7pt; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; border:1px solid ${statusColor}; color:${statusColor};">${status}</div>
-            ${order.tableNumber ? `<div style="font-size:9pt; font-weight:bold; color:var(--color-accent); margin-bottom:4px;">TABLE ${escapeHtml(order.tableNumber)}</div>` : ""}
-            <div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:6px;">${new Date(order.createdAt).toLocaleString()}</div>
             <div class="kot-body">
                 ${itemsToDisplay
                     .map((i) => {
                         const tags = customizationTagsText(i);
                         return `
-                    <div class="${i.isDone ? "item-done" : "item-pending"}">
-                        <strong>${i.quantity}x</strong> ${escapeHtml(i.name)}
-                        ${isMaster && i.isDone ? '<span style="font-size:7pt; opacity:0.5; margin-left:5px;">[OK]</span>' : ""}
-                        ${tags ? `<div style="font-size:7pt; color: var(--color-accent); font-weight:normal;">${tags}</div>` : ""}
-                        ${i.notes ? `<div style="font-size:7pt; color: var(--color-text-muted); font-weight:normal; font-style:italic;">"${escapeHtml(i.notes)}"</div>` : ""}
+                    <div class="${i.isDone ? "item-done" : "item-pending"}" style="font-size:12.5px; letter-spacing:.04em;">
+                        <strong style="color:var(--color-accent);">${i.quantity}x</strong> ${escapeHtml(i.name)}
+                        ${isMaster && i.isDone ? '<span style="font-size:10px; opacity:0.5; margin-left:5px;">[OK]</span>' : ""}
+                        ${tags ? `<div style="font-size:10.5px; color: var(--color-accent); font-weight:normal;">${tags}</div>` : ""}
+                        ${i.notes ? `<div style="font-size:10.5px; color: var(--color-text-muted); font-weight:normal; font-style:italic;">"${escapeHtml(i.notes)}"</div>` : ""}
                     </div>
                 `;
                     })
                     .join("")}
             </div>
-
-            ${
-                hasPendingItems
-                    ? `
-                <button class="btn-primary"
-                        style="width:100%; margin-top:10px; font-size:9pt; background:var(--color-accent); color:var(--color-accent-contrast); border:none; padding:8px; font-weight:bold; cursor:pointer;"
-                        onclick="window.markCompleted('${order.id}')">
-                    ${isMaster ? "MARK ALL DONE" : "MARK DONE"}
-                </button>
-            `
-                    : isMaster && allItemsDone && !order.servedAt
-                      ? `
-                <button class="btn-primary"
-                        style="width:100%; margin-top:10px; font-size:9pt; background:var(--color-success); color:#000; border:none; padding:8px; font-weight:bold; cursor:pointer;"
-                        onclick="window.markServed('${order.id}')">
-                    &gt; MARK SERVED
-                </button>
-            `
-                      : ""
-            }
+            <div style="display:flex; gap:8px; margin-top:2px;">${primaryActionHtml}${paidActionHtml}</div>
         `;
             root.appendChild(ticket);
         });
