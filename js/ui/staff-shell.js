@@ -251,14 +251,30 @@ export const StaffShell = {
             .map((t, i) => {
                 const active = t.key === this.activeTab;
                 const mark = active ? "&gt;" : String(i + 1).padStart(2, "0");
+                const count = this.badgeCounts[t.key] || 0;
                 return `
                     <button type="button" class="staff-nav-btn${active ? " active" : ""}" data-tab="${t.key}" aria-current="${active ? "page" : "false"}">
                         <span class="staff-nav-mark" aria-hidden="true">${mark}</span>
                         <span class="staff-nav-label">${escapeHtml(t.label)}</span>
+                        <span class="staff-nav-badge" data-badge="${t.key}" style="display:${count > 0 ? "inline-block" : "none"};">${count}</span>
                     </button>
                 `;
             })
             .join("");
+    },
+
+    // Live count shown on a nav tab (currently just "orders" - open KOT
+    // tickets still awaiting fire) - see setBadge()/app.js's
+    // ensureOrdersStream() for what keeps this current. Updates the badge
+    // element(s) directly rather than a full re-render, so a fast-arriving
+    // order doesn't steal focus or reset scroll on whichever tab is open.
+    badgeCounts: {},
+    setBadge(tabKey, count) {
+        this.badgeCounts[tabKey] = count;
+        document.querySelectorAll(`.staff-nav-badge[data-badge="${tabKey}"]`).forEach((el) => {
+            el.textContent = String(count);
+            el.style.display = count > 0 ? "inline-block" : "none";
+        });
     },
 
     /** The one account button - name + role level, opens the shared

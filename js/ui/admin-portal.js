@@ -1982,6 +1982,10 @@ export const AdminPortal = {
                     <label>HOME PAGE ABOUT TEXT</label>
                     <textarea id="cfg-hero-tagline" rows="3" maxlength="400" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;">${escapeHtmlAttr(c.heroTagline || "")}</textarea>
                 </div>
+                <div class="control-group">
+                    <label>RECEIPT FOOTER MESSAGE (printed at the bottom of the customer bill - the logo above it comes from LOGO IMAGE below)</label>
+                    <input type="text" id="cfg-receipt-footer" maxlength="120" value="${escapeHtmlAttr(c.receiptFooterText || "")}" />
+                </div>
 
                 <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">THEME</h3>
                 <div class="control-group">
@@ -2299,6 +2303,7 @@ export const AdminPortal = {
                     shopName: document.getElementById("cfg-shop-name").value,
                     heroBadgeText: document.getElementById("cfg-hero-badge").value,
                     heroTagline: document.getElementById("cfg-hero-tagline").value,
+                    receiptFooterText: document.getElementById("cfg-receipt-footer").value,
                     theme: document.getElementById("brand-theme").value,
                     heroImageUrl: document.getElementById("brand-hero").value.trim(),
                     logoUrl: document.getElementById("brand-logo").value.trim(),

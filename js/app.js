@@ -84,6 +84,15 @@ function updateStaffShellForSession() {
     const currentPageId = document.querySelector(".page.active")?.id.replace("page-", "") || null;
     if (session.role) {
         StaffShell.show(session, currentPageId);
+        // Populates the Orders nav badge right away rather than leaving it
+        // at 0 until the first live-update event arrives (see
+        // ensureOrdersStream(), which keeps it current after this).
+        if (KITCHEN_ROLES.includes(session.role)) {
+            KitchenSystem.fetchOrders().then(() => {
+                const awaitingFire = KitchenSystem.orders.filter((o) => !o.items.every((i) => i.isDone)).length;
+                StaffShell.setBadge("orders", awaitingFire);
+            });
+        }
     } else {
         StaffShell.hide();
     }
@@ -613,13 +622,24 @@ function ensureOrdersStream() {
     ordersStream = KitchenSystem.connectLiveUpdates(
         async () => {
             const kitchenPage = document.getElementById("page-kitchen") || document.getElementById("page-orders");
-            if (kitchenPage && kitchenPage.classList.contains("active")) {
+            const kitchenActive = kitchenPage && kitchenPage.classList.contains("active");
+            if (kitchenActive) {
                 await KitchenSystem.fetchOrders();
                 renderKitchen();
             }
             const homePage = document.getElementById("page-home");
             if (homePage && homePage.classList.contains("active")) {
                 await refreshOrderStatusWidget();
+            }
+            // The staff nav's "Orders" badge (StaffShell.setBadge) needs a
+            // fresh count regardless of which page is showing, unlike the
+            // two blocks above which only bother re-rendering a page the
+            // person is actually looking at - re-fetching here only if the
+            // Kitchen page didn't already just do it above.
+            if (KITCHEN_ROLES.includes(session.role)) {
+                if (!kitchenActive) await KitchenSystem.fetchOrders();
+                const awaitingFire = KitchenSystem.orders.filter((o) => !o.items.every((i) => i.isDone)).length;
+                StaffShell.setBadge("orders", awaitingFire);
             }
         },
         () => {
@@ -803,6 +823,7 @@ window.printBill = (order) => {
         </head>
         <body onload="window.print(); window.close();">
             <div class="center">
+                ${siteConfig.logoUrl ? `<img src="${escapeHtml(siteConfig.logoUrl)}" style="max-width:120px; max-height:60px; margin-bottom:6px;" />` : ""}
                 <h3>${escapeHtml(siteConfig.shopName || "SEVEN BITS COFFEE")}</h3>
                 <p style="font-size: 8pt;">${siteConfig.footer?.address ? escapeHtml(siteConfig.footer.address) + "<br>" : ""}#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
                 ${siteConfig.gstNumber ? `<p style="font-size: 7pt;">GSTIN: ${escapeHtml(siteConfig.gstNumber)}</p>` : ""}
@@ -833,7 +854,7 @@ window.printBill = (order) => {
             ${order.tipApplied ? `<div class="row">GINGER TIP: <span>\u20b9${order.tipAmount.toFixed(2)}</span></div>` : ""}
             <div class="row total">TOTAL: <span>\u20b9${order.total.toFixed(2)}</span></div>
             <div class="hr"></div>
-            <p class="center" style="font-size: 8pt;">- G=7 | Processed with precision -</p>
+            <p class="center" style="font-size: 8pt;">${escapeHtml(siteConfig.receiptFooterText || "Thank you for visiting!")}</p>
         </body>
         </html>
     `);

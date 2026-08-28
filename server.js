@@ -195,6 +195,9 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // Small badge line above the hero heading (e.g. "Est. 2019 - 8-bit
     // roastery") - was hardcoded in index.html, same reasoning as heroTagline.
     heroBadgeText: "Est. 2019 · 8-bit roastery",
+    // Printed at the bottom of the customer bill (window.printBill, app.js) -
+    // was a hardcoded "- G=7 | Processed with precision -" signature.
+    receiptFooterText: "Thank you for visiting!",
     // Admin-added icon options beyond the built-in set (see Branding tab).
     // Key -> image URL; menu items reference these by key just like the
     // built-in CSS icon names.
@@ -2131,6 +2134,7 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "gstNumber",
     "heroTagline",
     "heroBadgeText",
+    "receiptFooterText",
     "tipEnabled",
     "tipAmount",
     "cgstRate",
@@ -2162,6 +2166,7 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   // length and strip control chars so a bad paste can't break layout.
   if (typeof config.shopName === "string") config.shopName = config.shopName.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 60);
   if (typeof config.gstNumber === "string") config.gstNumber = Array.from(config.gstNumber).filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; }).join("").trim().toUpperCase().slice(0, 20);
+  if (typeof config.receiptFooterText === "string") config.receiptFooterText = config.receiptFooterText.trim().slice(0, 120);
   if (typeof config.heroTagline === "string") config.heroTagline = config.heroTagline.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400);
   if (typeof config.heroBadgeText === "string") {
     config.heroBadgeText = Array.from(config.heroBadgeText)
