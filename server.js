@@ -2824,6 +2824,27 @@ route("GET", /^\/api\/orders\/mine\/?$/, async (req, res) => {
   sendJson(res, 200, mine);
 });
 
+// No login required - the token itself (from the QR code shown at checkout,
+// see trackingToken above) is the credential, same trust model as a
+// password-reset link. Returns only what a customer needs to see their own
+// order's progress, never the full order record (no phone/customer id/
+// internal ids beyond the display number).
+route("GET", /^\/api\/orders\/track\/(?<token>[a-f0-9]+)\/?$/, async (req, res, params) => {
+  const orders = readJson(ORDERS_FILE, []);
+  const order = orders.find((o) => o.trackingToken === params.token);
+  if (!order) return sendJson(res, 404, { error: "Order not found" });
+  sendJson(res, 200, {
+    orderNumber: order.orderNumber || order.id,
+    status: orderStatusOf(order),
+    isPaid: order.isPaid,
+    total: order.total,
+    orderType: order.orderType,
+    tableNumber: order.tableNumber,
+    createdAt: order.createdAt,
+    items: order.items.map((i) => ({ name: i.name, quantity: i.quantity }))
+  });
+});
+
 route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   // Placing an order needs SOME identity (customer login or guest phone) so
   // it can be tracked afterwards - but no staff-only permissions are needed,
@@ -2889,6 +2910,12 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
 
   const orderId = `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
   const orderNumber = generateOrderNumber(orders, session.storeId, multiStore);
+  // Lets a customer track this one order (GET /api/orders/track/:token,
+  // no login needed) by scanning a QR code - an alternative to the
+  // phone-based guest lookup for someone who doesn't want to type a phone
+  // number back in later or is on a different device. Long and random
+  // enough that guessing another order's token isn't practical.
+  const trackingToken = crypto.randomBytes(12).toString("hex");
 
   // Real payment verification (Razorpay) - only attempted when an owner has
   // actually enabled it and saved both keys (Admin -> Payments & Tax). Off
@@ -2902,6 +2929,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   const order = {
     id: orderId,
     orderNumber,
+    trackingToken,
     storeId: session.storeId != null ? session.storeId : null,
     createdAt: new Date().toISOString(),
     method,

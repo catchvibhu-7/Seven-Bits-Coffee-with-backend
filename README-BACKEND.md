@@ -49,6 +49,13 @@ is what "Guest" login uses to find your order afterwards - a guest can only
 ever see orders placed under the exact phone number they typed in, nothing
 else. A logged-in customer sees orders tied to their account instead.
 
+Every order also gets a QR code on its confirmation screen that opens a
+no-login tracking page (`?track=<token>`) - useful for checking on an
+order from a different device, or without remembering a phone number/
+password later. The token only ever resolves that one order's status
+(number, items, paid/pending, total) - never a customer's full order
+history or any personal info.
+
 This was designed so it drops into a real database later with no rework:
 every place that reads/writes users, menu items, config, or orders goes
 through a small set of functions (`readJson`/`writeJson`, `findUserById`,
@@ -109,9 +116,6 @@ back to the original UPI-QR trust-based flow exactly as before.
 
 - Migrate the remaining `onclick=""` handlers to `addEventListener` so the
   Content-Security-Policy can drop `unsafe-inline` entirely
-- QR-code order tracking - a customer scans a code at checkout to watch
-  their own order status without logging in, instead of the phone-based
-  guest flow that exists today
 - **SMS/WhatsApp order-ready and low-stock alerts** - currently these only
   show in-app (staff dashboard, order status widget). Wiring up a real
   provider (Twilio, MSG91, or Meta's WhatsApp Business API) needs an

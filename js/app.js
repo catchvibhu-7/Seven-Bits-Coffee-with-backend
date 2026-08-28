@@ -16,6 +16,7 @@ import { FavoritesSystem } from "./features/favorites-logic.js";
 import { renderMyOrdersModal } from "./ui/my-orders-modal.js";
 import { TableSessionsSystem } from "./features/table-sessions-logic.js";
 import { renderTableModal, renderTableBillModal } from "./ui/table-modal.js";
+import { renderTrackPage, stopTrackPolling } from "./ui/track-page.js";
 import { SoundSystem } from "./features/sound-logic.js";
 import { NotificationSystem } from "./features/notification-logic.js";
 import { StaffShell } from "./ui/staff-shell.js";
@@ -432,6 +433,8 @@ window.setViewMode = (mode) => {
 };
 
 window.showPage = async (pageId) => {
+    if (pageId !== "track") stopTrackPolling();
+
     const needsKitchenRole = pageId === "kitchen" || pageId === "orders" || pageId === "staff-home" || pageId === "billing";
     const needsAdminRole = pageId === "admin";
 
@@ -518,6 +521,9 @@ window.showPage = async (pageId) => {
         const module = await ensureArcadePageLoaded();
         await module.ArcadePage.init();
         ensureOrdersStream();
+    }
+    if (pageId === "track") {
+        renderTrackPage(new URLSearchParams(window.location.search).get("track"));
     }
 };
 
@@ -2294,5 +2300,11 @@ window.pickFromHome = (itemId) => {
     window.renderFooter(config);
     await refreshSession();
     window.initSearchBar();
-    window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home");
+    // A scanned tracking QR (?track=<token>) is an explicit deep link - takes
+    // priority over the normal landing page even for a signed-in session.
+    if (new URLSearchParams(window.location.search).get("track")) {
+        window.showPage("track");
+    } else {
+        window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home");
+    }
 })();

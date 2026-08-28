@@ -355,6 +355,20 @@ function round2(n) {
     return Math.round(n * 100) / 100;
 }
 
+/** QR for the no-login order-tracking page (js/ui/track-page.js) - built
+ *  client-side (same free QR API the UPI QR already uses) so the server
+ *  never has to guess its own public origin/protocol. */
+function trackingQrHtml(trackingToken) {
+    const trackUrl = `${location.origin}${location.pathname}?track=${trackingToken}`;
+    const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(trackUrl)}`;
+    return `
+        <div style="display:flex; align-items:center; justify-content:center; gap:12px; margin:16px 0; padding-top:16px; border-top:1px dashed var(--color-border);">
+            <div style="background:white; padding:6px; border:2px solid var(--color-accent);"><img src="${qrSrc}" alt="Track order QR" width="90" height="90"></div>
+            <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 8pt; text-align:left; margin:0; max-width:150px;">Scan to track this order from any device - no login needed.</p>
+        </div>
+    `;
+}
+
 /** Lazily loads Razorpay's Checkout.js widget (only ever needed once Razorpay
  *  is actually enabled and a customer reaches an unpaid ONLINE order) rather
  *  than pulling it in on every page load. */
@@ -485,7 +499,8 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
                 </p>
                 <p style="font-family: 'Courier New', monospace; color: var(--color-text); font-size: 9pt; margin: 20px 0;">
                     Thank you for visiting! Have a great day.
-                </p>`
+                </p>
+                ${order.trackingToken ? trackingQrHtml(order.trackingToken) : ""}`
                 }
                 <div style="display: grid; gap: 15px; margin-top: 10px;">
                     ${
