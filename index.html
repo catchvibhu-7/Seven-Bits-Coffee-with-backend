@@ -23,10 +23,16 @@
             Clickjacking protection is handled instead by the X-Frame-Options header
             server.js sends - the frame-ancestors directive doesn't work in a <meta>
             tag, only in a real HTTP header.
+            checkout.razorpay.com/api.razorpay.com/lumberjack.razorpay.com/
+            cdn.razorpay.com are allowlisted for the optional Razorpay
+            integration (Admin > Payments) - its checkout.js widget loads a
+            script from and opens an iframe/XHR to those origins (cdn.razorpay.com
+            specifically for its own bundled risk-detection script) only when an
+            admin has actually turned Razorpay on.
         -->
         <meta
             http-equiv="Content-Security-Policy"
-            content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self';" />
+            content="default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://cdn.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src https://api.razorpay.com https://checkout.razorpay.com; connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com;" />
         <link rel="stylesheet" href="css/theme.css" />
         <link rel="stylesheet" href="css/iconsvg.css" />
         <link rel="stylesheet" href="css/cat.css" />

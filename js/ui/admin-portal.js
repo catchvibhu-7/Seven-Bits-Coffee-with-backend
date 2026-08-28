@@ -256,6 +256,22 @@ export const AdminPortal = {
                     <input type="text" id="cfg-upi-payee-name" maxlength="60" value="${c.upiPayeeName || ""}" placeholder="${c.shopName || "Your Shop"}" />
                 </div>
 
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">RAZORPAY (VERIFIED ONLINE PAYMENTS)</h3>
+                <p class="admin-help-text" style="margin-top:-4px;">When enabled, "Pay Online" opens a real Razorpay checkout and an order is only marked paid after Razorpay confirms the payment - instead of the UPI QR code, which trusts the customer's word.</p>
+                <div class="control-group" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="cfg-razorpay-enabled" ${c.razorpayEnabled ? "checked" : ""} />
+                    <label style="margin:0;" for="cfg-razorpay-enabled">ENABLE RAZORPAY</label>
+                </div>
+                <div class="control-group" style="max-width:320px;">
+                    <label>KEY ID</label>
+                    <input type="text" id="cfg-razorpay-key-id" maxlength="100" value="${escapeHtmlAttr(c.razorpayKeyId || "")}" placeholder="rzp_test_xxxxxxxxxxxx" />
+                </div>
+                <div class="control-group" style="max-width:320px;">
+                    <label>KEY SECRET</label>
+                    <input type="password" id="cfg-razorpay-key-secret" maxlength="200" placeholder="${c.razorpaySecretConfigured ? "•••••••• (saved - leave blank to keep)" : "Enter your Razorpay key secret"}" />
+                </div>
+                <p class="admin-help-text" style="margin-top:-4px;">Get these from your Razorpay Dashboard under Settings &gt; API Keys. The secret is never shown back here once saved.</p>
+
                 <p id="payments-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="cfg-save">SAVE SETTINGS</button>
             </div>
@@ -274,6 +290,7 @@ export const AdminPortal = {
                 return;
             }
 
+            const razorpayKeySecret = document.getElementById("cfg-razorpay-key-secret").value.trim();
             try {
                 await AdminConfig.saveSettings({
                     gstNumber: document.getElementById("cfg-gst-number").value,
@@ -283,10 +300,14 @@ export const AdminPortal = {
                     sgstRate: sgst,
                     serviceChargeRate: serviceCharge,
                     upiVpa: document.getElementById("cfg-upi-vpa").value.trim(),
-                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim()
+                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim(),
+                    razorpayEnabled: document.getElementById("cfg-razorpay-enabled").checked,
+                    razorpayKeyId: document.getElementById("cfg-razorpay-key-id").value.trim(),
+                    ...(razorpayKeySecret ? { razorpayKeySecret } : {})
                 });
                 if (window.applyBranding) window.applyBranding(AdminConfig.settings);
                 ok("Settings saved");
+                this.renderPayments(root);
             } catch (e) {
                 errorEl.textContent = e.message;
                 fail(e.message);

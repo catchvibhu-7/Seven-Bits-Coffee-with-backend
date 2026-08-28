@@ -355,6 +355,97 @@ function round2(n) {
     return Math.round(n * 100) / 100;
 }
 
+/** Lazily loads Razorpay's Checkout.js widget (only ever needed once Razorpay
+ *  is actually enabled and a customer reaches an unpaid ONLINE order) rather
+ *  than pulling it in on every page load. */
+function loadRazorpayScript() {
+    if (window.Razorpay) return Promise.resolve(true);
+    return new Promise((resolve) => {
+        const script = document.createElement("script");
+        script.src = "https://checkout.razorpay.com/v1/checkout.js";
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.head.appendChild(script);
+    });
+}
+
+async function verifyRazorpayPayment(orderId, response) {
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/verify-payment`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature: response.razorpay_signature
+        })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Payment could not be verified");
+    return data;
+}
+
+/** Opens Razorpay's widget for an order the server already created with a
+ *  real razorpayOrderId - the order is only marked paid once /verify-payment
+ *  confirms the signature server-side, never from this client callback alone. */
+async function openRazorpayCheckout(order) {
+    const payBtn = document.getElementById("btn-razorpay-pay");
+    const statusEl = document.getElementById("razorpay-status");
+    const resetBtn = () => {
+        if (!payBtn) return;
+        payBtn.disabled = false;
+        payBtn.textContent = `PAY \u20b9${order.total.toFixed(2)}`;
+    };
+    if (payBtn) {
+        payBtn.disabled = true;
+        payBtn.textContent = "LOADING...";
+    }
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+        if (statusEl) {
+            statusEl.style.color = "var(--color-danger)";
+            statusEl.textContent = "Couldn't load the payment widget - check your connection and try again.";
+        }
+        resetBtn();
+        return;
+    }
+
+    const rzp = new window.Razorpay({
+        key: order.razorpayKeyId,
+        amount: Math.round(order.total * 100),
+        currency: "INR",
+        name: document.title || "Seven Bits Coffee",
+        description: `Order #${order.orderNumber || order.id}`,
+        order_id: order.razorpayOrderId,
+        theme: { color: "#d97706" },
+        handler: async (response) => {
+            if (statusEl) {
+                statusEl.style.color = "var(--color-text-muted)";
+                statusEl.textContent = "Verifying payment...";
+            }
+            try {
+                const updated = await verifyRazorpayPayment(order.id, response);
+                Object.assign(order, updated);
+                renderPaymentConfirmation(order, "ONLINE", { isCustomerFacing: true });
+            } catch (e) {
+                if (statusEl) {
+                    statusEl.style.color = "var(--color-danger)";
+                    statusEl.textContent = e.message;
+                }
+                resetBtn();
+            }
+        },
+        modal: { ondismiss: resetBtn }
+    });
+    rzp.on("payment.failed", (resp) => {
+        if (statusEl) {
+            statusEl.style.color = "var(--color-danger)";
+            statusEl.textContent = resp.error?.description || "Payment failed - please try again.";
+        }
+        resetBtn();
+    });
+    rzp.open();
+}
+
 /**
  * Shown AFTER the server has created the order and returned the real total.
  * For UPI, the QR embeds the server-confirmed amount (order.total) - never a
@@ -377,26 +468,39 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
         const totalQty = order.items.reduce((sum, i) => sum + i.quantity, 0);
         const waitLow = Math.min(20, 5 + totalQty * 2);
         const waitHigh = waitLow + 5;
+        const needsRazorpayPayment = isOnline && !order.isPaid && order.razorpayOrderId;
 
         overlay.innerHTML = `
             <div class="modal-content" style="text-align: center; background: var(--color-surface); padding: 30px; border: 2px solid var(--color-accent);">
-                <h2 style="color: var(--color-accent); font-size: 1.2rem; font-family: 'Courier New', monospace;">ORDER CONFIRMED</h2>
+                <h2 style="color: var(--color-accent); font-size: 1.2rem; font-family: 'Courier New', monospace;">${needsRazorpayPayment ? "COMPLETE PAYMENT" : "ORDER CONFIRMED"}</h2>
                 <p style="font-family: 'Courier New', monospace; color: var(--color-text); font-size: 11pt; margin: 16px 0 4px;">ORDER #${order.orderNumber || order.id}</p>
                 <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt; margin: 0 0 20px;">
                     ${order.isPaid ? "AMOUNT PAID" : "AMOUNT DUE"}: \u20b9${order.total.toFixed(2)}
                 </p>
-                <p style="font-family: 'Courier New', monospace; color: var(--color-accent); font-size: 9pt; margin: 0 0 20px;">
+                ${
+                    needsRazorpayPayment
+                        ? `<p id="razorpay-status" style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 8pt; min-height: 12px; margin: 0 0 10px;">Pay securely via Razorpay to confirm your order.</p>`
+                        : `<p style="font-family: 'Courier New', monospace; color: var(--color-accent); font-size: 9pt; margin: 0 0 20px;">
                     APPROX. WAIT TIME: ${waitLow}-${waitHigh} MINS
                 </p>
                 <p style="font-family: 'Courier New', monospace; color: var(--color-text); font-size: 9pt; margin: 20px 0;">
                     Thank you for visiting! Have a great day.
-                </p>
+                </p>`
+                }
                 <div style="display: grid; gap: 15px; margin-top: 10px;">
-                    <button class="btn-primary" style="background: var(--color-accent); color: var(--color-accent-contrast); border: 2px solid black; padding: 15px; font-weight: bold; cursor: pointer; font-family: 'Courier New', monospace; box-shadow: 4px 4px 0px var(--color-bg);" onclick="window.finalizeOrder(false)">CLOSE</button>
+                    ${
+                        needsRazorpayPayment
+                            ? `<button id="btn-razorpay-pay" class="btn-primary" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: 2px solid black; padding: 15px; font-weight: bold; cursor: pointer; font-family: 'Courier New', monospace; box-shadow: 4px 4px 0px var(--color-bg);">PAY \u20b9${order.total.toFixed(2)}</button>
+                       <button class="btn-close" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase; font-family: 'Courier New', monospace;" onclick="window.finalizeOrder(false)">PAY AT COUNTER INSTEAD</button>`
+                            : `<button class="btn-primary" style="background: var(--color-accent); color: var(--color-accent-contrast); border: 2px solid black; padding: 15px; font-weight: bold; cursor: pointer; font-family: 'Courier New', monospace; box-shadow: 4px 4px 0px var(--color-bg);" onclick="window.finalizeOrder(false)">CLOSE</button>`
+                    }
                 </div>
             </div>
         `;
         document.body.appendChild(overlay);
+        if (needsRazorpayPayment) {
+            document.getElementById("btn-razorpay-pay")?.addEventListener("click", () => openRazorpayCheckout(order));
+        }
         return;
     }
 

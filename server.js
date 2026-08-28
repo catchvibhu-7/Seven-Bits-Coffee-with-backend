@@ -28,6 +28,7 @@
 "use strict";
 
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -166,6 +167,13 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // first boot, not the source of truth after that.
     upiVpa: process.env.UPI_VPA || "",
     upiPayeeName: process.env.UPI_PAYEE_NAME || "",
+    // Real payment verification - off by default, an owner turns it on once
+    // they have a Razorpay merchant account (Admin -> Payments & Tax). See
+    // createRazorpayOrder()/verifyRazorpaySignature() above. Off/unconfigured
+    // keeps the original UPI-QR trust-based flow exactly as it was.
+    razorpayEnabled: false,
+    razorpayKeyId: "",
+    razorpayKeySecret: "",
     // Branding - drives CSS custom properties at runtime (see app.js
     // applyBranding()). Defaults match the original hardcoded theme, so
     // nothing changes visually until an admin edits these.
@@ -689,6 +697,87 @@ function isDrinkItem(item) {
 
 function round2(n) {
   return Math.round(n * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
+// Razorpay (real payment verification) - optional, off by default. Wiring
+// this up needs a merchant account + API keys only the shop owner can get
+// (Admin -> Payments & Tax -> Razorpay); with it off (or unconfigured), an
+// ONLINE order falls back to the original UPI-QR trust-based flow exactly
+// as before - nothing here changes behavior until an owner turns it on.
+// No SDK/npm dependency - both calls are plain HTTPS requests, consistent
+// with this app's "no external dependencies" approach everywhere else.
+// ---------------------------------------------------------------------------
+
+/** POST to Razorpay's REST API with HTTP Basic Auth (key_id:key_secret) -
+ *  the standard server-to-server auth their API docs specify. */
+function razorpayApiRequest(path, body, keyId, keySecret) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = https.request(
+      {
+        hostname: "api.razorpay.com",
+        path,
+        method: "POST",
+        auth: `${keyId}:${keySecret}`,
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
+        timeout: 10000
+      },
+      (res) => {
+        let raw = "";
+        res.on("data", (chunk) => (raw += chunk));
+        res.on("end", () => {
+          let parsed;
+          try {
+            parsed = JSON.parse(raw);
+          } catch (e) {
+            return reject(new Error("Razorpay returned an unexpected response"));
+          }
+          if (res.statusCode >= 200 && res.statusCode < 300) return resolve(parsed);
+          reject(new Error((parsed.error && parsed.error.description) || "Razorpay request failed"));
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("Razorpay request timed out")));
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+/** Creates a real Razorpay order for the given rupee amount - called once
+ *  computeOrder() has the authoritative, server-priced total, same as the
+ *  existing UPI QR (never a client-supplied amount). Returns null (falls
+ *  back to the UPI QR) on any failure - a misconfigured/unreachable gateway
+ *  should never block someone from placing an order. */
+async function createRazorpayOrder(amountRupees, receipt, config) {
+  if (!config.razorpayEnabled || !config.razorpayKeyId || !config.razorpayKeySecret) return null;
+  try {
+    const order = await razorpayApiRequest(
+      "/v1/orders",
+      { amount: Math.round(amountRupees * 100), currency: "INR", receipt: String(receipt).slice(0, 40) },
+      config.razorpayKeyId,
+      config.razorpayKeySecret
+    );
+    return { razorpayOrderId: order.id, razorpayKeyId: config.razorpayKeyId };
+  } catch (e) {
+    console.error("Razorpay order creation failed:", e.message);
+    return null;
+  }
+}
+
+/** Verifies the signature Razorpay's checkout widget hands back after a
+ *  payment completes - HMAC-SHA256 of "order_id|payment_id" using the key
+ *  secret, exactly as Razorpay's own docs specify. This is what actually
+ *  closes the "online payments are still trust-based" gap: an order is
+ *  only marked paid once this passes, not just because the client claims it. */
+function verifyRazorpaySignature(orderId, paymentId, signature, keySecret) {
+  const expected = crypto.createHmac("sha256", keySecret).update(`${orderId}|${paymentId}`).digest("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(signature || "")));
+  } catch (e) {
+    return false; // length mismatch etc. - never a match
+  }
 }
 
 // Customer/staff-facing display number, separate from `id` (the internal
@@ -2264,8 +2353,17 @@ function configForSession(session) {
   };
 }
 
+// Never send the raw Razorpay key secret to the client - only whether it's
+// configured (for the admin UI's own display) and the public key id (safe,
+// it's meant for the client-side checkout widget). The secret only ever
+// needs to leave this process when calling Razorpay's API server-to-server.
+function maskSecrets(config) {
+  const { razorpayKeySecret, ...rest } = config;
+  return { ...rest, razorpaySecretConfigured: !!razorpayKeySecret };
+}
+
 route("GET", /^\/api\/config\/?$/, async (req, res) => {
-  sendJson(res, 200, configForSession(currentSession(req)));
+  sendJson(res, 200, maskSecrets(configForSession(currentSession(req))));
 });
 
 route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
@@ -2290,7 +2388,9 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "upiPayeeName",
     "tableCount",
     "defaultNavLayout",
-    "heroCaptionLabel"
+    "heroCaptionLabel",
+    "razorpayEnabled",
+    "razorpayKeyId"
   ];
   for (const key of allowed) {
     if (body[key] !== undefined) config[key] = body[key];
@@ -2309,6 +2409,15 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   }
   if (config.defaultNavLayout !== undefined && config.defaultNavLayout !== "rail" && config.defaultNavLayout !== "topbar") {
     config.defaultNavLayout = "rail";
+  }
+  if (config.razorpayEnabled !== undefined) config.razorpayEnabled = Boolean(config.razorpayEnabled);
+  if (typeof config.razorpayKeyId === "string") config.razorpayKeyId = config.razorpayKeyId.trim().slice(0, 100);
+  // Never echoed back by GET /api/config (see maskSecrets()) - only ever
+  // updated when a real new value is actually typed, so re-saving the rest
+  // of this form (which never receives the real secret to redisplay) can't
+  // accidentally wipe it with an empty string.
+  if (typeof body.razorpayKeySecret === "string" && body.razorpayKeySecret.trim()) {
+    config.razorpayKeySecret = body.razorpayKeySecret.trim().slice(0, 200);
   }
   // shopName/heroTagline are rendered directly into the home page - cap
   // length and strip control chars so a bad paste can't break layout.
@@ -2422,7 +2531,7 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     }
   }
   writeJson(CONFIG_FILE, config);
-  sendJson(res, 200, config);
+  sendJson(res, 200, maskSecrets(config));
 });
 
 route("DELETE", /^\/api\/config\/custom-icons\/(?<key>[\w-]+)\/?$/, async (req, res, params) => {
@@ -2430,7 +2539,7 @@ route("DELETE", /^\/api\/config\/custom-icons\/(?<key>[\w-]+)\/?$/, async (req, 
   const config = readJson(CONFIG_FILE, {});
   if (config.customIcons) delete config.customIcons[params.key];
   writeJson(CONFIG_FILE, config);
-  sendJson(res, 200, config);
+  sendJson(res, 200, maskSecrets(config));
 });
 
 // ---------------------------------------------------------------------------
@@ -2616,7 +2725,7 @@ route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
     adminLabels: { ...DEFAULT_BRANDING.textStyles.adminLabels }
   };
   writeJson(CONFIG_FILE, config);
-  sendJson(res, 200, config);
+  sendJson(res, 200, maskSecrets(config));
 });
 
 // --- Branding profiles ("holiday themes" the admin can save and switch between) ---
@@ -2658,7 +2767,7 @@ route("POST", /^\/api\/branding-profiles\/(?<name>[^/]+)\/activate\/?$/, async (
   config.heroImageUrl = profile.heroImageUrl;
   config.logoUrl = profile.logoUrl;
   writeJson(CONFIG_FILE, config);
-  sendJson(res, 200, config);
+  sendJson(res, 200, maskSecrets(config));
 });
 
 route("DELETE", /^\/api\/branding-profiles\/(?<name>[^/]+)\/?$/, async (req, res, params) => {
@@ -2760,14 +2869,32 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   // paid immediately (cash already collected) instead of having to find it
   // in Order History afterwards - customers/guests can never self-mark paid.
   const staffMarkedPaid = KITCHEN_ROLES.includes(session.role) && body.markPaidNow === true;
+
+  const orderId = `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  const orderNumber = generateOrderNumber(orders, session.storeId, multiStore);
+
+  // Real payment verification (Razorpay) - only attempted when an owner has
+  // actually enabled it and saved both keys (Admin -> Payments & Tax). Off
+  // or unconfigured, this is a no-op and behavior is exactly what it always
+  // was: an ONLINE order is trust-based paid immediately, same as the UPI
+  // QR flow below. createRazorpayOrder() itself also falls back to null on
+  // any API failure, so a misconfigured/unreachable gateway never blocks
+  // someone from placing an order.
+  const razorpay = method === "ONLINE" && !staffMarkedPaid ? await createRazorpayOrder(computed.total, orderId, readJson(CONFIG_FILE, {})) : null;
+
   const order = {
-    id: `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
-    orderNumber: generateOrderNumber(orders, session.storeId, multiStore),
+    id: orderId,
+    orderNumber,
     storeId: session.storeId != null ? session.storeId : null,
     createdAt: new Date().toISOString(),
     method,
-    isPaid: method === "ONLINE" || staffMarkedPaid, // still trust-based until a real payment webhook is wired up - see README
-    paymentMethod: method === "ONLINE" ? "UPI" : staffMarkedPaid ? "Cash" : null,
+    // Real verification (see POST .../verify-payment below) gates isPaid
+    // when Razorpay actually created an order - still trust-based only in
+    // the fallback case, same as before.
+    isPaid: razorpay ? false : method === "ONLINE" || staffMarkedPaid,
+    paymentMethod: razorpay ? null : method === "ONLINE" ? "UPI" : staffMarkedPaid ? "Cash" : null,
+    razorpayOrderId: razorpay ? razorpay.razorpayOrderId : null,
+    razorpayKeyId: razorpay ? razorpay.razorpayKeyId : null,
     tipApplied,
     serviceChargeActive,
     orderType,
@@ -3031,6 +3158,39 @@ route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/feedback\/?$/, async (req, res, pa
   order.feedbackAt = new Date().toISOString();
   writeJson(ORDERS_FILE, orders);
   sendJson(res, 200, { rating: order.rating, comment: order.feedbackComment });
+});
+
+/** Called by the client once Razorpay's checkout widget reports a completed
+ *  payment - verifies the signature server-side before trusting it (the
+ *  actual fix for "online payments are still trust-based", see README).
+ *  Anyone who placed the order (staff or the customer/guest themselves) can
+ *  complete this - it only ever flips isPaid true after a real signature
+ *  check, never on the client's say-so. */
+route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/verify-payment\/?$/, async (req, res, params) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const body = await readBody(req);
+  const orders = readJson(ORDERS_FILE, []);
+  const order = orders.find((o) => o.id === params.id);
+  if (!order) return sendJson(res, 404, { error: "Order not found" });
+  if (!order.razorpayOrderId) return sendJson(res, 400, { error: "This order isn't a Razorpay payment" });
+  if (order.isPaid) return sendJson(res, 200, order); // already verified - idempotent
+
+  const config = readJson(CONFIG_FILE, {});
+  if (!config.razorpayKeySecret) return sendJson(res, 400, { error: "Razorpay isn't configured" });
+
+  const { razorpay_payment_id: paymentId, razorpay_signature: signature } = body;
+  if (!paymentId || !signature) return sendJson(res, 400, { error: "Missing payment verification fields" });
+
+  const verified = verifyRazorpaySignature(order.razorpayOrderId, paymentId, signature, config.razorpayKeySecret);
+  if (!verified) return sendJson(res, 400, { error: "Payment could not be verified" });
+
+  order.isPaid = true;
+  order.paymentMethod = "Razorpay";
+  order.razorpayPaymentId = paymentId;
+  writeJson(ORDERS_FILE, orders);
+  broadcastOrdersChanged();
+  sendJson(res, 200, order);
 });
 
 route("GET", /^\/api\/favorites\/?$/, async (req, res) => {
