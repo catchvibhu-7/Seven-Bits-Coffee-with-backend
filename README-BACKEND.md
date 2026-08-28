@@ -114,8 +114,6 @@ back to the original UPI-QR trust-based flow exactly as before.
 
 ## Good next steps (not done yet)
 
-- Migrate the remaining `onclick=""` handlers to `addEventListener` so the
-  Content-Security-Policy can drop `unsafe-inline` entirely
 - **SMS/WhatsApp order-ready and low-stock alerts** - currently these only
   show in-app (staff dashboard, order status widget). Wiring up a real
   provider (Twilio, MSG91, or Meta's WhatsApp Business API) needs an

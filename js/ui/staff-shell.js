@@ -225,6 +225,9 @@ export const StaffShell = {
             nav.style.display = "flex";
             nav.classList.remove("staff-topbar");
             nav.innerHTML = this.customerNavHtml;
+            // Restoring from a plain-string snapshot creates fresh DOM nodes
+            // with no listeners - re-wire them (see wireCustomerNav in app.js).
+            window.wireCustomerNav?.();
         }
         setMainOffsetForLayout(null);
     },
@@ -360,7 +363,7 @@ export const StaffShell = {
                  partly below the fold on a short window. -->
             <div class="staff-auth-section">
                 <div id="rail-order-widget" class="nav-order-widget"></div>
-                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none; margin-bottom:6px;" onclick="window.handleTimeclockClick()"></button>
+                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none; margin-bottom:6px;"></button>
                 ${identityHtml}
             </div>
         `;
@@ -384,7 +387,7 @@ export const StaffShell = {
             </nav>
             <div class="staff-topbar-identity">
                 <div id="topbar-order-widget" class="nav-order-widget"></div>
-                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none;" onclick="window.handleTimeclockClick()"></button>
+                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none;"></button>
                 ${identityHtml}
             </div>
         `;
@@ -414,6 +417,7 @@ export const StaffShell = {
                 window.renderAccountMenu?.("staff-account-btn");
             }
         });
+        root.querySelector("#staff-timeclock-btn")?.addEventListener("click", () => window.handleTimeclockClick?.());
     },
 
     // Snapshot of the customer nav's markup, captured once on first load

@@ -101,7 +101,12 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
     function updateImagePreview() {
         const url = document.getElementById("im-image-url").value.trim();
         const preview = document.getElementById("im-image-preview");
-        preview.innerHTML = url ? `<img src="${url}" style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--color-border);" onerror="this.style.display='none'" />` : "";
+        preview.innerHTML = url ? `<img style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--color-border);" />` : "";
+        const img = preview.querySelector("img");
+        if (img) {
+            img.addEventListener("error", () => (img.style.display = "none"));
+            img.src = url;
+        }
     }
     document.getElementById("im-image-url").addEventListener("input", updateImagePreview);
     updateImagePreview();

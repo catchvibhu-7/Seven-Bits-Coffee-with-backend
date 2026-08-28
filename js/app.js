@@ -467,7 +467,7 @@ window.showPage = async (pageId) => {
 
     document.querySelectorAll(".system-nav button").forEach((btn) => {
         btn.classList.remove("active-tab");
-        if (btn.getAttribute("onclick") && btn.getAttribute("onclick").includes(`'${pageId}'`)) {
+        if (btn.dataset.navPage === pageId) {
             btn.classList.add("active-tab");
         }
     });
@@ -556,7 +556,8 @@ async function refreshOrderStatusWidget() {
     // before (with ratings) - see window.openMyOrders().
     const renderFallback = () => {
         targets.forEach((el) => {
-            el.innerHTML = `<button type="button" class="nav-order-widget-btn nav-order-widget-prev" onclick="window.openMyOrders()">Previous order</button>`;
+            el.innerHTML = `<button type="button" class="nav-order-widget-btn nav-order-widget-prev">Previous order</button>`;
+            el.querySelector("button").addEventListener("click", () => window.openMyOrders());
         });
         activeOrderForPopup = null;
     };
@@ -596,12 +597,15 @@ async function refreshOrderStatusWidget() {
     // detail (items, paid/pending, notification/sound toggles) is one click
     // away in the popup - see window.openOrderStatusPopup().
     const compactHtml = `
-        <button type="button" class="nav-order-widget-btn" onclick="window.openOrderStatusPopup()">
+        <button type="button" class="nav-order-widget-btn">
             <span class="nav-order-widget-num">#${escapeHtml(String(order.orderNumber || order.id))}</span>
             <span class="nav-order-widget-status" style="color:${statusColor};">${escapeHtml(order.status)}</span>
         </button>
     `;
-    targets.forEach((el) => (el.innerHTML = compactHtml));
+    targets.forEach((el) => {
+        el.innerHTML = compactHtml;
+        el.querySelector("button").addEventListener("click", () => window.openOrderStatusPopup());
+    });
 }
 
 /** Full order detail, shown as a popup when the compact nav widget is
@@ -615,7 +619,7 @@ window.openOrderStatusPopup = () => {
     const statusColor = STATUS_COLORS[order.status] || "var(--color-accent)";
     const notifyPromptHtml =
         NotificationSystem.permission() === "default"
-            ? `<button onclick="window.requestOrderNotifications(this)" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;" title="Get a notification when your order is ready">\u{1F514}</button>`
+            ? `<button id="order-popup-notify-btn" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;" title="Get a notification when your order is ready">\u{1F514}</button>`
             : "";
 
     const overlay = document.createElement("div");
@@ -628,16 +632,19 @@ window.openOrderStatusPopup = () => {
                 <span style="font-size:14px; font-weight:bold;">#${escapeHtml(String(order.orderNumber || order.id))}</span>
                 <span style="display:flex; align-items:center; gap:8px;">
                     ${notifyPromptHtml}
-                    <button onclick="window.toggleOrderSound(this)" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-accent); opacity:${SoundSystem.isMuted() ? "0.5" : "1"}; padding:0;">${soundIconSvg(SoundSystem.isMuted())}</button>
+                    <button id="order-popup-sound-btn" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-accent); opacity:${SoundSystem.isMuted() ? "0.5" : "1"}; padding:0;">${soundIconSvg(SoundSystem.isMuted())}</button>
                     <span style="color:${statusColor}; font-weight:bold;">${escapeHtml(order.status)}</span>
                 </span>
             </div>
             <div style="font-size:10pt; color:var(--color-text-muted); margin-bottom:10px;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
             <div style="font-size:10pt; margin-bottom:18px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 ${currencySymbol()}${order.total.toFixed(2)}</div>
-            <button type="button" style="width:100%; padding:11px; background:var(--color-border); color:var(--color-text); border:none; cursor:pointer; text-transform:uppercase; font-family:inherit;" onclick="document.getElementById('order-status-popup').remove()">Close</button>
+            <button type="button" id="order-popup-close-btn" style="width:100%; padding:11px; background:var(--color-border); color:var(--color-text); border:none; cursor:pointer; text-transform:uppercase; font-family:inherit;">Close</button>
         </div>
     `;
     document.body.appendChild(overlay);
+    overlay.querySelector("#order-popup-notify-btn")?.addEventListener("click", (e) => window.requestOrderNotifications(e.currentTarget));
+    overlay.querySelector("#order-popup-sound-btn")?.addEventListener("click", (e) => window.toggleOrderSound(e.currentTarget));
+    overlay.querySelector("#order-popup-close-btn")?.addEventListener("click", () => overlay.remove());
 };
 window.refreshOrderStatusWidget = refreshOrderStatusWidget;
 
@@ -1060,8 +1067,8 @@ window.initSearchBar = () => {
     }
 };
 
-window.toggleJumpMenu = () => {
-    if (event) event.stopPropagation();
+window.toggleJumpMenu = (e) => {
+    e?.stopPropagation();
     const menu = document.getElementById("jump-menu");
     if (!menu) return;
 
@@ -1072,19 +1079,22 @@ window.toggleJumpMenu = () => {
             <div class="jump-header">Categories:</div>
             ${
                 comboData.length > 0
-                    ? `<div class="jump-option" onclick="window.jumpTo('combos')"><span class="jump-id">COMBO DEALS</span></div>`
+                    ? `<div class="jump-option" data-jump="combos"><span class="jump-id">COMBO DEALS</span></div>`
                     : ""
             }
             ${menuData.sections
                 .map(
                     (s) => `
-                <div class="jump-option" onclick="window.jumpTo('${s.id}')">
+                <div class="jump-option" data-jump="${s.id}">
                     <span class="jump-id">${s.title.toUpperCase()}</span>
                 </div>
             `
                 )
                 .join("")}
         `;
+        menu.querySelectorAll(".jump-option").forEach((el) => {
+            el.addEventListener("click", () => window.jumpTo(el.dataset.jump));
+        });
         menu.style.display = "block";
     }
 };
@@ -1299,11 +1309,11 @@ function renderMenu(filterQuery = "") {
             const buttonHTML =
                 count > 0
                     ? `<div class="btn-qty-container">
-                    <button onclick="window.comboRemove(${combo.id})">-</button>
+                    <button class="combo-remove-btn">-</button>
                     <span>${count}</span>
-                    <button onclick="window.addCombo(${combo.id})">+</button>
+                    <button class="combo-add-btn">+</button>
                 </div>`
-                    : `<button class="btn-add-fixed" onclick="window.addCombo(${combo.id})">ADD COMBO</button>`;
+                    : `<button class="btn-add-fixed combo-add-btn">ADD COMBO</button>`;
             const comboEl = document.createElement("div");
             comboEl.className = "menu-item";
             comboEl.innerHTML = `
@@ -1317,6 +1327,8 @@ function renderMenu(filterQuery = "") {
                     <div class="action-fixed">${buttonHTML}</div>
                 </div>
             `;
+            comboEl.querySelector(".combo-remove-btn")?.addEventListener("click", () => window.comboRemove(combo.id));
+            comboEl.querySelector(".combo-add-btn")?.addEventListener("click", () => window.addCombo(combo.id));
             const comboWrapperEl = document.createElement("div");
             comboWrapperEl.className = "menu-item-wrapper";
             comboWrapperEl.appendChild(comboEl);
@@ -1375,16 +1387,16 @@ function renderMenu(filterQuery = "") {
                 ? `<button class="btn-add-fixed" disabled style="opacity:0.4; cursor:not-allowed;">UNAVAILABLE</button>`
                 : defaultCount > 0
                   ? `<div class="btn-qty-container">
-                    <button onclick="window.quickRemove(${item.id})">-</button>
+                    <button class="quick-remove-btn">-</button>
                     <span>${defaultCount}</span>
-                    <button onclick="window.quickAdd(${item.id})">+</button>
+                    <button class="quick-add-btn">+</button>
                 </div>`
-                  : `<button class="btn-add-fixed" onclick="window.quickAdd(${item.id})">ADD BIT</button>`;
+                  : `<button class="btn-add-fixed quick-add-btn">ADD BIT</button>`;
 
             const showFavorite = TRACKING_ROLES.includes(session.role);
             const isFav = showFavorite && FavoritesSystem.isFavorite(item.id);
             const favButton = showFavorite
-                ? `<button class="btn-favorite" onclick="window.toggleFavorite(${item.id})" title="${isFav ? "Remove from favorites" : "Add to favorites"}" style="background:none; border:none; cursor:pointer; font-size: 14pt; line-height:1; color: ${isFav ? "var(--color-accent)" : "var(--color-text-muted)"};">${isFav ? "\u2605" : "\u2606"}</button>`
+                ? `<button class="btn-favorite fav-toggle-btn" title="${isFav ? "Remove from favorites" : "Add to favorites"}" style="background:none; border:none; cursor:pointer; font-size: 14pt; line-height:1; color: ${isFav ? "var(--color-accent)" : "var(--color-text-muted)"};">${isFav ? "\u2605" : "\u2606"}</button>`
                 : "";
 
             // Staff can flag an item as needing to come off the menu (e.g. out of
@@ -1395,7 +1407,7 @@ function renderMenu(filterQuery = "") {
                 session.role === "employee" && !isUnavailable
                     ? hasPendingRequest
                         ? `<div style="font-size:6.5pt; color:var(--color-text-muted); margin-top:4px;">DISABLE REQUEST PENDING REVIEW</div>`
-                        : `<button class="btn-customize-link" onclick="window.requestDisableItem(${item.id})" style="background:none; border:none; color:var(--color-danger); text-decoration:underline; font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px; display:block;">\u26a0 REQUEST DISABLE</button>`
+                        : `<button class="btn-customize-link request-disable-btn" style="background:none; border:none; color:var(--color-danger); text-decoration:underline; font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px; display:block;">\u26a0 REQUEST DISABLE</button>`
                     : "";
 
             // Each customized variant already in the cart gets its own row with a
@@ -1413,9 +1425,9 @@ function renderMenu(filterQuery = "") {
                             ${line.notes ? `<div style="font-style:italic;">"${escapeHtml(line.notes)}"</div>` : ""}
                         </div>
                         <div class="btn-qty-container">
-                            <button onclick="window.adjustCartLine('${line.cartKey}', -1)" title="Remove one">-</button>
+                            <button class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="-1" title="Remove one">-</button>
                             <span>${line.quantity}</span>
-                            <button onclick="window.adjustCartLine('${line.cartKey}', 1)" title="Repeat this exact customization">+</button>
+                            <button class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="1" title="Repeat this exact customization">+</button>
                         </div>
                     </div>
                 `;
@@ -1447,7 +1459,7 @@ function renderMenu(filterQuery = "") {
                 <div class="info">
                     <div class="name">${favButton}${item.name}${isSoldOut ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
-                    ${isUnavailable ? "" : `<button class="btn-customize-link" onclick="window.openCustomize(${item.id})" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE (SIZE/MILK/EXTRAS)</span></button>`}
+                    ${isUnavailable ? "" : `<button class="btn-customize-link open-customize-btn" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE (SIZE/MILK/EXTRAS)</span></button>`}
                     ${staffRequestHtml}
                 </div>
                 <div class="item-controls">
@@ -1457,6 +1469,14 @@ function renderMenu(filterQuery = "") {
             `;
             wrapperEl.appendChild(itemEl);
             if (customizedPanelHtml) wrapperEl.insertAdjacentHTML("beforeend", customizedPanelHtml);
+            wrapperEl.querySelector(".quick-remove-btn")?.addEventListener("click", () => window.quickRemove(item.id));
+            wrapperEl.querySelector(".quick-add-btn")?.addEventListener("click", () => window.quickAdd(item.id));
+            wrapperEl.querySelector(".fav-toggle-btn")?.addEventListener("click", () => window.toggleFavorite(item.id));
+            wrapperEl.querySelector(".request-disable-btn")?.addEventListener("click", () => window.requestDisableItem(item.id));
+            wrapperEl.querySelector(".open-customize-btn")?.addEventListener("click", () => window.openCustomize(item.id));
+            wrapperEl.querySelectorAll(".customized-line-btn").forEach((btn) => {
+                btn.addEventListener("click", () => window.adjustCartLine(btn.dataset.cartKey, Number(btn.dataset.delta)));
+            });
             itemsContainer.appendChild(wrapperEl);
         });
 
@@ -1541,7 +1561,7 @@ function renderMenuCartPanel() {
                               const detailsHtml = isCustomized
                                   ? `
                         <div style="margin-top:4px;">
-                            <span onclick="const el=document.getElementById('${breakdownId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" style="font-size:9px; font-weight:bold; letter-spacing:.08em; color:var(--color-accent); text-transform:uppercase; cursor:pointer; text-decoration:underline;">Customized</span>
+                            <span class="menu-cart-customized-toggle" data-target="${breakdownId}" style="font-size:9px; font-weight:bold; letter-spacing:.08em; color:var(--color-accent); text-transform:uppercase; cursor:pointer; text-decoration:underline;">Customized</span>
                             <span style="font-size:9px; color:var(--color-text-muted); margin-left:4px;">${currencySymbol()}${extraTotal.toFixed(2)}</span>
                             <div id="${breakdownId}" style="display:none; margin-top:3px;">
                                 ${detailLines
@@ -1564,9 +1584,9 @@ function renderMenuCartPanel() {
                         ${line.notes ? `<div style="font-size:9.5px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(line.notes)}"</div>` : ""}
                     </div>
                     <div class="btn-qty-container">
-                        <button onclick="window.adjustCartLine('${line.cartKey}', -1)">-</button>
+                        <button class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="-1">-</button>
                         <span>${line.quantity}</span>
-                        <button onclick="window.adjustCartLine('${line.cartKey}', 1)">+</button>
+                        <button class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="1">+</button>
                     </div>
                     <span style="width:56px; flex:none; text-align:right; font-size:11px; font-weight:bold;">${currencySymbol()}${(line.price * line.quantity).toFixed(2)}</span>
                 </div>
@@ -1602,6 +1622,15 @@ function renderMenuCartPanel() {
             orderType = btn.dataset.orderType;
             renderMenuCartPanel();
         });
+    });
+    panel.querySelectorAll(".menu-cart-customized-toggle").forEach((el) => {
+        el.addEventListener("click", () => {
+            const target = document.getElementById(el.dataset.target);
+            if (target) target.style.display = target.style.display === "none" ? "block" : "none";
+        });
+    });
+    panel.querySelectorAll(".menu-cart-qty-btn").forEach((btn) => {
+        btn.addEventListener("click", () => window.adjustCartLine(btn.dataset.cartKey, Number(btn.dataset.delta)));
     });
 }
 
@@ -1896,14 +1925,14 @@ function renderKitchen() {
             ticket.style.borderTop = `4px solid ${statusColor}`;
 
             const primaryActionHtml = hasPendingItems
-                ? `<button style="flex:1; padding:10px; background:var(--color-accent); border:2px solid var(--color-accent); color:var(--color-accent-contrast); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;" onclick="window.markCompleted('${order.id}')">${isMaster ? "Mark all done" : "Mark done"}</button>`
+                ? `<button class="kot-mark-completed-btn" style="flex:1; padding:10px; background:var(--color-accent); border:2px solid var(--color-accent); color:var(--color-accent-contrast); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;">${isMaster ? "Mark all done" : "Mark done"}</button>`
                 : isMaster && allItemsDone && !order.servedAt
-                  ? `<button style="flex:1; padding:10px; background:var(--color-success); border:2px solid var(--color-success); color:#000; font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;" onclick="window.markServed('${order.id}')">&gt; Mark served</button>`
+                  ? `<button class="kot-mark-served-btn" style="flex:1; padding:10px; background:var(--color-success); border:2px solid var(--color-success); color:#000; font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;">&gt; Mark served</button>`
                   : `<span style="flex:1; padding:10px; text-align:center; font-size:11px; color:var(--color-text-muted); letter-spacing:.08em; text-transform:uppercase;">// served</span>`;
 
             const paidActionHtml = order.isPaid
                 ? `<span style="padding:10px 13px; background:none; border:2px solid var(--color-border); color:var(--color-success); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase;">\u2713 Paid</span>`
-                : `<button style="padding:10px 13px; background:#000; border:2px solid var(--color-border); color:var(--color-text); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;" onclick="window.markPaid('${order.id}')">Bill</button>`;
+                : `<button class="kot-mark-paid-btn" style="padding:10px 13px; background:#000; border:2px solid var(--color-border); color:var(--color-text); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;">Bill</button>`;
 
             ticket.innerHTML = `
             <div class="kot-header">
@@ -1930,6 +1959,9 @@ function renderKitchen() {
             </div>
             <div style="display:flex; gap:8px; margin-top:2px;">${primaryActionHtml}${paidActionHtml}</div>
         `;
+            ticket.querySelector(".kot-mark-completed-btn")?.addEventListener("click", () => window.markCompleted(order.id));
+            ticket.querySelector(".kot-mark-served-btn")?.addEventListener("click", () => window.markServed(order.id));
+            ticket.querySelector(".kot-mark-paid-btn")?.addEventListener("click", () => window.markPaid(order.id));
             root.appendChild(ticket);
         });
 
@@ -2162,7 +2194,7 @@ function renderPopularPicks() {
     root.innerHTML = picks
         .map(
             ({ item, tag }) => `
-        <button type="button" class="home-pick-card" onclick="window.pickFromHome(${item.id})">
+        <button type="button" class="home-pick-card" data-item-id="${item.id}">
             <div class="home-pick-banner">
                 ${itemImageMarkup(item)}
                 <span class="home-pick-badge">${escapeHtml(tag || "")}</span>
@@ -2179,6 +2211,9 @@ function renderPopularPicks() {
     `
         )
         .join("");
+    root.querySelectorAll(".home-pick-card").forEach((btn) => {
+        btn.addEventListener("click", () => window.pickFromHome(Number(btn.dataset.itemId)));
+    });
 }
 
 /**
@@ -2281,11 +2316,51 @@ window.pickFromHome = (itemId) => {
     window.openCustomize(itemId);
 };
 
+/** Wires the plain ".system-nav" buttons (HOME/MENU/ARCADE + account) that
+ *  index.html starts with. StaffShell.show() (called from refreshSession(),
+ *  which runs after this) takes over the nav for every real session -
+ *  hiding it (rail layout) or replacing its innerHTML wholesale (topbar
+ *  layout, see StaffShell.renderTopbar()) - so this markup/wiring is only
+ *  ever live for the brief anonymous window before that first session
+ *  check resolves. Exposed on window (not just called once at boot)
+ *  because StaffShell.hide() also restores this exact markup from a
+ *  string snapshot - dead code today (nothing calls hide()), but calling
+ *  this again there if that ever changes costs nothing. */
+window.wireCustomerNav = () => {
+    document.querySelectorAll(".system-nav button[data-nav-page]").forEach((btn) => {
+        btn.addEventListener("click", () => window.showPage(btn.dataset.navPage));
+    });
+    document.getElementById("nav-account")?.addEventListener("click", () => window.handleAccountClick());
+};
+
+/** Everything else with a static onclick-turned-listener lives in markup
+ *  that's part of index.html and never gets wholesale innerHTML-replaced
+ *  after the initial page load (unlike the customer nav above), so this
+ *  only ever needs to run once, here at boot. */
+function wireStaticControls() {
+    window.wireCustomerNav();
+    document.getElementById("home-hero-start-btn")?.addEventListener("click", () => window.showPage("menu"));
+    document.getElementById("home-hero-arcade-btn")?.addEventListener("click", () => window.showPage("arcade"));
+    document.getElementById("menu-view-grid-btn")?.addEventListener("click", () => window.setViewMode("grid"));
+    document.getElementById("menu-view-list-btn")?.addEventListener("click", () => window.setViewMode("list"));
+    document.getElementById("favorites-filter-label")?.addEventListener("click", () => window.toggleFavoritesFilter());
+    document.getElementById("cart-status")?.addEventListener("click", () => window.handleCartStatusClick());
+    document.getElementById("jump-menu-fab-btn")?.addEventListener("click", (e) => window.toggleJumpMenu(e));
+    document.querySelectorAll(".kitchen-tabs [data-station]").forEach((btn) => {
+        btn.addEventListener("click", () => window.filterKitchen(btn.dataset.station));
+    });
+    document.querySelectorAll(".kitchen-status-filter [data-status-filter]").forEach((btn) => {
+        btn.addEventListener("click", () => window.setKitchenStatusFilter(btn.dataset.statusFilter));
+    });
+    document.getElementById("kitchen-sort")?.addEventListener("change", (e) => window.setKitchenSort(e.target.value));
+}
+
 /**
  * BOOT
  */
 (async () => {
     document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
+    wireStaticControls();
     StaffShell.captureCustomerNav(); // before refreshSession() can possibly swap it out for an already-logged-in staff session
     await loadMenu();
     await loadCombos();

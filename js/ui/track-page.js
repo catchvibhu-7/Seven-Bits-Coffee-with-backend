@@ -46,9 +46,10 @@ function renderError(root, message) {
         <div style="border:2px solid var(--color-danger); background:var(--color-surface); padding:24px; text-align:center; font-family:'Courier New', monospace;">
             <h1 style="margin:0 0 10px; font-size:18px; color:var(--color-danger);">TRACKING LINK NOT VALID</h1>
             <p style="color:var(--color-text-muted); font-size:9.5pt;">${escapeHtml(message)}</p>
-            <button class="btn-primary" style="margin-top:14px; background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px 20px; font-weight: bold; cursor: pointer; font-family: inherit;" onclick="window.showPage('home')">GO TO MENU</button>
+            <button id="track-error-home-btn" class="btn-primary" style="margin-top:14px; background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px 20px; font-weight: bold; cursor: pointer; font-family: inherit;">GO TO MENU</button>
         </div>
     `;
+    document.getElementById("track-error-home-btn")?.addEventListener("click", () => window.showPage("home"));
 }
 
 async function fetchAndRender(root, token) {
