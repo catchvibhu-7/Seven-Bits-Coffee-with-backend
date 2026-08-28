@@ -40,6 +40,12 @@ const { URL } = require("url");
 const ROOT_DIR = __dirname;
 const DATA_DIR = path.join(ROOT_DIR, "data");
 const SEED_DIR = path.join(ROOT_DIR, "data-seed");
+// Deliberately its own top-level directory, not data/uploads - uploaded
+// images are the only user-generated files ever meant to be servable by
+// path with no auth (see STATIC_ROOTS below), so keeping them out of data/
+// entirely means a future change to data/'s own handling can't accidentally
+// re-expose it alongside them.
+const UPLOADS_DIR = path.join(ROOT_DIR, "uploads");
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hour shift
 const IS_HTTPS = process.env.FORCE_SECURE_COOKIE === "1";
@@ -56,6 +62,7 @@ const PAYROLL_ROLES = ["employee", "manager"]; // who payroll/timeclock applies 
 const PAYMENT_METHODS = ["UPI", "Card", "Cash", "Wallet"]; // recorded on an order/table session once it's actually settled
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // ---------------------------------------------------------------------------
 // Tiny JSON file "database" helpers
@@ -97,6 +104,11 @@ const ARCADE_SCORES_FILE = path.join(DATA_DIR, "arcade-scores.json");
 // choice (rail/top-bar), keyed by userId so it follows a person across
 // devices/browsers instead of being stuck in one browser's localStorage.
 const USER_PREFERENCES_FILE = path.join(DATA_DIR, "user-preferences.json");
+// Metadata for files actually stored under UPLOADS_DIR - the images
+// themselves are plain files on disk (served statically, see STATIC_ROOTS);
+// this just tracks what's there for the admin image picker (id, original
+// name, size, who/when) and to resolve an id back to a filename on delete.
+const UPLOADS_MANIFEST_FILE = path.join(DATA_DIR, "uploads.json");
 
 if (!fs.existsSync(AUDIT_LOG_FILE)) writeJson(AUDIT_LOG_FILE, []);
 if (!fs.existsSync(BRANDING_PROFILES_FILE)) writeJson(BRANDING_PROFILES_FILE, {});
@@ -108,6 +120,7 @@ if (!fs.existsSync(OVERTIME_APPROVALS_FILE)) writeJson(OVERTIME_APPROVALS_FILE, 
 // a storeId, but with a single store seeded there's no behavior change yet -
 // this just means a real second store later doesn't need a data migration.
 if (!fs.existsSync(STORES_FILE)) writeJson(STORES_FILE, [{ id: 1, name: "Main Store", address: "" }]);
+if (!fs.existsSync(UPLOADS_MANIFEST_FILE)) writeJson(UPLOADS_MANIFEST_FILE, []);
 if (!fs.existsSync(USER_PREFERENCES_FILE)) writeJson(USER_PREFERENCES_FILE, {});
 
 /**
@@ -139,7 +152,10 @@ if (!fs.existsSync(MENU_FILE)) {
 if (!fs.existsSync(CONFIG_FILE)) {
   writeJson(CONFIG_FILE, {
     shopName: "SEVEN BITS COFFEE",
-    currency: "\u20b9",
+    // GST registration number (India) - printed on bills when set (see
+    // window.printBill in app.js); blank means "not GST-registered", not an
+    // error, so it's simply omitted from the printout.
+    gstNumber: "",
     cgstRate: 0.05,
     sgstRate: 0.05,
     serviceChargeRate: 0.02,
@@ -176,6 +192,9 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // from Global Settings so a shop can rebrand without touching code.
     heroTagline:
       "Born from love for Physics, Coffee, a cat named Ginger and an obssesion with the number seven. We don't just brew; we process flavor with low-latency precision.",
+    // Small badge line above the hero heading (e.g. "Est. 2019 - 8-bit
+    // roastery") - was hardcoded in index.html, same reasoning as heroTagline.
+    heroBadgeText: "Est. 2019 · 8-bit roastery",
     // Admin-added icon options beyond the built-in set (see Branding tab).
     // Key -> image URL; menu items reference these by key just like the
     // built-in CSS icon names.
@@ -2109,13 +2128,14 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   const config = readJson(CONFIG_FILE, {});
   const allowed = [
     "shopName",
+    "gstNumber",
     "heroTagline",
+    "heroBadgeText",
     "tipEnabled",
     "tipAmount",
     "cgstRate",
     "sgstRate",
     "serviceChargeRate",
-    "currency",
     "theme",
     "heroImageUrl",
     "logoUrl",
@@ -2141,7 +2161,15 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   // shopName/heroTagline are rendered directly into the home page - cap
   // length and strip control chars so a bad paste can't break layout.
   if (typeof config.shopName === "string") config.shopName = config.shopName.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 60);
+  if (typeof config.gstNumber === "string") config.gstNumber = Array.from(config.gstNumber).filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; }).join("").trim().toUpperCase().slice(0, 20);
   if (typeof config.heroTagline === "string") config.heroTagline = config.heroTagline.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400);
+  if (typeof config.heroBadgeText === "string") {
+    config.heroBadgeText = Array.from(config.heroBadgeText)
+      .filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; })
+      .join("")
+      .trim()
+      .slice(0, 80);
+  }
   // Colors, footer, and customIcons are objects - merge individual keys
   // instead of replacing the whole thing, so a partial update (e.g. just
   // "accent", or just one new icon) doesn't wipe out the rest.
@@ -2176,6 +2204,50 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     const hours = Number(config.arcade.sessionHours);
     config.arcade.sessionHours = Number.isFinite(hours) && hours > 0 ? Math.min(hours, 24) : 2;
   }
+  // Home page "This week's picks" - which items feature there and what tag
+  // each shows (e.g. "House favourite"). Replaced wholesale (not merged like
+  // colors/footer above) since it's an ordered, curated list, not a bag of
+  // independent keys - a partial update wouldn't make sense here. Falls back
+  // to the original auto-picked-from-first-section behavior on the client
+  // (see renderPopularPicks() in app.js) whenever this is empty/unset, so a
+  // fresh install with no curation yet still shows something.
+  if (Array.isArray(body.homePicks)) {
+    const menu = readJson(MENU_FILE, { items: [] });
+    const validItemIds = new Set(menu.items.map((i) => i.id));
+    config.homePicks = body.homePicks
+      .filter((p) => p && validItemIds.has(Number(p.itemId)))
+      .slice(0, 12)
+      .map((p) => ({
+        itemId: Number(p.itemId),
+        tag: String(p.tag || "")
+          .replace(/[\r\n\t]/g, " ")
+          .trim()
+          .slice(0, 40)
+      }));
+  }
+  // Home page "How we roast" story steps - was a hardcoded array in app.js
+  // (renderHomeRoastSteps), same reasoning as homePicks: replaced wholesale
+  // since it's an ordered story, not independent keys. Empty/unset falls
+  // back to the original hardcoded steps client-side.
+  if (Array.isArray(body.roastSteps)) {
+    config.roastSteps = body.roastSteps
+      .filter((s) => s && (s.name || s.detail))
+      .slice(0, 6)
+      .map((s) => ({
+        name: String(s.name || "").trim().slice(0, 40),
+        detail: String(s.detail || "").trim().slice(0, 160)
+      }));
+  }
+  // The three home page section headings ("This week's picks"/"How we
+  // roast"/"Find us") - were hardcoded text in index.html.
+  if (body.homeHeadings && typeof body.homeHeadings === "object") {
+    config.homeHeadings = { ...config.homeHeadings };
+    for (const key of ["picks", "roast", "findUs"]) {
+      if (typeof body.homeHeadings[key] === "string") {
+        config.homeHeadings[key] = body.homeHeadings[key].trim().slice(0, 60);
+      }
+    }
+  }
   writeJson(CONFIG_FILE, config);
   sendJson(res, 200, config);
 });
@@ -2186,6 +2258,174 @@ route("DELETE", /^\/api\/config\/custom-icons\/(?<key>[\w-]+)\/?$/, async (req, 
   if (config.customIcons) delete config.customIcons[params.key];
   writeJson(CONFIG_FILE, config);
   sendJson(res, 200, config);
+});
+
+// ---------------------------------------------------------------------------
+// Image uploads (menu item photos, hero/storefront image, logo) - a plain
+// on-disk bucket under UPLOADS_DIR rather than an external object-storage
+// service, consistent with this app's whole "no external dependencies, just
+// JSON files on disk" approach. Uploaded as a base64 data URL in a JSON body
+// rather than multipart/form-data, since the raw http module here has no
+// multipart parser and adding one just for this felt like more risk than a
+// same-style JSON endpoint. Staff-only (KITCHEN_ROLES) - customers never
+// upload anything.
+// ---------------------------------------------------------------------------
+
+const UPLOAD_MIME_EXT = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/svg+xml": ".svg"
+};
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB decoded
+
+route("GET", /^\/api\/uploads\/?$/, async (req, res) => {
+  if (!requireRole(req, res, KITCHEN_ROLES)) return;
+  const uploads = readJson(UPLOADS_MANIFEST_FILE, []);
+  sendJson(
+    res,
+    200,
+    uploads.map((u) => ({ ...u, url: `/uploads/${u.filename}` })).sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
+  );
+});
+
+route("POST", /^\/api\/uploads\/?$/, async (req, res) => {
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  // Base64 inflates size by ~33% - allow enough body room for a 5MB image
+  // plus JSON overhead, then re-check the actual decoded size below.
+  let body;
+  try {
+    body = await readBody(req, Math.ceil(MAX_UPLOAD_BYTES * 1.4) + 4096);
+  } catch (e) {
+    return sendJson(res, 413, { error: "Image too large (max 5MB)" });
+  }
+  const mimeType = String(body.mimeType || "");
+  const ext = UPLOAD_MIME_EXT[mimeType];
+  if (!ext) return sendJson(res, 400, { error: "Unsupported image type - use PNG, JPEG, GIF, WEBP, or SVG" });
+  const dataUrlPrefix = /^data:[^;]+;base64,/;
+  const base64 = String(body.dataBase64 || "").replace(dataUrlPrefix, "");
+  let buffer;
+  try {
+    buffer = Buffer.from(base64, "base64");
+  } catch (e) {
+    return sendJson(res, 400, { error: "Invalid image data" });
+  }
+  if (!buffer.length || buffer.length > MAX_UPLOAD_BYTES) {
+    return sendJson(res, 413, { error: "Image too large (max 5MB)" });
+  }
+  const id = crypto.randomBytes(8).toString("hex");
+  const filename = `${id}${ext}`;
+  fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+
+  const uploads = readJson(UPLOADS_MANIFEST_FILE, []);
+  const entry = {
+    id,
+    filename,
+    // Original filename is only ever displayed as text in the admin picker,
+    // never used to build a path - stripped/capped so a weird paste can't
+    // break that list's layout.
+    originalName: Array.from(String(body.originalName || filename))
+      .filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; })
+      .join("")
+      .slice(0, 120),
+    mimeType,
+    sizeBytes: buffer.length,
+    uploadedAt: new Date().toISOString(),
+    uploadedBy: session.name || session.role
+  };
+  uploads.push(entry);
+  writeJson(UPLOADS_MANIFEST_FILE, uploads);
+  sendJson(res, 201, { ...entry, url: `/uploads/${filename}` });
+});
+
+route("DELETE", /^\/api\/uploads\/(?<id>[\w-]+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, KITCHEN_ROLES)) return;
+  const uploads = readJson(UPLOADS_MANIFEST_FILE, []);
+  const entry = uploads.find((u) => u.id === params.id);
+  if (!entry) return sendJson(res, 404, { error: "Upload not found" });
+  try {
+    fs.unlinkSync(path.join(UPLOADS_DIR, entry.filename));
+  } catch (e) {
+    // Already gone from disk somehow - still clean up the manifest entry below.
+  }
+  writeJson(
+    UPLOADS_MANIFEST_FILE,
+    uploads.filter((u) => u.id !== params.id)
+  );
+  sendJson(res, 200, { ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Data backup/restore - since this whole app is just JSON files on disk with
+// no real database, a full backup is just bundling those files into one
+// downloadable JSON. Restoring is the risky direction (silently overwrites
+// live data), so it's owner-only and requires the same "confirmYes"-style
+// explicit body flag the client's confirm dialog sets, not just a valid
+// file upload - a stray automated retry can't wipe live data by accident.
+// Uploaded images themselves (uploads/*.svg etc.) are NOT included - only
+// their metadata (uploads.json) is, same as everything else here being
+// metadata/records rather than binary blobs.
+// ---------------------------------------------------------------------------
+const BACKUP_FILES = {
+  "config.json": CONFIG_FILE,
+  "menu.json": MENU_FILE,
+  "users.json": USERS_FILE,
+  "orders.json": ORDERS_FILE,
+  "combos.json": COMBOS_FILE,
+  "coupons.json": COUPONS_FILE,
+  "table-sessions.json": TABLE_SESSIONS_FILE,
+  "favorites.json": FAVORITES_FILE,
+  "arcade-scores.json": ARCADE_SCORES_FILE,
+  "stores.json": STORES_FILE,
+  "timeclock.json": TIMECLOCK_FILE,
+  "payroll.json": PAYROLL_FILE,
+  "attendance.json": ATTENDANCE_FILE,
+  "overtime-approvals.json": OVERTIME_APPROVALS_FILE,
+  "uploads.json": UPLOADS_MANIFEST_FILE,
+  "branding-profiles.json": BRANDING_PROFILES_FILE
+};
+
+route("GET", /^\/api\/admin\/backup\/?$/, async (req, res) => {
+  const session = requireRole(req, res, ["owner"]);
+  if (!session) return;
+  const files = {};
+  for (const [name, filePath] of Object.entries(BACKUP_FILES)) {
+    files[name] = readJson(filePath, null);
+  }
+  const backup = { exportedAt: new Date().toISOString(), files };
+  const body = JSON.stringify(backup, null, 2);
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Disposition": `attachment; filename="backup-${new Date().toISOString().slice(0, 10)}.json"`
+  });
+  res.end(body);
+});
+
+route("POST", /^\/api\/admin\/restore\/?$/, async (req, res) => {
+  const session = requireRole(req, res, ["owner"]);
+  if (!session) return;
+  let body;
+  try {
+    body = await readBody(req, 20 * 1024 * 1024); // backups can be a few MB with enough order history
+  } catch (e) {
+    return sendJson(res, 413, { error: "Backup file too large" });
+  }
+  if (!body.confirmYes) {
+    return sendJson(res, 400, { error: "Missing confirmation" });
+  }
+  if (!body.files || typeof body.files !== "object") {
+    return sendJson(res, 400, { error: "That doesn't look like a backup file" });
+  }
+  let restoredCount = 0;
+  for (const [name, filePath] of Object.entries(BACKUP_FILES)) {
+    if (body.files[name] !== undefined && body.files[name] !== null) {
+      writeJson(filePath, body.files[name]);
+      restoredCount++;
+    }
+  }
+  sendJson(res, 200, { ok: true, restoredCount });
 });
 
 route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
@@ -3356,19 +3596,30 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
   ".ico": "image/x-icon"
 };
 
-function serveStatic(req, res, pathname) {
-  let rel = pathname === "/" ? "/index.html" : pathname;
-  const filePath = path.normalize(path.join(ROOT_DIR, rel));
+// Explicit allowlist of servable directories, each scoped to its own root -
+// anything not under one of these (data/, data-seed/, server.js, the .md/
+// .bat files at the project root, etc.) 404s instead of being served.
+// Serving the WHOLE project root used to mean any GET request for
+// /data/users.json (password hashes+salts) or /data/orders.json (customer
+// names/phones) succeeded with zero auth - a real, live data exposure bug,
+// not just a defense-in-depth nicety. UPLOADS_DIR sits at the project root
+// (not under data/) specifically so that mistake can't recur even if a
+// future change re-widens data/'s own exposure - uploaded images are the
+// only files anyone unauthenticated should ever be able to fetch by path.
+const STATIC_ROOTS = [
+  { prefix: "/css/", dir: path.join(ROOT_DIR, "css") },
+  { prefix: "/js/", dir: path.join(ROOT_DIR, "js") },
+  { prefix: "/uploads/", dir: UPLOADS_DIR }
+];
 
-  // Prevent path traversal outside the project root.
-  if (!filePath.startsWith(ROOT_DIR)) {
-    res.writeHead(403);
-    return res.end("Forbidden");
-  }
-
+function serveFile(res, filePath) {
   fs.readFile(filePath, (err, data) => {
     if (err) {
       res.writeHead(404, { "Content-Type": "text/plain" });
@@ -3389,6 +3640,29 @@ function serveStatic(req, res, pathname) {
     });
     res.end(data);
   });
+}
+
+function serveStatic(req, res, pathname) {
+  if (pathname === "/" || pathname === "/index.html") {
+    return serveFile(res, path.join(ROOT_DIR, "index.html"));
+  }
+
+  const root = STATIC_ROOTS.find((r) => pathname.startsWith(r.prefix));
+  if (!root) {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    return res.end("Not found");
+  }
+
+  const rel = pathname.slice(root.prefix.length);
+  const filePath = path.normalize(path.join(root.dir, rel));
+
+  // Prevent path traversal (e.g. /css/../server.js) escaping this root.
+  if (!filePath.startsWith(root.dir)) {
+    res.writeHead(403);
+    return res.end("Forbidden");
+  }
+
+  serveFile(res, filePath);
 }
 
 // ---------------------------------------------------------------------------

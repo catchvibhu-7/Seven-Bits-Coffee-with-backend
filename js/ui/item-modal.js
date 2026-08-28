@@ -2,6 +2,8 @@
  * SEVEN BITS COFFEE - ADD/EDIT MENU ITEM MODAL
  * Location: /js/ui/item-modal.js
  */
+import { renderImagePickerModal } from "./image-picker-modal.js";
+
 const BUILT_IN_ICONS = [
     "americano", "bagel", "cake", "cappuccino", "cheesecake", "cold-brew",
     "cookie", "croissant", "cupcake", "donut", "espresso", "hamburger",
@@ -54,9 +56,12 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
             </select>
             <div id="im-icon-preview" style="display:flex; align-items:center; gap:8px; margin: -6px 0 12px; font-size:7pt; color:var(--color-text-muted);"></div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PHOTO URL (optional - shown instead of the icon when set)</label>
-            <input id="im-image-url" type="text" placeholder="https://..." value="${item?.imageUrl || ""}" style="${fieldStyle}" />
-            <div id="im-image-preview" style="margin: -6px 0 12px;"></div>
+            <label style="font-size: 7pt; color: var(--color-text-muted);">PHOTO (optional - shown instead of the icon when set)</label>
+            <div style="display:flex; gap:8px; margin: 4px 0 8px;">
+                <input id="im-image-url" type="text" placeholder="https://... or pick from the bucket" value="${item?.imageUrl || ""}" style="${fieldStyle} margin:0; flex:1;" />
+                <button type="button" id="im-image-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+            </div>
+            <div id="im-image-preview" style="margin: -2px 0 12px;"></div>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">DESCRIPTION</label>
             <textarea id="im-story" rows="2" style="${fieldStyle} resize: vertical;">${item ? item.story || "" : ""}</textarea>
@@ -99,6 +104,15 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
     }
     document.getElementById("im-image-url").addEventListener("input", updateImagePreview);
     updateImagePreview();
+
+    document.getElementById("im-image-pick").addEventListener("click", () => {
+        renderImagePickerModal({
+            onSelect: (url) => {
+                document.getElementById("im-image-url").value = url;
+                updateImagePreview();
+            }
+        });
+    });
 
     document.getElementById("im-promo-type").addEventListener("change", (e) => {
         document.getElementById("im-promo-value").style.display = e.target.value ? "" : "none";

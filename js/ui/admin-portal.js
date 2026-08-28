@@ -16,7 +16,16 @@ import { renderInfoModal } from "./info-modal.js";
 import { renderItemModal } from "./item-modal.js";
 import { renderComboModal } from "./combo-modal.js";
 import { renderAccountSettingsModal } from "./account-settings-modal.js";
+import { renderImagePickerModal } from "./image-picker-modal.js";
 
+// Reorganized from the original 5 groups, which had grown into two
+// unrelated grab-bags: "Global Settings" mixed shop-identity copy
+// (name/badge/about text) with tax rates, UPI, AND arcade config, while
+// "Branding" mixed colors/images with multi-location store management
+// that has nothing to do with branding. Each group below now has one clear
+// job: content owners look in BRANDING & CONTENT, money/tax people look in
+// PAYMENTS, day-to-day operational toggles are in OPERATIONS, and
+// business-structure/data tools (locations, backup) are in STORE SETUP.
 function tabGroupsForRole(role) {
     const isManagerOnly = role === "manager";
     const groups = [
@@ -33,7 +42,8 @@ function tabGroupsForRole(role) {
             label: "SALES",
             tabs: [
                 { id: "discounts", label: "Discounts & Loyalty" },
-                { id: "orders", label: "Order History" }
+                { id: "orders", label: "Order History" },
+                { id: "reports", label: "Reports & Export" }
             ]
         },
         {
@@ -44,15 +54,30 @@ function tabGroupsForRole(role) {
             ]
         },
         {
-            // Global Settings (tax rates, UPI payment ID) and Branding are
-            // both shop-wide/business-critical, so owner/admin only - not
-            // part of what a manager gets, even though everything else
-            // here is. Group disappears entirely for a manager.
+            // Everything here is shop-wide/business-critical, so owner/admin
+            // only - not part of what a manager gets. Group disappears
+            // entirely for a manager.
+            label: "BRANDING & CONTENT",
+            tabs: isManagerOnly
+                ? []
+                : [{ id: "branding", label: "Branding" }]
+        },
+        {
+            label: "PAYMENTS",
+            tabs: isManagerOnly ? [] : [{ id: "payments", label: "Payments & Tax" }]
+        },
+        {
+            label: "OPERATIONS",
+            tabs: isManagerOnly ? [] : [{ id: "operations", label: "Operations" }]
+        },
+        {
             label: "STORE SETUP",
-            tabs: isManagerOnly ? [] : [
-                { id: "global", label: "Global Settings" },
-                { id: "branding", label: "Branding" }
-            ]
+            tabs: isManagerOnly
+                ? []
+                : [
+                      { id: "stores", label: "Locations" },
+                      { id: "data", label: "Data & Backup" }
+                  ]
         }
     ];
     return groups.filter((g) => g.tabs.length > 0);
@@ -138,7 +163,11 @@ export const AdminPortal = {
         const root = document.getElementById("admin-tab-content");
         if (!root) return;
         if (this.activeTab === "kpi") return this.renderKpiDashboard(root);
-        if (this.activeTab === "global") return this.renderGlobalSettings(root);
+        if (this.activeTab === "payments") return this.renderPayments(root);
+        if (this.activeTab === "operations") return this.renderOperations(root);
+        if (this.activeTab === "stores") return this.renderStores(root);
+        if (this.activeTab === "data") return this.renderDataBackup(root);
+        if (this.activeTab === "reports") return this.renderReportsExport(root);
         if (this.activeTab === "menu") {
             await this.loadMenu(); // pending staff disable-requests can arrive between tab switches
             return this.renderMenuItems(root);
@@ -153,18 +182,30 @@ export const AdminPortal = {
     },
 
     // ---------------------------------------------------------------- GLOBAL
-    async renderGlobalSettings(root) {
+    // ---------------------------------------------------------------- PAYMENTS & TAX
+    async renderPayments(root) {
         const c = AdminConfig.settings;
 
         root.innerHTML = `
             <div class="config-controls">
+                <h3 style="margin-top:0;">TAX &amp; GST (INDIAN SUBCONTINENT)</h3>
                 <div class="control-group">
-                    <label>SHOP NAME</label>
-                    <input type="text" id="cfg-shop-name" value="${escapeHtmlAttr(c.shopName || "")}" />
+                    <label>GST NUMBER (GSTIN) - printed on bills when set. Leave blank if not GST-registered.</label>
+                    <input type="text" id="cfg-gst-number" maxlength="20" value="${escapeHtmlAttr(c.gstNumber || "")}" placeholder="22AAAAA0000A1Z5" />
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="control-group">
+                        <label>CGST RATE (%)</label>
+                        <input type="text" id="cfg-cgst" value="${(c.cgstRate * 100).toFixed(2)}" />
+                    </div>
+                    <div class="control-group">
+                        <label>SGST RATE (%)</label>
+                        <input type="text" id="cfg-sgst" value="${(c.sgstRate * 100).toFixed(2)}" />
+                    </div>
                 </div>
                 <div class="control-group">
-                    <label>HOME PAGE ABOUT TEXT</label>
-                    <textarea id="cfg-hero-tagline" rows="3" maxlength="400" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;">${escapeHtmlAttr(c.heroTagline || "")}</textarea>
+                    <label>SERVICE CHARGE RATE (%)</label>
+                    <input type="text" id="cfg-service-charge" value="${(c.serviceChargeRate * 100).toFixed(2)}" />
                 </div>
                 <div class="control-group" style="display:flex; align-items:center; gap:8px;">
                     <input type="checkbox" id="cfg-tip-enabled" ${c.tipEnabled ? "checked" : ""} style="width:auto;" />
@@ -174,25 +215,9 @@ export const AdminPortal = {
                     <label>TIP AMOUNT (\u20b9)</label>
                     <input type="text" id="cfg-tip-amount" value="${c.tipAmount ?? 0}" />
                 </div>
-                <div class="control-group">
-                    <label>CGST RATE (%)</label>
-                    <input type="text" id="cfg-cgst" value="${(c.cgstRate * 100).toFixed(2)}" />
-                </div>
-                <div class="control-group">
-                    <label>SGST RATE (%)</label>
-                    <input type="text" id="cfg-sgst" value="${(c.sgstRate * 100).toFixed(2)}" />
-                </div>
-                <div class="control-group">
-                    <label>SERVICE CHARGE RATE (%)</label>
-                    <input type="text" id="cfg-service-charge" value="${(c.serviceChargeRate * 100).toFixed(2)}" />
-                </div>
-                <div class="control-group">
-                    <label>NUMBER OF TABLES (0 = only Online/Counter, no physical tabs)</label>
-                    <input type="text" id="cfg-table-count" value="${c.tableCount ?? 10}" />
-                    <p class="admin-help-text" style="margin-top:4px;">Staff can open a tab for tables numbered 1 through this count. Table "0" always means Online/Counter (no tab).</p>
-                </div>
+                <p class="admin-help-text">Tax, service charge, and tip are calculated and shown at checkout, on the Billing page, and on the printed bill - not while someone's still browsing/adding to their cart.</p>
 
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">PAYMENT SETTINGS</h3>
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">UPI PAYMENT</h3>
                 <div class="control-group">
                     <label>UPI ID (VPA) - shown as a QR code for "Pay Online" orders. Leave blank to disable online payment and show "pay at counter" instead.</label>
                     <input type="text" id="cfg-upi-vpa" value="${c.upiVpa || ""}" placeholder="yourshop@upi" />
@@ -200,6 +225,57 @@ export const AdminPortal = {
                 <div class="control-group">
                     <label>PAYEE NAME (shown to the customer in their UPI app)</label>
                     <input type="text" id="cfg-upi-payee-name" value="${c.upiPayeeName || ""}" placeholder="${c.shopName || "Your Shop"}" />
+                </div>
+
+                <p id="payments-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="cfg-save">SAVE SETTINGS</button>
+            </div>
+        `;
+
+        document.getElementById("cfg-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("payments-error");
+            errorEl.textContent = "";
+            const cgst = parseFloat(document.getElementById("cfg-cgst").value) / 100;
+            const sgst = parseFloat(document.getElementById("cfg-sgst").value) / 100;
+            const serviceCharge = parseFloat(document.getElementById("cfg-service-charge").value) / 100;
+            const tipAmount = parseFloat(document.getElementById("cfg-tip-amount").value);
+
+            if ([cgst, sgst, serviceCharge, tipAmount].some((n) => !Number.isFinite(n) || n < 0)) {
+                errorEl.textContent = "Rates and amounts must be positive numbers.";
+                return;
+            }
+
+            try {
+                await AdminConfig.saveSettings({
+                    gstNumber: document.getElementById("cfg-gst-number").value,
+                    tipEnabled: document.getElementById("cfg-tip-enabled").checked,
+                    tipAmount,
+                    cgstRate: cgst,
+                    sgstRate: sgst,
+                    serviceChargeRate: serviceCharge,
+                    upiVpa: document.getElementById("cfg-upi-vpa").value.trim(),
+                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim()
+                });
+                if (window.applyBranding) window.applyBranding(AdminConfig.settings);
+                ok("Settings saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
+    },
+
+    // ---------------------------------------------------------------- OPERATIONS
+    async renderOperations(root) {
+        const c = AdminConfig.settings;
+
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">TABLES</h3>
+                <div class="control-group">
+                    <label>NUMBER OF TABLES (0 = only Online/Counter, no physical tabs)</label>
+                    <input type="text" id="cfg-table-count" value="${c.tableCount ?? 10}" />
+                    <p class="admin-help-text" style="margin-top:4px;">Staff can open a tab for tables numbered 1 through this count. Table "0" always means Online/Counter (no tab).</p>
                 </div>
 
                 <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ARCADE (GAMES TAB)</h3>
@@ -213,25 +289,20 @@ export const AdminPortal = {
                     <input type="text" id="cfg-arcade-hours" value="${c.arcade?.sessionHours ?? 2}" />
                 </div>
 
-                <p id="global-settings-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">NOTIFICATIONS</h3>
+                <p class="admin-help-text">Order-ready and low-stock alerts currently only show in-app (staff dashboard, order status widget). SMS/WhatsApp delivery is planned but not built yet - see README-BACKEND.md for the tracked feature request once you're ready to wire up a provider (e.g. Twilio, MSG91, or Meta's WhatsApp Business API).</p>
+
+                <p id="operations-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="cfg-save">SAVE SETTINGS</button>
             </div>
         `;
 
         document.getElementById("cfg-save").addEventListener("click", async () => {
-            const errorEl = document.getElementById("global-settings-error");
+            const errorEl = document.getElementById("operations-error");
             errorEl.textContent = "";
-            const cgst = parseFloat(document.getElementById("cfg-cgst").value) / 100;
-            const sgst = parseFloat(document.getElementById("cfg-sgst").value) / 100;
-            const serviceCharge = parseFloat(document.getElementById("cfg-service-charge").value) / 100;
-            const tipAmount = parseFloat(document.getElementById("cfg-tip-amount").value);
             const tableCount = parseInt(document.getElementById("cfg-table-count").value, 10);
             const arcadeHours = parseFloat(document.getElementById("cfg-arcade-hours").value);
 
-            if ([cgst, sgst, serviceCharge, tipAmount].some((n) => !Number.isFinite(n) || n < 0)) {
-                errorEl.textContent = "Rates and amounts must be positive numbers.";
-                return;
-            }
             if (!Number.isFinite(tableCount) || tableCount < 0) {
                 errorEl.textContent = "Number of tables must be zero or a positive whole number.";
                 return;
@@ -243,16 +314,7 @@ export const AdminPortal = {
 
             try {
                 await AdminConfig.saveSettings({
-                    shopName: document.getElementById("cfg-shop-name").value,
-                    heroTagline: document.getElementById("cfg-hero-tagline").value,
-                    tipEnabled: document.getElementById("cfg-tip-enabled").checked,
-                    tipAmount,
-                    cgstRate: cgst,
-                    sgstRate: sgst,
-                    serviceChargeRate: serviceCharge,
                     tableCount,
-                    upiVpa: document.getElementById("cfg-upi-vpa").value.trim(),
-                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim(),
                     arcade: { enabled: document.getElementById("cfg-arcade-enabled").checked, sessionHours: arcadeHours }
                 });
                 if (window.applyBranding) window.applyBranding(AdminConfig.settings);
@@ -260,6 +322,201 @@ export const AdminPortal = {
             } catch (e) {
                 errorEl.textContent = e.message;
                 fail(e.message);
+            }
+        });
+    },
+
+    // ---------------------------------------------------------------- LOCATIONS (STORES)
+    // Pulled out of the Branding tab, where it had nothing to do with
+    // colors/copy - multi-location structure belongs with the other
+    // business-structure tools in Store Setup.
+    async renderStores(root) {
+        const isOwner = this.session.role === "owner";
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">STORES</h3>
+                <p class="admin-help-text">Right now everything runs as one store - add another here when you're ready to expand, then assign managers/employees to it from User Management.</p>
+                <div id="stores-list" style="margin-bottom:10px;"></div>
+                ${
+                    isOwner
+                        ? `
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="new-store-name" placeholder="Store name" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" id="new-store-address" placeholder="Address (optional)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
+                    <button class="admin-btn" id="add-store">ADD STORE</button>
+                </div>`
+                        : `<p class="admin-help-text">Only the owner can add stores.</p>`
+                }
+            </div>
+        `;
+
+        const renderStoresList = async () => {
+            const stores = await PayrollSystem.fetchStores();
+            document.getElementById("stores-list").innerHTML = stores
+                .map((s) => `<div style="padding:6px 0; border-bottom:1px solid var(--color-border); font-size:8pt;">${s.name}${s.address ? ` — ${s.address}` : ""}</div>`)
+                .join("");
+        };
+        await renderStoresList();
+
+        if (isOwner) {
+            document.getElementById("add-store").addEventListener("click", async () => {
+                const name = document.getElementById("new-store-name").value.trim();
+                const address = document.getElementById("new-store-address").value.trim();
+                if (!name) return fail("Enter a store name");
+                try {
+                    await PayrollSystem.addStore({ name, address });
+                    document.getElementById("new-store-name").value = "";
+                    document.getElementById("new-store-address").value = "";
+                    await renderStoresList();
+                    ok("Store added");
+                } catch (e) {
+                    fail(e.message);
+                }
+            });
+        }
+    },
+
+    // ---------------------------------------------------------------- DATA & BACKUP
+    async renderDataBackup(root) {
+        const isOwner = this.session.role === "owner";
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">BACKUP</h3>
+                <p class="admin-help-text">Downloads every record this app stores (menu, orders, staff accounts, config, etc.) as one JSON file. Uploaded images themselves aren't included, only their filenames/metadata - keep the "uploads" folder alongside any backup you keep long-term.</p>
+                ${isOwner ? `<button class="admin-btn-primary" id="backup-download">DOWNLOAD BACKUP</button>` : `<p class="admin-help-text">Only the owner can download or restore a backup.</p>`}
+
+                ${
+                    isOwner
+                        ? `
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">RESTORE</h3>
+                <p class="admin-help-text" style="color:var(--color-danger);">Overwrites current data with whatever's in the backup file - menu, orders, staff accounts, everything it contains. This can't be undone. Only restore a backup you trust.</p>
+                <input type="file" id="restore-file-input" accept="application/json" style="margin-bottom:10px;" />
+                <br />
+                <button class="admin-btn-secondary" id="restore-upload" style="border-color:var(--color-danger); color:var(--color-danger);" disabled>RESTORE FROM BACKUP</button>
+                `
+                        : ""
+                }
+                <p id="backup-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+            </div>
+        `;
+
+        if (!isOwner) return;
+
+        document.getElementById("backup-download").addEventListener("click", () => {
+            // A plain navigation (not fetch+blob) so the browser's own
+            // download handling (Content-Disposition) takes over - simplest
+            // way to trigger a real file save from a GET endpoint.
+            window.open("/api/admin/backup", "_blank");
+        });
+
+        let restoreFile = null;
+        const restoreBtn = document.getElementById("restore-upload");
+        document.getElementById("restore-file-input").addEventListener("change", (e) => {
+            restoreFile = e.target.files[0] || null;
+            restoreBtn.disabled = !restoreFile;
+        });
+
+        restoreBtn.addEventListener("click", () => {
+            if (!restoreFile) return;
+            renderInfoModal({
+                title: "RESTORE FROM BACKUP",
+                message: `This will overwrite current menu, orders, staff accounts, and settings with the contents of "${restoreFile.name}". This can't be undone. Continue?`,
+                confirmText: "RESTORE",
+                cancelText: "CANCEL",
+                onConfirm: async () => {
+                    const errorEl = document.getElementById("backup-error");
+                    errorEl.textContent = "";
+                    try {
+                        const text = await restoreFile.text();
+                        const parsed = JSON.parse(text);
+                        const res = await fetch("/api/admin/restore", {
+                            method: "POST",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ ...parsed, confirmYes: true })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || "Restore failed");
+                        ok(`Restored ${data.restoredCount} file(s) - reloading...`);
+                        setTimeout(() => window.location.reload(), 1200);
+                    } catch (e) {
+                        errorEl.textContent = e.message || "Could not restore backup";
+                    }
+                }
+            });
+        });
+    },
+
+    // ---------------------------------------------------------------- REPORTS & EXPORT
+    async renderReportsExport(root) {
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">EXPORT ORDERS (CSV)</h3>
+                <p class="admin-help-text">Downloads a spreadsheet-ready CSV of orders for bookkeeping/tax filing - one row per order with items, tax, and totals.</p>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:14px;">
+                    <div class="control-group" style="flex:1; min-width:160px;">
+                        <label>FROM (optional)</label>
+                        <input type="date" id="report-from" />
+                    </div>
+                    <div class="control-group" style="flex:1; min-width:160px;">
+                        <label>TO (optional)</label>
+                        <input type="date" id="report-to" />
+                    </div>
+                </div>
+                <button class="admin-btn-primary" id="report-export-csv">EXPORT CSV</button>
+                <p id="report-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+            </div>
+        `;
+
+        document.getElementById("report-export-csv").addEventListener("click", async () => {
+            const errorEl = document.getElementById("report-error");
+            errorEl.textContent = "";
+            try {
+                const res = await fetch("/api/orders", { credentials: "include" });
+                if (!res.ok) throw new Error("Could not load orders");
+                let orders = await res.json();
+
+                const fromVal = document.getElementById("report-from").value;
+                const toVal = document.getElementById("report-to").value;
+                if (fromVal) orders = orders.filter((o) => new Date(o.createdAt) >= new Date(fromVal));
+                if (toVal) orders = orders.filter((o) => new Date(o.createdAt) <= new Date(toVal + "T23:59:59"));
+
+                if (orders.length === 0) {
+                    errorEl.textContent = "No orders in that range.";
+                    return;
+                }
+
+                const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+                const header = ["Order #", "Date", "Method", "Customer Phone", "Items", "Subtotal", "CGST", "SGST", "Service Charge", "Tip", "Discount", "Total", "Paid"];
+                const rows = orders.map((o) => [
+                    o.orderNumber || o.id,
+                    new Date(o.createdAt).toLocaleString(),
+                    o.method || "",
+                    o.customerPhone || "",
+                    o.items.map((i) => `${i.quantity}x ${i.name}`).join("; "),
+                    (o.subtotal || 0).toFixed(2),
+                    (o.cgst || 0).toFixed(2),
+                    (o.sgst || 0).toFixed(2),
+                    (o.serviceCharge || 0).toFixed(2),
+                    (o.tipAmount || 0).toFixed(2),
+                    (o.discountAmount || 0).toFixed(2),
+                    (o.total || 0).toFixed(2),
+                    o.isPaid ? "Yes" : "No"
+                ]);
+                const csv = [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                ok(`Exported ${orders.length} order(s)`);
+            } catch (e) {
+                errorEl.textContent = e.message || "Export failed";
             }
         });
     },
@@ -1712,6 +1969,21 @@ export const AdminPortal = {
 
         root.innerHTML = `
             <div class="config-controls">
+                <h3 style="margin-top:0;">SHOP IDENTITY</h3>
+                <div class="control-group">
+                    <label>SHOP NAME</label>
+                    <input type="text" id="cfg-shop-name" value="${escapeHtmlAttr(c.shopName || "")}" />
+                </div>
+                <div class="control-group">
+                    <label>HOME PAGE BADGE (small line above the hero heading, e.g. "Est. 2019 &middot; 8-bit roastery")</label>
+                    <input type="text" id="cfg-hero-badge" maxlength="80" value="${escapeHtmlAttr(c.heroBadgeText || "")}" />
+                </div>
+                <div class="control-group">
+                    <label>HOME PAGE ABOUT TEXT</label>
+                    <textarea id="cfg-hero-tagline" rows="3" maxlength="400" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;">${escapeHtmlAttr(c.heroTagline || "")}</textarea>
+                </div>
+
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">THEME</h3>
                 <div class="control-group">
                     <label>THEME (choosing a preset fills in its standard colors below - tweak them after, or pick CUSTOM to leave your own colors alone)</label>
                     <select id="brand-theme" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; width:100%; box-sizing:border-box; font-family:inherit;">
@@ -1745,14 +2017,49 @@ export const AdminPortal = {
                 </div>
 
                 <div class="control-group">
-                    <label>HERO IMAGE URL (shown on the home page - leave blank to keep the default icon)</label>
-                    <input type="text" id="brand-hero" value="${c.heroImageUrl || ""}" placeholder="https://..." />
+                    <label>HERO / STOREFRONT IMAGE (shown on the home page - leave blank to keep the default icon)</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="brand-hero" value="${c.heroImageUrl || ""}" placeholder="https://... or pick from the bucket" style="flex:1;" />
+                        <button type="button" id="brand-hero-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+                    </div>
                 </div>
                 <div class="control-group">
-                    <label>LOGO URL (shown in the top nav - leave blank to hide)</label>
-                    <input type="text" id="brand-logo" value="${c.logoUrl || ""}" placeholder="https://..." />
+                    <label>LOGO IMAGE (shown in the top nav - leave blank to hide)</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="brand-logo" value="${c.logoUrl || ""}" placeholder="https://... or pick from the bucket" style="flex:1;" />
+                        <button type="button" id="brand-logo-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+                    </div>
                 </div>
-                <p class="admin-help-text">Images are linked by URL (hosted elsewhere) rather than uploaded here.</p>
+                <p class="admin-help-text">Paste a URL, or BROWSE to upload a new image or pick one already in the bucket (shared with menu item photos).</p>
+
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">HOME PAGE CONTENT</h3>
+                <p class="admin-help-text">Section headings, this week's picks, and the roast-process story on the home page - all were fixed text before, now editable per shop.</p>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                    <div class="control-group">
+                        <label>PICKS SECTION HEADING</label>
+                        <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
+                    </div>
+                    <div class="control-group">
+                        <label>ROAST SECTION HEADING</label>
+                        <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
+                    </div>
+                    <div class="control-group">
+                        <label>CONTACT SECTION HEADING</label>
+                        <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
+                    </div>
+                </div>
+
+                <label style="display:block; font-size:9px; letter-spacing:.14em; color:var(--color-text-muted); text-transform:uppercase; margin-top:18px;">This week's picks</label>
+                <p class="admin-help-text">Choose which items feature on the home page and the tag shown on each (e.g. "House favourite"). Leave nothing checked to fall back to the first few items in your top menu section.</p>
+                <div id="home-picks-list" style="display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; border:1px solid var(--color-border); padding:10px; margin-bottom:10px;"></div>
+
+                <label style="display:block; font-size:9px; letter-spacing:.14em; color:var(--color-text-muted); text-transform:uppercase; margin-top:18px;">Roast process story</label>
+                <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
+                <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;"></div>
+                <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
+                <br />
+                <button class="admin-btn-primary" id="home-content-save">SAVE HOME PAGE CONTENT</button>
 
                 <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ADMIN PANEL TEXT</h3>
                 <p class="admin-help-text">Font size and color for the admin panel's own sub-tab navigation row (Dashboard / Menu Items / etc.), its small muted helper/description text (like this line), and its form field labels (ACCENT COLOR, STAFF, DATE, etc.) - staff/admin-facing only, not shown to customers.</p>
@@ -1863,46 +2170,8 @@ export const AdminPortal = {
                 </div>
 
                 <button class="admin-btn-primary" id="branding-save-2">SAVE BRANDING</button>
-
-                ${
-                    this.session.role === "owner"
-                        ? `
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">STORES</h3>
-                <p class="admin-help-text">Right now everything runs as one store - add another here when you're ready to expand, then assign managers/employees to it from User Management.</p>
-                <div id="stores-list" style="margin-bottom:10px;"></div>
-                <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-store-name" placeholder="Store name" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" id="new-store-address" placeholder="Address (optional)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <button class="admin-btn" id="add-store">ADD STORE</button>
-                </div>`
-                        : ""
-                }
             </div>
         `;
-
-        if (this.session.role === "owner") {
-            const renderStoresList = async () => {
-                const stores = await PayrollSystem.fetchStores();
-                document.getElementById("stores-list").innerHTML = stores
-                    .map((s) => `<div style="padding:6px 0; border-bottom:1px solid var(--color-border); font-size:8pt;">${s.name}${s.address ? ` \u2014 ${s.address}` : ""}</div>`)
-                    .join("");
-            };
-            await renderStoresList();
-            document.getElementById("add-store").addEventListener("click", async () => {
-                const name = document.getElementById("new-store-name").value.trim();
-                const address = document.getElementById("new-store-address").value.trim();
-                if (!name) return fail("Enter a store name");
-                try {
-                    await PayrollSystem.addStore({ name, address });
-                    document.getElementById("new-store-name").value = "";
-                    document.getElementById("new-store-address").value = "";
-                    await renderStoresList();
-                    ok("Store added");
-                } catch (e) {
-                    fail(e.message);
-                }
-            });
-        }
 
         const collectColors = () => ({
             accent: document.getElementById("brand-accent").value,
@@ -1924,11 +2193,112 @@ export const AdminPortal = {
             document.getElementById("brand-secondary").value = preset.secondary;
         });
 
+        const homePicksById = Object.fromEntries((c.homePicks || []).map((p) => [p.itemId, p.tag]));
+        const pickableItems = this.menu.items.filter((i) => !i.deleted);
+        document.getElementById("home-picks-list").innerHTML =
+            pickableItems.length === 0
+                ? `<p style="color:var(--color-text-muted); font-size:9pt;">No menu items yet.</p>`
+                : pickableItems
+                      .map((item) => {
+                          const checked = homePicksById[item.id] !== undefined;
+                          const tag = homePicksById[item.id] || "";
+                          return `
+                <label style="display:flex; align-items:center; gap:8px; font-size:9pt;">
+                    <input type="checkbox" class="home-pick-check" data-item-id="${item.id}" ${checked ? "checked" : ""} />
+                    <span style="flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.name}</span>
+                    <input type="text" class="home-pick-tag" data-item-id="${item.id}" placeholder="Tag (e.g. House favourite)" value="${tag.replace(/"/g, "&quot;")}" style="flex:0 0 220px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" ${checked ? "" : "disabled"} />
+                </label>
+            `;
+                      })
+                      .join("");
+        document.querySelectorAll(".home-pick-check").forEach((cb) => {
+            cb.addEventListener("change", () => {
+                const tagInput = document.querySelector(`.home-pick-tag[data-item-id="${cb.dataset.itemId}"]`);
+                tagInput.disabled = !cb.checked;
+            });
+        });
+        const DEFAULT_ROAST_STEPS = [
+            { name: "Sourced", detail: "Small-batch beans, bought direct, one sack at a time." },
+            { name: "Drum roast", detail: "Twelve-minute profile, logged to the second." },
+            { name: "Rested", detail: "A few days off-gas before the first pour." },
+            { name: "Poured", detail: "Ground to order, never before you walk in." }
+        ];
+        const MAX_ROAST_STEPS = 6;
+        const roastEditor = document.getElementById("home-roast-editor");
+
+        function renderRoastEditor(steps) {
+            roastEditor.innerHTML = steps
+                .map(
+                    (step, i) => `
+                <div class="roast-step-row" style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" class="roast-step-name" placeholder="Step name" maxlength="40" value="${escapeHtmlAttr(step.name || "")}" style="flex:0 0 160px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="roast-step-detail" placeholder="Detail line" maxlength="160" value="${escapeHtmlAttr(step.detail || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
+                    <button type="button" class="roast-step-remove admin-btn-secondary" data-index="${i}" style="flex:none;">&times;</button>
+                </div>
+            `
+                )
+                .join("");
+            roastEditor.querySelectorAll(".roast-step-remove").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    steps.splice(Number(btn.dataset.index), 1);
+                    renderRoastEditor(steps);
+                });
+            });
+        }
+
+        const roastSteps = (c.roastSteps && c.roastSteps.length ? c.roastSteps : DEFAULT_ROAST_STEPS).map((s) => ({ ...s }));
+        renderRoastEditor(roastSteps);
+
+        document.getElementById("home-roast-add").addEventListener("click", () => {
+            if (roastSteps.length >= MAX_ROAST_STEPS) return fail(`Up to ${MAX_ROAST_STEPS} steps`);
+            roastSteps.push({ name: "", detail: "" });
+            renderRoastEditor(roastSteps);
+        });
+
+        document.getElementById("home-content-save").addEventListener("click", async () => {
+            const homePicks = Array.from(document.querySelectorAll(".home-pick-check"))
+                .filter((cb) => cb.checked)
+                .map((cb) => ({
+                    itemId: Number(cb.dataset.itemId),
+                    tag: document.querySelector(`.home-pick-tag[data-item-id="${cb.dataset.itemId}"]`).value.trim()
+                }));
+            const finalRoastSteps = Array.from(roastEditor.querySelectorAll(".roast-step-row"))
+                .map((row) => ({
+                    name: row.querySelector(".roast-step-name").value.trim(),
+                    detail: row.querySelector(".roast-step-detail").value.trim()
+                }))
+                .filter((s) => s.name || s.detail);
+            try {
+                await AdminConfig.saveSettings({
+                    homePicks,
+                    roastSteps: finalRoastSteps,
+                    homeHeadings: {
+                        picks: document.getElementById("cfg-home-heading-picks").value.trim(),
+                        roast: document.getElementById("cfg-home-heading-roast").value.trim(),
+                        findUs: document.getElementById("cfg-home-heading-findus").value.trim()
+                    }
+                });
+                ok("Home page content saved");
+            } catch (e) {
+                fail(e.message);
+            }
+        });
+
+        document.getElementById("brand-hero-pick").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-hero").value = url) });
+        });
+        document.getElementById("brand-logo-pick").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-logo").value = url) });
+        });
+
         const doSaveBranding = async () => {
             const errorEl = document.getElementById("branding-error");
             errorEl.textContent = "";
             try {
                 const updated = await AdminConfig.saveSettings({
+                    shopName: document.getElementById("cfg-shop-name").value,
+                    heroBadgeText: document.getElementById("cfg-hero-badge").value,
+                    heroTagline: document.getElementById("cfg-hero-tagline").value,
                     theme: document.getElementById("brand-theme").value,
                     heroImageUrl: document.getElementById("brand-hero").value.trim(),
                     logoUrl: document.getElementById("brand-logo").value.trim(),

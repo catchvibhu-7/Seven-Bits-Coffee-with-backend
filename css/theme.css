@@ -245,14 +245,6 @@ header {
     min-width: 0;
 }
 
-.staff-nav-badge {
-    flex: none;
-    font-size: 10px;
-    padding: 2px 6px;
-    background: var(--color-accent);
-    color: var(--color-accent-contrast);
-}
-
 /* Genuinely pinned to the bottom of the screen (not just pushed there by a
    flex spacer, which could still land it partly below the fold on a short
    window - see staff-shell.js's renderRail() comment). Same left/width as
@@ -1099,10 +1091,6 @@ header {
         gap: 8px;
         margin-left: auto; /* Keeps price/button locked to the right */
     }
-    /* Active state: Show story */
-    .menu-list .menu-item.active-story .story {
-        display: block;
-    }
 }
 
 /* ==========================================================================
@@ -1116,9 +1104,9 @@ header {
     margin-left: auto;
 }
 
-.btn-order, .btn-add-fixed {
-    background: #d97706;
-    color: black;
+.btn-add-fixed {
+    background: black;
+    color: var(--color-accent);
     border: 2px solid #d97706;
     padding: 0 12px;
     cursor: pointer;
@@ -1133,25 +1121,13 @@ header {
     white-space: nowrap;
 }
 
-.btn-add-fixed {
-    background: black;
-    color: var(--color-accent);
-}
-
 .btn-add-fixed:hover {
     background: #d97706;
     color: black;
 }
 
-.btn-order.active-count {
-    background: #000 !important;
-    color: var(--color-accent) !important;
-    border: 2px solid var(--color-accent) !important;
-    box-shadow: inset 0 0 5px #f59e0b;
-}
-
 /* Quantity Selection */
-.btn-qty-container, .quantity-selector {
+.btn-qty-container {
     display: flex;
     align-items: center;
     border: 2px solid #d97706;
@@ -1159,7 +1135,7 @@ header {
     background: black;
 }
 
-.btn-qty-container button, .quantity-selector button {
+.btn-qty-container button {
     width: 26px;
     height: 100%;
     background: transparent;
@@ -1170,7 +1146,7 @@ header {
     font-family: "Courier New", Courier, monospace;
 }
 
-.btn-qty-container span, .quantity-selector .quantity-display {
+.btn-qty-container span {
     width: 26px;
     text-align: center;
     color: var(--color-accent);
@@ -1180,13 +1156,13 @@ header {
 
 /* Mobile Slim (26px) */
 @media (max-width: 500px) {
-    .btn-order, .btn-add-fixed {
+    .btn-add-fixed {
         height: 26px;
         font-size: 0.72rem;
         padding: 0 8px;
     }
 
-    .btn-qty-container, .quantity-selector {
+    .btn-qty-container {
         height: 26px;
     }
 
@@ -1608,18 +1584,6 @@ header {
     margin-bottom: 10px;
 }
 
-.order-history-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px;
-    margin-top: 15px;
-}
-.order-history-card {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    padding: 12px;
-    font-size: 9pt;
-}
 .order-history-layout {
     display: grid;
     grid-template-columns: 2fr 1fr;
@@ -2254,39 +2218,6 @@ header {
    .pixel-cat) has been replaced by the fuller pixel-kitty setup in
    cat.css (.pixel-kitty-container / .kitty-mover, etc.), which is now
    what index.html actually references - removed the dead rules here. */
-
-/* Limited Edition Cyan Theme */
-.section-limited .section-title,
-.section-limited .price {
-    color: var(--color-cyan);
-    border-color: var(--color-cyan);
-}
-
-.section-limited .btn-order {
-    background: #22d3ee;
-}
-
-.section-limited .btn-order.active-count {
-    background: #000 !important;
-    color: var(--color-cyan) !important;
-    border: 2px solid var(--color-cyan) !important;
-    box-shadow: inset 0 0 5px #22d3ee;
-}
-
-.filler-bit {
-    background: #080808;
-    border: 1px dashed #222;
-    opacity: 0.3;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.filler-cat {
-    width: 40px;
-    height: 40px;
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 12" shape-rendering="crispEdges"><path d="M2 2h1v1H2zM5 2h1v1H5zM2 3h4v4H2zM1 4h1v3H1zM6 4h1v3H6zM2 7h1v1H2zM5 7h1v1H5zM6 5h2v1H6zM8 4h1v1H8zM9 3h1v1H9zM10 2h1v1H10z" fill="%23d97706"/></svg>');
-    background-size: contain;
-}
 
 /* ==========================================================================
    ARCADE (in-store GAMES tab) - card grid echoes .menu-grid's visual

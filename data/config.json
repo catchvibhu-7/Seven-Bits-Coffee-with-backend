@@ -7,7 +7,7 @@
   "tipEnabled": true,
   "tipAmount": 7,
   "theme": "dark",
-  "heroImageUrl": "",
+  "heroImageUrl": "/uploads/556376b9122dec2c.svg",
   "logoUrl": "",
   "colors": {
     "accent": "#d97706",
@@ -24,5 +24,19 @@
     "hours": "Mon-Sat: 8Am to 8Pm"
   },
   "upiVpa": "catchvibhu-1@okaysbi",
-  "upiPayeeName": "Kumar Vaibhav"
+  "upiPayeeName": "Kumar Vaibhav",
+  "homePicks": [
+    {
+      "itemId": 101,
+      "tag": "House favourite"
+    },
+    {
+      "itemId": 102,
+      "tag": "Slow steep"
+    },
+    {
+      "itemId": 103,
+      "tag": "Baker's pick"
+    }
+  ]
 }

@@ -201,9 +201,34 @@ window.applyBranding = (config) => {
     // Home page hero copy - admin-editable from Global Settings, was
     // previously hardcoded HTML text.
     const shopNameEl = document.getElementById("hero-shop-name");
-    if (shopNameEl && config.shopName) shopNameEl.textContent = config.shopName;
+    if (shopNameEl && config.shopName) {
+        // Was plain textContent, which also wipes the child
+        // .staff-blink-cursor span markup ships with - the cursor flourish
+        // was getting silently erased on every single page load before any
+        // admin even touched shopName, since this runs whether or not it's
+        // still the default value.
+        shopNameEl.innerHTML = `${escapeHtml(config.shopName)}<span class="staff-blink-cursor" aria-hidden="true">_</span>`;
+    }
     const taglineEl = document.getElementById("hero-tagline");
     if (taglineEl && config.heroTagline) taglineEl.textContent = config.heroTagline;
+    const badgeEl = document.getElementById("home-hero-badge");
+    if (badgeEl && config.heroBadgeText) badgeEl.textContent = config.heroBadgeText;
+
+    // Home page section headings - were hardcoded text (see admin-portal.js
+    // Branding tab "HOME PAGE CONTENT" for where these get edited).
+    const headings = config.homeHeadings || {};
+    const headingPicksEl = document.getElementById("home-heading-picks");
+    if (headingPicksEl && headings.picks) headingPicksEl.textContent = headings.picks;
+    const headingRoastEl = document.getElementById("home-heading-roast");
+    if (headingRoastEl && headings.roast) headingRoastEl.textContent = headings.roast;
+    const headingFindUsEl = document.getElementById("home-heading-findus");
+    if (headingFindUsEl && headings.findUs) headingFindUsEl.textContent = headings.findUs;
+
+    // Browser tab title - was hardcoded to this shop's own name/city and
+    // never touched here, unlike the in-page heading right above.
+    if (config.shopName) {
+        document.title = config.footer?.address ? `${config.shopName} // ${config.footer.address}` : config.shopName;
+    }
 };
 
 /**
@@ -778,8 +803,9 @@ window.printBill = (order) => {
         </head>
         <body onload="window.print(); window.close();">
             <div class="center">
-                <h3>SEVEN BITS COFFEE</h3>
-                <p style="font-size: 8pt;">Hazaribagh, Jharkhand<br>#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
+                <h3>${escapeHtml(siteConfig.shopName || "SEVEN BITS COFFEE")}</h3>
+                <p style="font-size: 8pt;">${siteConfig.footer?.address ? escapeHtml(siteConfig.footer.address) + "<br>" : ""}#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
+                ${siteConfig.gstNumber ? `<p style="font-size: 7pt;">GSTIN: ${escapeHtml(siteConfig.gstNumber)}</p>` : ""}
                 ${order.tableNumber ? `<p style="font-size: 10pt; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
             </div>
             <div class="hr"></div>
@@ -1453,14 +1479,17 @@ function renderMenuCartPanel() {
             }
         </div>
         <div style="padding:14px 18px 18px; border-top:1px solid var(--color-border); flex:none;">
-            <div style="display:flex; justify-content:space-between; gap:12px; font-size:10.5px; color:var(--color-text-muted); padding:2px 0;"><span>SUBTOTAL</span><span>₹${breakdown.subtotal.toFixed(2)}</span></div>
-            <div style="display:flex; justify-content:space-between; gap:12px; font-size:10.5px; color:var(--color-text-muted); padding:2px 0;"><span>TAX + SERVICE</span><span>₹${(breakdown.cgst + breakdown.sgst + breakdown.serviceCharge).toFixed(2)}</span></div>
-            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:10px 0 14px; border-top:1px dashed var(--color-border); margin-top:6px;">
-                <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">TOTAL</span>
-                <span style="font-size:22px; font-weight:bold; color:var(--color-accent);">₹${breakdown.total.toFixed(2)}</span>
+            <!-- Deliberately no tax/service-charge breakdown here - just the
+                 items subtotal while still browsing/adding. Tax, service
+                 charge, and tip are calculated (and shown) starting at
+                 checkout - see renderCheckoutModal() - and again on the
+                 Billing page and the printed bill, not before. -->
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:10px 0 14px;">
+                <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">SUBTOTAL</span>
+                <span style="font-size:22px; font-weight:bold; color:var(--color-accent);">₹${breakdown.subtotal.toFixed(2)}</span>
             </div>
             <button id="staff-cart-checkout-btn" ${cart.length === 0 ? "disabled" : ""} style="width:100%; padding:12px; background:${cart.length ? "var(--color-accent)" : "var(--color-border)"}; color:${cart.length ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:none; font-size:11.5px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:${cart.length ? "pointer" : "not-allowed"}; min-height:44px;">[ Checkout ]</button>
-            <div style="font-size:9px; color:var(--color-text-muted); text-align:center; margin-top:8px; line-height:1.5;">Tip and service charge may be applied to final bill.</div>
+            <div style="font-size:9px; color:var(--color-text-muted); text-align:center; margin-top:8px; line-height:1.5;">Tax, service charge & tip shown at checkout.</div>
         </div>
     `;
     panel.querySelector("#staff-cart-checkout-btn")?.addEventListener("click", () => window.handleCartStatusClick());
@@ -1989,26 +2018,40 @@ window.renderFooter = (config) => {
  * Home page "This week's picks" - a handful of featured items so there's
  * something to click right on arrival, not just an empty page below the
  * hero. Clicking a card adds it to the cart and jumps to the Menu page so
- * the person can see it land there. Badge labels are a static flourish (not
- * data-bound to anything real, same as the design mockup this mirrors).
+ * the person can see it land there. Which items show and their badge/tag
+ * text come from Admin > Branding's "This week's picks" section
+ * (siteConfig.homePicks) when the admin has actually curated one; an
+ * untouched fresh install falls back to the first few items in the top
+ * menu section with a generic static badge set, same as before this was
+ * configurable.
  */
 function renderPopularPicks() {
     const root = document.getElementById("popular-picks-grid");
     if (!root || !menuData.items.length) return;
 
-    const PICK_BADGES = ["House favourite", "Slow steep", "Baker's pick"];
-    // First section's items are the intended "signature" picks; fall back
-    // to the first few items overall if that section is ever empty/renamed.
-    const firstSectionId = menuData.sections[0]?.id;
-    const picks = (firstSectionId ? menuData.items.filter((i) => i.section === firstSectionId) : menuData.items).slice(0, 3);
+    const configuredPicks = (siteConfig.homePicks || [])
+        .map((p) => ({ item: menuData.items.find((i) => i.id === p.itemId && !i.deleted), tag: p.tag }))
+        .filter((p) => p.item);
+
+    const FALLBACK_BADGES = ["House favourite", "Slow steep", "Baker's pick"];
+    let picks;
+    if (configuredPicks.length > 0) {
+        picks = configuredPicks;
+    } else {
+        // First section's items are the intended "signature" picks; fall back
+        // to the first few items overall if that section is ever empty/renamed.
+        const firstSectionId = menuData.sections[0]?.id;
+        const items = (firstSectionId ? menuData.items.filter((i) => i.section === firstSectionId) : menuData.items).slice(0, 3);
+        picks = items.map((item, i) => ({ item, tag: FALLBACK_BADGES[i] || "" }));
+    }
 
     root.innerHTML = picks
         .map(
-            (item, i) => `
+            ({ item, tag }) => `
         <button type="button" class="home-pick-card" onclick="window.pickFromHome(${item.id})">
             <div class="home-pick-banner">
                 ${itemImageMarkup(item)}
-                <span class="home-pick-badge">${PICK_BADGES[i] || ""}</span>
+                <span class="home-pick-badge">${escapeHtml(tag || "")}</span>
             </div>
             <div class="home-pick-body">
                 <span class="home-pick-name">${escapeHtml(item.name)}</span>
@@ -2061,19 +2104,22 @@ async function renderHomeStoreFacts() {
 }
 
 /**
- * "How we roast" process steps - decorative brand copy, same role as the
- * design mockup's hardcoded roastSteps (not meant to be admin-configurable,
- * just static storytelling content).
+ * "How we roast" process steps - admin-editable from Branding > Home Page
+ * Content (siteConfig.roastSteps) so a different shop can tell its own
+ * story instead of this one's coffee-roasting specifics. Falls back to the
+ * original hardcoded steps on a fresh install with nothing curated yet.
  */
 function renderHomeRoastSteps() {
     const root = document.getElementById("home-roast-steps");
     if (!root) return;
-    const steps = [
-        { no: "01", name: "Sourced", detail: "Small-batch beans, bought direct, one sack at a time." },
-        { no: "02", name: "Drum roast", detail: "Twelve-minute profile, logged to the second." },
-        { no: "03", name: "Rested", detail: "A few days off-gas before the first pour." },
-        { no: "04", name: "Poured", detail: "Ground to order, never before you walk in." }
+    const DEFAULT_STEPS = [
+        { name: "Sourced", detail: "Small-batch beans, bought direct, one sack at a time." },
+        { name: "Drum roast", detail: "Twelve-minute profile, logged to the second." },
+        { name: "Rested", detail: "A few days off-gas before the first pour." },
+        { name: "Poured", detail: "Ground to order, never before you walk in." }
     ];
+    const configured = siteConfig.roastSteps && siteConfig.roastSteps.length ? siteConfig.roastSteps : DEFAULT_STEPS;
+    const steps = configured.map((s, i) => ({ no: String(i + 1).padStart(2, "0"), name: s.name, detail: s.detail }));
     root.innerHTML = steps
         .map(
             (r) => `

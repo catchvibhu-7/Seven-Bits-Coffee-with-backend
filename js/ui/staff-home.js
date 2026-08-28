@@ -87,9 +87,6 @@ export async function renderStaffHome(session) {
                     <h1 style="font-size:28px; font-weight:bold; letter-spacing:1px; line-height:1.2; margin:14px 0 0; text-transform:uppercase; font-family:'Courier New',monospace;">
                         &gt; BOOT.OK &mdash; ${escapeHtml(roleLabel)}<span class="staff-blink-cursor" style="color:var(--color-accent);" aria-hidden="true">_</span>
                     </h1>
-                    <div style="font-size:12.5px; color:var(--color-text-muted); margin-top:10px;">
-                        ${openOrders.length} ticket${openOrders.length === 1 ? "" : "s"} open &middot; ${kotQueue.length} awaiting fire
-                    </div>
                 </div>
                 <button type="button" id="staff-home-new-order" class="staff-logout-btn" style="background:var(--color-accent); color:var(--color-accent-contrast); border:2px solid var(--color-accent); padding:14px 24px; font-size:12.5px; min-height:44px;">[ NEW ORDER ]</button>
             </div>
@@ -152,7 +149,13 @@ export async function renderStaffHome(session) {
                             <span class="staff-stat-number" style="font-size:36px; font-weight:bold; color:var(--color-accent); letter-spacing:1px;">${kotQueue.length}</span>
                             <span style="font-size:12px; color:var(--color-text-muted); letter-spacing:.1em; text-transform:uppercase;">awaiting fire</span>
                         </div>
-                        <div style="font-size:11px; color:var(--color-text-muted); margin-top:10px; line-height:1.6;">PRINTER <span style="color:var(--color-success);">&#9679; ONLINE</span> &middot; STATION 1 BARISTA &middot; STATION 2 KITCHEN &middot; STATION 3 DESSERTS</div>
+                        <!-- Was "PRINTER * ONLINE" - implied a real connected
+                             printer that doesn't exist (there's no hardware
+                             integration in this app; Billing's Print KOT/Bill
+                             buttons open a browser print dialog, same as any
+                             other webpage). Describes what's actually there
+                             instead of a fake hardware status. -->
+                        <div style="font-size:11px; color:var(--color-text-muted); margin-top:10px; line-height:1.6;">Print from Billing when a ticket's ready &middot; STATION 1 BARISTA &middot; STATION 2 KITCHEN &middot; STATION 3 DESSERTS</div>
                         <button type="button" id="staff-home-billing" style="margin-top:16px; width:100%; padding:11px; background:transparent; border:2px solid var(--color-accent); color:var(--color-accent); font-size:12px; font-weight:bold; letter-spacing:.12em; text-transform:uppercase; cursor:pointer; min-height:44px;">Open billing</button>
                     </div>
                     <div class="staff-widget-card" style="padding:18px 20px;">

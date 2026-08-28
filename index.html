@@ -74,7 +74,7 @@
             <div class="home-hero">
                 <div class="home-hero-inner">
                     <div class="home-hero-copy">
-                        <div class="home-hero-badge">Est. 2019 &middot; 8-bit roastery</div>
+                        <div class="home-hero-badge" id="home-hero-badge">Est. 2019 &middot; 8-bit roastery</div>
                         <h1 class="home-hero-title" id="hero-shop-name">SEVEN BITS COFFEE<span class="staff-blink-cursor">_</span></h1>
                         <p class="home-hero-tagline" id="hero-tagline">
                             Born from love for Physics, Coffee, a cat named Ginger and an obssesion with the number seven. We
@@ -119,14 +119,14 @@
 
             <div class="home-body">
                 <div class="home-section-header">
-                    <h2>This week&rsquo;s picks</h2>
+                    <h2 id="home-heading-picks">This week&rsquo;s picks</h2>
                     <span>Tap to add</span>
                 </div>
                 <div id="popular-picks-grid" class="home-picks-grid"></div>
 
                 <div class="home-grid-2col">
                     <div class="home-panel">
-                        <h2>How we roast</h2>
+                        <h2 id="home-heading-roast">How we roast</h2>
                         <p>Seven origins, one drum roaster, no shortcuts. We cup every batch on Thursday and pull anything that doesn&rsquo;t sing. Beans go from roast to cup inside nine days &mdash; the freshness window we refuse to argue about.</p>
                         <div id="home-roast-steps" class="home-roast-steps"></div>
                     </div>
@@ -148,7 +148,7 @@
                             </div>
                         </div>
                         <div class="home-widget">
-                            <h2>Find us</h2>
+                            <h2 id="home-heading-findus">Find us</h2>
                             <div id="home-visit-rows"></div>
                         </div>
                     </div>
@@ -210,13 +210,11 @@
 
             <!-- UNIFIED ACTION FOOTER -->
             <div id="footer-actions" class="footer-container" style="display: none;">
-                <!-- JUMP MENU (NESTED INSIDE) -->
-                <div id="jump-menu" class="jump-overlay">
-                    <div class="jump-header">CATEGORIES:</div>
-                    <div id="jump-options-container">
-                        <!-- Options injected by JS -->
-                    </div>
-                </div>
+                <!-- JUMP MENU (NESTED INSIDE) - content fully rebuilt by
+                     window.toggleJumpMenu() (app.js) each time it opens, so
+                     this starts empty rather than with markup that's always
+                     immediately overwritten anyway. -->
+                <div id="jump-menu" class="jump-overlay"></div>
 
                 <!-- CART BAR -->
                 <div id="cart-status" class="cart-bar" onclick="window.handleCartStatusClick()">
@@ -235,9 +233,20 @@
         <aside id="menu-cart-panel" class="menu-cart-panel" style="display:none;"></aside>
     </div>
 </div>
-        <!-- PAGE: ARCADE (in-store games, unlocked after placing an order) -->
+        <!-- PAGE: ARCADE (in-store games, unlocked after placing an order) -
+             same page-header treatment (bold left-aligned h1, accent
+             underline, 1600px/26-28-44 wrapper) as Billing/Admin, which this
+             used to not match (a plain centered h2, no underline, its own
+             1400px/20px wrapper) despite otherwise sharing the same visual
+             language (arcade-page.js's .arcade-grid/.arcade-card already
+             echo .menu-grid's card chrome). -->
         <div id="page-arcade" class="page">
-            <div id="arcade-root" style="max-width: 1400px; margin: 0 auto; padding: 20px;"></div>
+            <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
+                <div style="border-bottom:2px solid var(--color-accent); padding-bottom:16px; margin-bottom:22px;">
+                    <h1 style="font-size:26px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">ARCADE</h1>
+                </div>
+                <div id="arcade-root"></div>
+            </div>
         </div>
 
         <!-- PAGE: ORDERS (Kitchen Display System / KOT Management) -->
