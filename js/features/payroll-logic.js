@@ -43,6 +43,14 @@ export const PayrollSystem = {
         return res.json();
     },
 
+    /** Live clocked-in/out status for every staff member visible to this
+     *  session - distinct from fetchPayroll(), which is period earnings. */
+    async fetchTimeclockRoster() {
+        const res = await fetch("/api/timeclock/roster", { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+    },
+
     /** Manager-marked attendance - for staff who never log in themselves. */
     async fetchAttendance(userId = null) {
         const url = userId ? `/api/attendance?userId=${userId}` : "/api/attendance";
@@ -103,6 +111,18 @@ export const PayrollSystem = {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not add store");
+        return data;
+    },
+
+    async updateStore(id, patch) {
+        const res = await fetch(`/api/stores/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not update store");
         return data;
     }
 };

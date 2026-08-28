@@ -8,15 +8,12 @@
  * is bypassed.
  */
 export const AdminConfig = {
-    settings: {
-        shopName: "SEVEN BITS COFFEE",
-        cgstRate: 0.05,
-        sgstRate: 0.05,
-        serviceChargeRate: 0.02,
-        tipEnabled: true,
-        tipAmount: 7,
-        currency: "\u20b9"
-    },
+    // Empty until loadSettings() resolves (called before anything else reads
+    // this, on every page load - see refreshSession() in app.js) - kept
+    // empty rather than a hardcoded default snapshot of server.js's real
+    // schema, which drifted out of sync with it before and was never
+    // actually read from in practice anyway.
+    settings: {},
 
     async loadSettings() {
         const res = await fetch("/api/config");

@@ -3,7 +3,7 @@
  * Location: /js/app.js
  */
 import { KitchenSystem } from "./features/kitchen-logic.js";
-import { discountedBasePrice } from "./features/cart-logic.js";
+import { CartSystem, discountedBasePrice } from "./features/cart-logic.js";
 import { AuthSystem } from "./features/auth-logic.js";
 import { AdminConfig } from "./features/config-logic.js";
 import { PayrollSystem } from "./features/payroll-logic.js";
@@ -18,13 +18,18 @@ import { TableSessionsSystem } from "./features/table-sessions-logic.js";
 import { renderTableModal, renderTableBillModal } from "./ui/table-modal.js";
 import { SoundSystem } from "./features/sound-logic.js";
 import { NotificationSystem } from "./features/notification-logic.js";
+import { StaffShell } from "./ui/staff-shell.js";
+import { renderStaffHome } from "./ui/staff-home.js";
+import { renderBillingPage, selectBillForOrder } from "./ui/billing-page.js";
+import { ArcadeSystem } from "./features/arcade-logic.js";
 
 // --- System State ---
 let cart = [];
 let serviceChargeActive = true;
 let tipApplied = false;
+let orderType = "takeaway"; // "takeaway" | "dine-in" - picked in the cart panel, sent with the order
 let currentKitchenStation = "MASTER"; // matches the "ALL" tab that's marked active by default in index.html
-let viewMode = "list";
+let viewMode = "grid";
 let menuData = { sections: [], items: [] };
 let siteConfig = {}; // last-loaded config (colors/customIcons/etc.) for icon rendering + branding
 let pendingOrder = null; // order returned by the server, waiting to be printed
@@ -32,6 +37,9 @@ let ordersStream = null; // SSE connection, opened once after the first authenti
 let session = { authenticated: false, role: null, name: null, phone: null }; // current login state
 let favoritesFilterActive = false;
 let comboData = [];
+let activeCategory = "All"; // menu-cat-chips selection; "All" shows every section
+let menuSectionPages = {}; // { [sectionId]: 1-based page } - each section paginates independently; reset to {} whenever the filtered item set changes
+const MENU_PAGE_SIZE = 10;
 let lastSeenOrderStatuses = {}; // orderId -> last status seen by refreshOrderStatusWidget, so the ready chime fires once per transition, not on every poll
 
 const KITCHEN_ROLES = ["employee", "manager", "admin", "owner"];
@@ -52,6 +60,7 @@ async function loadCombos() {
 
 async function refreshSession() {
     session = await AuthSystem.getSession();
+    updateStaffShellForSession();
     updateNavForSession();
     if (TRACKING_ROLES.includes(session.role)) {
         await FavoritesSystem.load();
@@ -62,23 +71,41 @@ async function refreshSession() {
 }
 
 /**
- * Shows/hides the Kitchen and Admin nav tabs based on role, and updates the
- * account button's label - purely visual, the server enforces the real
- * access control on every request regardless of what the nav shows.
+ * Swaps in the app shell (left rail or top bar - js/ui/staff-shell.js) for
+ * ANY real session - staff, customer, or guest alike, each getting its own
+ * role-appropriate tab list (see StaffShell.tabsForRole()) - since the
+ * rail/top-bar layout choice was never meant to be staff-exclusive, only its
+ * tab CONTENTS differ by role. Even a fully anonymous visitor (never logged
+ * in, registered, or started a guest checkout) now gets the same shell -
+ * its identity button just becomes a LOGIN prompt instead of an account
+ * dropdown (see StaffShell.identityHtml()/wireButtons()) - so the shop's
+ * chosen default layout (Content tab -> Site Navigation) is what a brand
+ * new visitor sees, not the old plain top nav.
+ */
+function updateStaffShellForSession() {
+    const currentPageId = document.querySelector(".page.active")?.id.replace("page-", "") || null;
+    StaffShell.show(session, currentPageId);
+    // Populates the Orders nav badge right away rather than leaving it
+    // at 0 until the first live-update event arrives (see
+    // ensureOrdersStream(), which keeps it current after this).
+    if (KITCHEN_ROLES.includes(session.role)) {
+        KitchenSystem.fetchOrders().then(() => {
+            const awaitingFire = KitchenSystem.orders.filter((o) => !o.items.every((i) => i.isDone)).length;
+            StaffShell.setBadge("orders", awaitingFire);
+        });
+    }
+}
+
+/**
+ * Updates the customer nav's account button label - purely visual, the
+ * server enforces the real access control on every request regardless of
+ * what the nav shows. (The Kitchen/Admin tabs and Clock In/Out that used to
+ * be handled here moved into the staff shell - see updateStaffShellForSession()
+ * above - since anyone who could ever see them always has that shell active
+ * instead of this customer nav.)
  */
 function updateNavForSession() {
-    const kitchenTab = document.getElementById("nav-kitchen");
-    const adminTab = document.getElementById("nav-admin");
     const accountBtn = document.getElementById("nav-account");
-
-    if (kitchenTab) kitchenTab.style.display = KITCHEN_ROLES.includes(session.role) ? "" : "none";
-    if (adminTab) {
-        adminTab.style.display = MANAGER_UP_ROLES.includes(session.role) ? "" : "none";
-        // Same page underneath (see admin-portal.js's role-aware tab list) -
-        // the label just reflects that a manager gets a scoped subset, not
-        // the full Admin panel.
-        adminTab.textContent = session.role === "manager" ? "DASHBOARD" : "ADMIN";
-    }
 
     if (accountBtn) {
         if (session.authenticated) {
@@ -91,11 +118,20 @@ function updateNavForSession() {
 
     updateTimeclockWidget();
 
-    const myOrdersLink = document.getElementById("my-orders-link-section");
-    if (myOrdersLink) myOrdersLink.style.display = "block"; // always available - openMyOrders() itself prompts login if needed
-
     const favFilterLabel = document.getElementById("favorites-filter-label");
     if (favFilterLabel) favFilterLabel.style.display = TRACKING_ROLES.includes(session.role) ? "flex" : "none";
+}
+
+/**
+ * Re-fetches config and re-applies branding - a staff session tied to a
+ * store gets that store's branding merged in server-side (configForSession),
+ * but the client only sees it by asking again. Needed after login/logout
+ * since the initial boot fetch happens before anyone's signed in.
+ */
+async function refreshBranding() {
+    const config = await AdminConfig.loadSettings();
+    window.applyBranding(config);
+    window.renderFooter(config);
 }
 
 /**
@@ -108,17 +144,20 @@ async function afterLoginSuccess(loginResult, proceed) {
         renderForceChangePasswordModal(
             async () => {
                 await refreshSession();
+                await refreshBranding();
                 await proceed();
             },
             async () => {
                 await AuthSystem.logout();
                 await refreshSession();
+                await refreshBranding();
                 window.showPage("home");
             }
         );
         return;
     }
     await refreshSession();
+    await refreshBranding();
     await proceed();
 }
 
@@ -157,17 +196,15 @@ window.applyBranding = (config) => {
 
     document.body.classList.toggle("theme-light", config.theme === "light");
 
-    const heroEl = document.querySelector(".icon-logo-hero");
+    const heroEl = document.getElementById("home-hero-image-bg");
     if (heroEl) {
-        if (config.heroImageUrl) {
-            heroEl.style.backgroundImage = `url(${JSON.stringify(config.heroImageUrl).slice(1, -1)})`;
-            heroEl.style.backgroundSize = "contain";
-            heroEl.style.backgroundRepeat = "no-repeat";
-            heroEl.style.backgroundPosition = "center";
-        } else {
-            heroEl.style.backgroundImage = "";
-        }
+        // Leaving this empty (no heroImageUrl set) keeps the hatch-pattern
+        // placeholder from theme.css's .home-hero-image-bg rule rather than
+        // forcing a stock photo in as a stand-in for a real storefront shot.
+        heroEl.style.backgroundImage = config.heroImageUrl ? `url(${JSON.stringify(config.heroImageUrl).slice(1, -1)})` : "";
     }
+    const captionEl = document.getElementById("home-hero-caption");
+    if (captionEl) captionEl.textContent = (config.heroCaptionLabel || "The counter") + (config.footer?.address ? ` · ${config.footer.address}` : "");
 
     const logoEl = document.getElementById("site-logo");
     if (logoEl) {
@@ -182,9 +219,34 @@ window.applyBranding = (config) => {
     // Home page hero copy - admin-editable from Global Settings, was
     // previously hardcoded HTML text.
     const shopNameEl = document.getElementById("hero-shop-name");
-    if (shopNameEl && config.shopName) shopNameEl.textContent = config.shopName;
+    if (shopNameEl && config.shopName) {
+        // Was plain textContent, which also wipes the child
+        // .staff-blink-cursor span markup ships with - the cursor flourish
+        // was getting silently erased on every single page load before any
+        // admin even touched shopName, since this runs whether or not it's
+        // still the default value.
+        shopNameEl.innerHTML = `${escapeHtml(config.shopName)}<span class="staff-blink-cursor" aria-hidden="true">_</span>`;
+    }
     const taglineEl = document.getElementById("hero-tagline");
     if (taglineEl && config.heroTagline) taglineEl.textContent = config.heroTagline;
+    const badgeEl = document.getElementById("home-hero-badge");
+    if (badgeEl && config.heroBadgeText) badgeEl.textContent = config.heroBadgeText;
+
+    // Home page section headings - were hardcoded text (see admin-portal.js
+    // Branding tab "HOME PAGE CONTENT" for where these get edited).
+    const headings = config.homeHeadings || {};
+    const headingPicksEl = document.getElementById("home-heading-picks");
+    if (headingPicksEl && headings.picks) headingPicksEl.textContent = headings.picks;
+    const headingRoastEl = document.getElementById("home-heading-roast");
+    if (headingRoastEl && headings.roast) headingRoastEl.textContent = headings.roast;
+    const headingFindUsEl = document.getElementById("home-heading-findus");
+    if (headingFindUsEl && headings.findUs) headingFindUsEl.textContent = headings.findUs;
+
+    // Browser tab title - was hardcoded to this shop's own name/city and
+    // never touched here, unlike the in-page heading right above.
+    if (config.shopName) {
+        document.title = config.footer?.address ? `${config.shopName} // ${config.footer.address}` : config.shopName;
+    }
 };
 
 /**
@@ -192,8 +254,12 @@ window.applyBranding = (config) => {
  * accounts. Backs the payroll system's hourly-rate calculations with real
  * timestamps instead of manually-guessed hours.
  */
+window.updateTimeclockWidget = updateTimeclockWidget; // staff-shell.js calls this after every re-render, since its innerHTML rebuild wipes whatever this last populated
 async function updateTimeclockWidget() {
-    const btn = document.getElementById("nav-timeclock");
+    // Lives inside the staff shell (js/ui/staff-shell.js), not the customer
+    // nav - anyone who can see this (PAYROLL_ROLES) is always a KITCHEN_ROLES
+    // member too, so they always have the shell active.
+    const btn = document.getElementById("staff-timeclock-btn");
     if (!btn) return;
 
     if (!PAYROLL_ROLES.includes(session.role)) {
@@ -211,7 +277,7 @@ async function updateTimeclockWidget() {
 }
 
 window.handleTimeclockClick = async () => {
-    const btn = document.getElementById("nav-timeclock");
+    const btn = document.getElementById("staff-timeclock-btn");
     const clockedIn = btn.dataset.clockedIn === "1";
     try {
         if (clockedIn) {
@@ -229,29 +295,44 @@ window.handleTimeclockClick = async () => {
 
 window.handleAccountClick = () => {
     if (session.authenticated) {
-        renderAccountMenu();
+        window.renderAccountMenu("nav-account");
     } else {
         renderLoginModal(
-            (loginResult) => afterLoginSuccess(loginResult, () => window.showPage("home")),
+            // refreshSession() (inside afterLoginSuccess) has already run by
+            // the time this runs, so `session.role` here is the freshly
+            // logged-in one, not stale - a staff login lands on the new
+            // staff dashboard instead of the customer home page.
+            (loginResult) => afterLoginSuccess(loginResult, () => window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home")),
             { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
         );
     }
 };
 
 /**
- * Small dropdown under the account nav button - kept separate from Account
+ * Small dropdown under the account button - kept separate from Account
  * Settings (rather than nesting Logout inside that modal) so Logout stays a
  * one-click action as more account features get added to Settings later.
+ * Shared by the customer nav's account button (#nav-account) and the staff
+ * shell's single identity button (#staff-account-btn, see staff-shell.js) -
+ * one dropdown pattern for "who am I / settings / log out" everywhere,
+ * rather than a separate one-off version for staff.
  */
-function renderAccountMenu() {
+window.renderAccountMenu = (triggerBtnId = "nav-account") => {
     document.getElementById("account-menu")?.remove();
-    const btn = document.getElementById("nav-account");
+    const btn = document.getElementById(triggerBtnId);
     if (!btn) return;
 
     const menu = document.createElement("div");
     menu.id = "account-menu";
     const rect = btn.getBoundingClientRect();
     const menuWidth = 180;
+
+    const items = [];
+    if (session.role !== "guest") {
+        items.push({ label: "ACCOUNT SETTINGS", action: () => renderAccountSettingsModal(session) });
+    }
+    items.push({ label: "LOG OUT", action: doLogout, danger: true });
+
     // Left-align to the button (not right-align) - right-aligning a menu
     // wider than a short button (e.g. "OWNER") pulls it left underneath
     // whatever nav tab sits before it, which looked like a placement bug.
@@ -259,18 +340,20 @@ function renderAccountMenu() {
     // viewport (e.g. a narrow mobile screen).
     const overflowsRight = rect.left + menuWidth > window.innerWidth;
     const horizontalRule = overflowsRight ? `right: ${window.innerWidth - rect.right}px;` : `left: ${rect.left}px;`;
+    // Opens downward by default; flips to opening upward (like the menu
+    // page's own category jump popup, which always opens above its FAB)
+    // when there isn't room below - the staff rail's account button sits
+    // fixed at the very bottom of the screen, where opening down would run
+    // the menu off-screen entirely.
+    const estimatedMenuHeight = items.length * 41 + 2;
+    const opensUp = rect.bottom + 6 + estimatedMenuHeight > window.innerHeight;
+    const verticalRule = opensUp ? `bottom: ${window.innerHeight - rect.top + 6}px;` : `top: ${rect.bottom + 6}px;`;
     menu.style.cssText = `
-        position: fixed; top: ${rect.bottom + 6}px; ${horizontalRule}
+        position: fixed; ${verticalRule} ${horizontalRule}
         background: var(--color-surface); border: 1px solid var(--color-accent);
         min-width: ${menuWidth}px; z-index: 5500; font-family: 'Courier New', monospace;
         box-shadow: 4px 4px 0 rgba(0,0,0,0.4);
     `;
-
-    const items = [];
-    if (session.role !== "guest") {
-        items.push({ label: "ACCOUNT SETTINGS", action: () => renderAccountSettingsModal(session) });
-    }
-    items.push({ label: "LOG OUT", action: doLogout, danger: true });
 
     menu.innerHTML = items
         .map(
@@ -305,6 +388,7 @@ function renderAccountMenu() {
 function doLogout() {
     AuthSystem.logout().then(async () => {
         await refreshSession();
+        await refreshBranding();
         window.showPage("home");
     });
 }
@@ -348,7 +432,7 @@ window.setViewMode = (mode) => {
 };
 
 window.showPage = async (pageId) => {
-    const needsKitchenRole = pageId === "kitchen" || pageId === "orders";
+    const needsKitchenRole = pageId === "kitchen" || pageId === "orders" || pageId === "staff-home" || pageId === "billing";
     const needsAdminRole = pageId === "admin";
 
     if (needsKitchenRole || needsAdminRole) {
@@ -385,6 +469,27 @@ window.showPage = async (pageId) => {
         }
     });
 
+    // Keep the shell's highlighted tab in sync no matter what triggered
+    // this navigation (its own nav buttons, or e.g. staff-home's "NEW
+    // ORDER" button calling showPage('menu') directly). The shell is active
+    // for ANY real session now (customer/guest included, see
+    // updateStaffShellForSession()), not just staff - this used to check
+    // KITCHEN_ROLES only, a leftover from when it was staff-exclusive, so a
+    // customer's clicked tab updated StaffShell.activeTab in memory (see
+    // wireButtons()) but the nav DOM never actually re-rendered to show it -
+    // Home stayed visually highlighted forever after the first paint.
+    if (session.role) {
+        StaffShell.setActiveFromPageId(pageId);
+        StaffShell.render();
+    }
+
+    if (pageId === "staff-home") {
+        await renderStaffHome(session);
+    }
+    if (pageId === "billing") {
+        await renderBillingPage();
+        ensureOrdersStream();
+    }
     if (pageId === "admin") {
         const module = await import("./ui/admin-portal.js");
         await module.AdminPortal.init();
@@ -402,8 +507,11 @@ window.showPage = async (pageId) => {
     }
     if (pageId === "home") {
         renderPopularPicks();
-        renderLiveStatsTicker();
+        renderHomeStoreFacts();
+        renderHomeRoastSteps();
+        renderHomeVisitRows();
         await refreshOrderStatusWidget();
+        refreshHomeArcadeButton();
         if (TRACKING_ROLES.includes(session.role)) ensureOrdersStream();
     }
     if (pageId === "arcade") {
@@ -413,47 +521,59 @@ window.showPage = async (pageId) => {
     }
 };
 
-/**
- * Shows the signed-in customer's/guest's current order and its live status
- * on the home page - but ONLY when there's an actual order in progress.
- * Staff, nobody logged in, a customer/guest with no orders, and a
- * customer/guest whose only orders are already fully completed all just
- * don't show this section at all, rather than an empty/prompt state taking
- * up space on every visit.
- */
 function soundIconSvg(muted) {
     return muted
         ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>`
         : `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03z"/><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
 }
 
+// The order this popup click handler shows - kept as module state rather
+// than re-fetched on click, since the compact nav widget already has it
+// fresh from the render that's currently on screen.
+let activeOrderForPopup = null;
+
 async function refreshOrderStatusWidget() {
-    const section = document.getElementById("order-status-section");
-    const root = document.getElementById("order-status-root");
-    if (!section || !root) return;
+    // Lives in the nav shell now (rail + topbar, next to the account button)
+    // instead of a fixed home-page card, so it's visible from any page - see
+    // staff-shell.js's renderRail()/renderTopbar(), which call this after
+    // every render (login, logout, layout switch, page navigation).
+    const targets = [document.getElementById("rail-order-widget"), document.getElementById("topbar-order-widget")].filter(Boolean);
+    if (targets.length === 0) return;
 
     if (!TRACKING_ROLES.includes(session.role)) {
-        section.style.display = "none";
+        targets.forEach((el) => (el.innerHTML = ""));
+        activeOrderForPopup = null;
         return;
     }
 
+    // "Previous order" fallback opens the same order-history modal as
+    // before (with ratings) - see window.openMyOrders().
+    const renderFallback = () => {
+        targets.forEach((el) => {
+            el.innerHTML = `<button type="button" class="nav-order-widget-btn nav-order-widget-prev" onclick="window.openMyOrders()">Previous order</button>`;
+        });
+        activeOrderForPopup = null;
+    };
+
     const orders = await KitchenSystem.fetchMine();
-    // "Active" = still being made, or just became ready recently (so the
-    // customer still sees "come pick it up") - once it's been ready for a
-    // while, or once there's simply no order, this section just disappears
-    // rather than showing an empty/prompt state indefinitely.
+    // "Active" = still being made, or reached a terminal state (READY/
+    // SERVED) recently enough that the confirmation is still useful - once
+    // that's been true for a while, or once there's simply no order, this
+    // falls back to "Previous order" instead of showing a stale card forever.
     const READY_VISIBLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
     const activeOrder = orders.find((o) => {
-        if (o.status !== "READY") return true;
+        if (o.status !== "READY" && o.status !== "SERVED") return true;
         return Date.now() - new Date(o.createdAt).getTime() < READY_VISIBLE_WINDOW_MS;
     });
     if (!activeOrder) {
-        section.style.display = "none";
+        renderFallback();
         return;
     }
 
     const order = activeOrder;
-    const statusColor = order.status === "READY" ? "var(--color-success)" : order.status === "PREPARING" ? "var(--color-cyan)" : "var(--color-accent)";
+    activeOrderForPopup = order;
+    const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
+    const statusColor = STATUS_COLORS[order.status] || "var(--color-accent)";
 
     // Only chime on the moment an order becomes READY (not on every poll
     // while it stays READY, and not for an order that was already READY the
@@ -466,29 +586,64 @@ async function refreshOrderStatusWidget() {
     }
     lastSeenOrderStatuses[order.id] = order.status;
 
-    // Only offer the "enable notifications" prompt when we haven't asked yet
-    // (permission === "default") - once granted or denied, the browser's
-    // own choice stands and nagging again would just be annoying.
+    // Minimal by design - order number, live status color, that's it. Full
+    // detail (items, paid/pending, notification/sound toggles) is one click
+    // away in the popup - see window.openOrderStatusPopup().
+    const compactHtml = `
+        <button type="button" class="nav-order-widget-btn" onclick="window.openOrderStatusPopup()">
+            <span class="nav-order-widget-num">#${escapeHtml(String(order.orderNumber || order.id))}</span>
+            <span class="nav-order-widget-status" style="color:${statusColor};">${escapeHtml(order.status)}</span>
+        </button>
+    `;
+    targets.forEach((el) => (el.innerHTML = compactHtml));
+}
+
+/** Full order detail, shown as a popup when the compact nav widget is
+ *  clicked - same content the old fixed home-page card used to show
+ *  inline, just on demand now instead of always taking up layout space. */
+window.openOrderStatusPopup = () => {
+    const order = activeOrderForPopup;
+    if (!order) return;
+    document.getElementById("order-status-popup")?.remove();
+    const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
+    const statusColor = STATUS_COLORS[order.status] || "var(--color-accent)";
     const notifyPromptHtml =
         NotificationSystem.permission() === "default"
             ? `<button onclick="window.requestOrderNotifications(this)" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;" title="Get a notification when your order is ready">\u{1F514}</button>`
             : "";
 
-    section.style.display = "block";
-    root.innerHTML = `
-        <div class="status-card" style="border:1px solid var(--color-accent); padding:15px; font-family:'Courier New',monospace;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                <span>#${order.orderNumber || order.id}</span>
+    const overlay = document.createElement("div");
+    overlay.id = "order-status-popup";
+    overlay.className = "modal-overlay";
+    overlay.style.zIndex = "4500";
+    overlay.innerHTML = `
+        <div class="modal-content" style="background:var(--color-surface); border:2px solid var(--color-accent); padding:24px; width:min(360px, 92vw); box-sizing:border-box; font-family:'Courier New',monospace;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <span style="font-size:14px; font-weight:bold;">#${escapeHtml(String(order.orderNumber || order.id))}</span>
                 <span style="display:flex; align-items:center; gap:8px;">
                     ${notifyPromptHtml}
                     <button onclick="window.toggleOrderSound(this)" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-accent); opacity:${SoundSystem.isMuted() ? "0.5" : "1"}; padding:0;">${soundIconSvg(SoundSystem.isMuted())}</button>
-                    <span style="color:${statusColor}; font-weight:bold;">${order.status}</span>
+                    <span style="color:${statusColor}; font-weight:bold;">${escapeHtml(order.status)}</span>
                 </span>
             </div>
-            <div style="font-size:9pt; color:var(--color-text-muted);">${order.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")}</div>
-            <div style="font-size:9pt; margin-top:8px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 \u20b9${order.total.toFixed(2)}</div>
+            <div style="font-size:10pt; color:var(--color-text-muted); margin-bottom:10px;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
+            <div style="font-size:10pt; margin-bottom:18px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 \u20b9${order.total.toFixed(2)}</div>
+            <button type="button" style="width:100%; padding:11px; background:var(--color-border); color:var(--color-text); border:none; cursor:pointer; text-transform:uppercase; font-family:inherit;" onclick="document.getElementById('order-status-popup').remove()">Close</button>
         </div>
     `;
+    document.body.appendChild(overlay);
+};
+window.refreshOrderStatusWidget = refreshOrderStatusWidget;
+
+/** The hero's second button used to just duplicate "Start order" ("See the
+ *  menu" pointed at the same page) - now it's the arcade shortcut instead,
+ *  shown only once the same server check the Arcade page itself uses
+ *  (ArcadeSystem.checkAccess) says it's actually unlocked. */
+async function refreshHomeArcadeButton() {
+    const btn = document.getElementById("home-hero-arcade-btn");
+    if (!btn) return;
+    const access = await ArcadeSystem.checkAccess();
+    btn.style.display = access.allowed ? "inline-block" : "none";
 }
 
 /**
@@ -507,13 +662,24 @@ function ensureOrdersStream() {
     ordersStream = KitchenSystem.connectLiveUpdates(
         async () => {
             const kitchenPage = document.getElementById("page-kitchen") || document.getElementById("page-orders");
-            if (kitchenPage && kitchenPage.classList.contains("active")) {
+            const kitchenActive = kitchenPage && kitchenPage.classList.contains("active");
+            if (kitchenActive) {
                 await KitchenSystem.fetchOrders();
                 renderKitchen();
             }
             const homePage = document.getElementById("page-home");
             if (homePage && homePage.classList.contains("active")) {
                 await refreshOrderStatusWidget();
+            }
+            // The staff nav's "Orders" badge (StaffShell.setBadge) needs a
+            // fresh count regardless of which page is showing, unlike the
+            // two blocks above which only bother re-rendering a page the
+            // person is actually looking at - re-fetching here only if the
+            // Kitchen page didn't already just do it above.
+            if (KITCHEN_ROLES.includes(session.role)) {
+                if (!kitchenActive) await KitchenSystem.fetchOrders();
+                const awaitingFire = KitchenSystem.orders.filter((o) => !o.items.every((i) => i.isDone)).length;
+                StaffShell.setBadge("orders", awaitingFire);
             }
         },
         () => {
@@ -697,8 +863,10 @@ window.printBill = (order) => {
         </head>
         <body onload="window.print(); window.close();">
             <div class="center">
-                <h3>SEVEN BITS COFFEE</h3>
-                <p style="font-size: 8pt;">Hazaribagh, Jharkhand<br>#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
+                ${siteConfig.logoUrl ? `<img src="${escapeHtml(siteConfig.logoUrl)}" style="max-width:120px; max-height:60px; margin-bottom:6px;" />` : ""}
+                <h3>${escapeHtml(siteConfig.shopName || "SEVEN BITS COFFEE")}</h3>
+                <p style="font-size: 8pt;">${siteConfig.footer?.address ? escapeHtml(siteConfig.footer.address) + "<br>" : ""}#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
+                ${siteConfig.gstNumber ? `<p style="font-size: 7pt;">GSTIN: ${escapeHtml(siteConfig.gstNumber)}</p>` : ""}
                 ${order.tableNumber ? `<p style="font-size: 10pt; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
             </div>
             <div class="hr"></div>
@@ -726,7 +894,7 @@ window.printBill = (order) => {
             ${order.tipApplied ? `<div class="row">GINGER TIP: <span>\u20b9${order.tipAmount.toFixed(2)}</span></div>` : ""}
             <div class="row total">TOTAL: <span>\u20b9${order.total.toFixed(2)}</span></div>
             <div class="hr"></div>
-            <p class="center" style="font-size: 8pt;">- G=7 | Processed with precision -</p>
+            <p class="center" style="font-size: 8pt;">${escapeHtml(siteConfig.receiptFooterText || "Thank you for visiting!")}</p>
         </body>
         </html>
     `);
@@ -779,13 +947,18 @@ window.printKOT = (order) => {
  *    screen with their order number, amount, and an approximate wait time.
  */
 window.startCheckout = async (method) => {
-    const btn = document.getElementById(method === "ONLINE" ? "btn-pay-online" : "btn-pay-cash");
+    const isStaffCheckout = KITCHEN_ROLES.includes(session.role);
+    const btn = document.getElementById("btn-checkout-staff") || document.getElementById(method === "ONLINE" ? "btn-pay-online" : "btn-pay-cash");
     const errorBox = document.getElementById("checkout-error");
     if (errorBox) errorBox.textContent = "";
 
-    const phone = document.getElementById("checkout-phone")?.value || "";
-    if (!phone.trim()) {
-        if (errorBox) errorBox.textContent = "Enter a phone number so this order can be tracked.";
+    // Only staff placing an order on someone's behalf have the guest/phone
+    // fields at all - a customer/guest checking themselves out already has
+    // an identity from their own session, so their phone is never re-asked.
+    const guestOrder = isStaffCheckout ? document.getElementById("checkout-guest-order")?.checked || false : false;
+    const phone = isStaffCheckout ? document.getElementById("checkout-phone")?.value || "" : session.phone || "";
+    if (isStaffCheckout && !guestOrder && !phone.trim()) {
+        if (errorBox) errorBox.textContent = "Enter a phone number, or check GUEST.";
         return;
     }
 
@@ -795,26 +968,51 @@ window.startCheckout = async (method) => {
     }
 
     try {
-        const markPaidNow = document.getElementById("checkout-mark-paid-now")?.checked || false;
         const tableSessionId = document.getElementById("checkout-table-session")?.value || null;
         const discount = window.__checkoutDiscount || {};
         const order = await KitchenSystem.pushOrder(cart, method, {
             serviceChargeActive,
             tipApplied,
             phone,
-            markPaidNow,
+            markPaidNow: false,
             tableSessionId,
             couponCode: discount.couponCode || null,
-            redeemPoints: discount.redeemPoints || 0
+            redeemPoints: discount.redeemPoints || 0,
+            guestOrder,
+            orderType
         });
         pendingOrder = order;
+
+        cart = [];
+        serviceChargeActive = true;
+        tipApplied = false;
+        orderType = "takeaway";
+        updateCartUI();
+        window.closeModal();
+
+        // Staff hand off to Billing to actually settle the payment (cash,
+        // UPI, card, wallet) rather than choosing a method here - the order
+        // itself is always created the same way (unpaid, COUNTER) regardless
+        // of which checkout button was clicked. Wrapped separately from the
+        // order-creation try/catch above: the checkout modal (and its error
+        // box) is already gone by this point, so a failure here has to reach
+        // the user through a toast instead or it disappears silently.
+        if (isStaffCheckout) {
+            try {
+                selectBillForOrder(order.id);
+                await window.showPage("billing");
+            } catch (navError) {
+                window.showToast?.(`Order #${order.orderNumber || order.id} was created, but opening Billing failed: ${navError.message}`, "error");
+            }
+            return;
+        }
+
         renderPaymentConfirmation(order, method, { isCustomerFacing: TRACKING_ROLES.includes(session.role) });
     } catch (e) {
         if (errorBox) errorBox.textContent = e.message;
-    } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = method === "ONLINE" ? "PAY ONLINE (UPI)" : "PAY CASH";
+            btn.textContent = btn.id === "btn-checkout-staff" ? "[ CHECKOUT ]" : method === "ONLINE" ? "PAY ONLINE (UPI)" : "PAY CASH";
         }
     }
 };
@@ -850,6 +1048,7 @@ window.initSearchBar = () => {
         searchInput.addEventListener("input", (e) => {
             clearTimeout(debounceTimer);
             const value = e.target.value;
+            menuSectionPages = {};
             debounceTimer = setTimeout(() => renderMenu(value), 150);
         });
     }
@@ -884,23 +1083,25 @@ window.toggleJumpMenu = () => {
     }
 };
 
+/**
+ * Menu items no longer live under per-section scroll anchors (see
+ * renderMenu - it's one flat, paginated grid/list now, matching the design
+ * mockup). This jump menu now drives the same category-chip filter instead
+ * of a scroll target, so the existing FAB entry point still works rather
+ * than silently doing nothing.
+ */
 window.jumpTo = (sectionId) => {
-    const section = document.getElementById(`section-${sectionId}`);
-    if (section) {
-        const titleElement = section.querySelector("h2") || section.querySelector(".section-header");
-
-        if (titleElement) {
-            const headerOffset = 90;
-            const elementPosition = titleElement.getBoundingClientRect().top;
-            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-
-            window.scrollTo({ top: offsetPosition, behavior: "smooth" });
-        } else {
-            section.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-
-        document.getElementById("jump-menu").style.display = "none";
+    if (sectionId === "combos") {
+        activeCategory = "All";
+    } else {
+        const section = menuData.sections.find((s) => s.id === sectionId);
+        if (!section) return;
+        activeCategory = section.title;
     }
+    menuSectionPages = {};
+    renderMenu(document.getElementById("menu-search")?.value || "");
+    document.getElementById("menu-root")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("jump-menu").style.display = "none";
 };
 
 function escapeHtml(str) {
@@ -930,17 +1131,150 @@ function iconMarkup(iconKey) {
  *  don't have a real photo yet, not meant to be shown alongside one. */
 function itemImageMarkup(item) {
     if (item.imageUrl) {
-        return `<img src="${item.imageUrl}" alt="" class="menu-item-photo" style="width:56px; height:56px; object-fit:cover; border-radius:6px; flex-shrink:0;" />`;
+        return `<img src="${item.imageUrl}" alt="" class="menu-item-photo" />`;
     }
     return iconMarkup(item.icon);
+}
+
+/**
+ * Category pill row above the menu grid/list, mirroring the mockup's
+ * category-chip filter - built fresh each render since it needs to reflect
+ * the current activeCategory highlight, and menuData.sections is small.
+ *
+ * Chips no longer wrap onto their own extra rows at a narrower window width
+ * (which used to push the Grid/List toggle down and overlap it) - the row
+ * stays single-line, and whichever chips don't fit collapse into a "⋯"
+ * overflow button with a popover listing the rest, same idea as the jump
+ * menu's popover. The active category always stays visible in the main
+ * row (bumping the last chip that fits into overflow instead) so you can
+ * always see what's currently selected without opening the popover.
+ */
+function renderMenuCategoryChips() {
+    const root = document.getElementById("menu-cat-chips");
+    if (!root) return;
+    const cats = ["All", ...menuData.sections.map((s) => s.title)];
+
+    const wireChip = (btn) => {
+        btn.addEventListener("click", () => {
+            activeCategory = btn.dataset.cat;
+            menuSectionPages = {};
+            renderMenu(document.getElementById("menu-search")?.value || "");
+        });
+    };
+    const chipHtml = (name) => `<button type="button" class="menu-cat-chip${activeCategory === name ? " active" : ""}" data-cat="${escapeHtml(name)}">${escapeHtml(name)}</button>`;
+
+    // Render everything first so widths are measurable, then trim.
+    root.innerHTML = cats.map(chipHtml).join("");
+    root.querySelectorAll(".menu-cat-chip").forEach(wireChip);
+
+    const containerWidth = root.getBoundingClientRect().width;
+    if (containerWidth === 0) return; // not laid out yet (e.g. hidden page) - nothing to measure
+
+    const OVERFLOW_BTN_WIDTH = 44; // reserve room for the "⋯" button, in case it's needed
+    const chipEls = Array.from(root.querySelectorAll(".menu-cat-chip"));
+    const gap = 7; // matches .menu-cat-chips gap in theme.css
+    let usedWidth = 0;
+    let visibleCount = chipEls.length;
+    for (let i = 0; i < chipEls.length; i++) {
+        const w = chipEls[i].getBoundingClientRect().width + (i > 0 ? gap : 0);
+        const budget = i < chipEls.length - 1 ? containerWidth - OVERFLOW_BTN_WIDTH - gap : containerWidth;
+        if (usedWidth + w > budget) {
+            visibleCount = i;
+            break;
+        }
+        usedWidth += w;
+    }
+
+    if (visibleCount >= cats.length) return; // everything fits - no overflow menu needed
+
+    const activeIndex = cats.indexOf(activeCategory);
+    // Keep the active chip visible even if it would otherwise overflow - swap
+    // it in for whichever visible chip would be last, so the active category
+    // is never hidden behind the "⋯" popover.
+    const visibleIndexes = Array.from({ length: visibleCount }, (_, i) => i);
+    if (activeIndex >= visibleCount) {
+        visibleIndexes[visibleIndexes.length - 1] = activeIndex;
+    }
+    const hiddenIndexes = cats.map((_, i) => i).filter((i) => !visibleIndexes.includes(i));
+
+    root.innerHTML = visibleIndexes.map((i) => chipHtml(cats[i])).join("");
+    root.querySelectorAll(".menu-cat-chip").forEach(wireChip);
+
+    const overflowBtn = document.createElement("button");
+    overflowBtn.type = "button";
+    overflowBtn.className = "menu-cat-chip menu-cat-overflow-btn";
+    overflowBtn.setAttribute("aria-label", "More categories");
+    overflowBtn.textContent = "⋯";
+    root.appendChild(overflowBtn);
+
+    overflowBtn.addEventListener("click", () => {
+        document.getElementById("menu-cat-overflow-menu")?.remove();
+        const rect = overflowBtn.getBoundingClientRect();
+        const menu = document.createElement("div");
+        menu.id = "menu-cat-overflow-menu";
+        menu.className = "menu-cat-overflow-menu";
+        menu.style.cssText = `position:fixed; top:${rect.bottom + 6}px; left:${rect.left}px;`;
+        menu.innerHTML = hiddenIndexes
+            .map((i) => `<button type="button" class="menu-cat-chip${activeCategory === cats[i] ? " active" : ""}" data-cat="${escapeHtml(cats[i])}">${escapeHtml(cats[i])}</button>`)
+            .join("");
+        document.body.appendChild(menu);
+        menu.querySelectorAll(".menu-cat-chip").forEach(wireChip);
+        setTimeout(() => {
+            document.addEventListener(
+                "click",
+                function closeMenu(e) {
+                    if (!menu.contains(e.target) && e.target !== overflowBtn) {
+                        menu.remove();
+                        document.removeEventListener("click", closeMenu);
+                    }
+                },
+                { once: false }
+            );
+        }, 0);
+    });
+}
+
+/** Prev/Next pager for one section's item grid/list - reuses the same
+ *  «‹ X-Y of Z ›» pattern (.admin-pg-btn, see theme.css) already used for
+ *  order history/menu-items tables in Admin. Each section paginates on its
+ *  own (menuSectionPages[sectionId]), so paging one category doesn't affect
+ *  any other. Appended right after that section's grid/list container; a
+ *  no-op when that section's items all fit on one page. */
+function renderSectionPager(container, sectionId, currentPage, totalItems, totalPages) {
+    if (totalPages <= 1) return;
+
+    const pageStart = (currentPage - 1) * MENU_PAGE_SIZE;
+    const label = `${pageStart + 1}-${Math.min(pageStart + MENU_PAGE_SIZE, totalItems)} of ${totalItems}`;
+
+    const pagerEl = document.createElement("div");
+    pagerEl.className = "menu-pager";
+    pagerEl.innerHTML = `
+        <button type="button" class="admin-pg-btn" data-page="1" ${currentPage <= 1 ? "disabled" : ""} title="First page">«</button>
+        <button type="button" class="admin-pg-btn" data-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""} title="Previous page">‹</button>
+        <span class="menu-pager-label">${label}</span>
+        <button type="button" class="admin-pg-btn" data-page="${currentPage + 1}" ${currentPage >= totalPages ? "disabled" : ""} title="Next page">›</button>
+        <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${currentPage >= totalPages ? "disabled" : ""} title="Last page">»</button>
+    `;
+    container.appendChild(pagerEl);
+    pagerEl.querySelectorAll("[data-page]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const page = Number(btn.dataset.page);
+            if (!page || page < 1 || page > totalPages) return;
+            menuSectionPages[sectionId] = page;
+            renderMenu(document.getElementById("menu-search")?.value || "");
+        });
+    });
 }
 
 function renderMenu(filterQuery = "") {
     const root = document.getElementById("menu-root");
     if (!root) return;
     root.innerHTML = "";
+    renderMenuCategoryChips();
+    document.getElementById("menu-view-grid-btn")?.classList.toggle("active", viewMode === "grid");
+    document.getElementById("menu-view-list-btn")?.classList.toggle("active", viewMode === "list");
 
-    if (!favoritesFilterActive && !filterQuery && comboData.length > 0) {
+    if (!favoritesFilterActive && !filterQuery && activeCategory === "All" && comboData.length > 0) {
         const comboSection = document.createElement("section");
         comboSection.id = "section-combos";
         comboSection.className = "section-container";
@@ -967,7 +1301,7 @@ function renderMenu(filterQuery = "") {
             const comboEl = document.createElement("div");
             comboEl.className = "menu-item";
             comboEl.innerHTML = `
-                <span class="icon icon-cake"></span>
+                <div class="menu-item-banner"><span class="icon icon-cake"></span></div>
                 <div class="info">
                     <div class="name">${escapeHtml(combo.name)}</div>
                     <div class="story">${itemList}${combo.description ? ` &middot; ${escapeHtml(combo.description)}` : ""}</div>
@@ -986,20 +1320,34 @@ function renderMenu(filterQuery = "") {
         root.appendChild(comboSection);
     }
 
+    // Each section paginates independently (10 items/page) - not one flat
+    // list spanning every section, so paging category A never touches
+    // category B's page number. Sections with zero matching items (after
+    // the search/favorites filter) are skipped entirely.
+    let anyItemsRendered = false;
+
     menuData.sections.forEach((section) => {
-        const items = menuData.items.filter(
-            (item) =>
-                item.section === section.id &&
-                item.name.toLowerCase().includes(filterQuery.toLowerCase()) &&
-                (!favoritesFilterActive || FavoritesSystem.isFavorite(item.id))
-        );
+        if (activeCategory !== "All" && activeCategory !== section.title) return;
 
-        if (items.length === 0) return;
+        const sectionItems = menuData.items.filter((item) => {
+            if (item.section !== section.id) return false;
+            if (!item.name.toLowerCase().includes(filterQuery.toLowerCase())) return false;
+            if (favoritesFilterActive && !FavoritesSystem.isFavorite(item.id)) return false;
+            return true;
+        });
+        if (sectionItems.length === 0) return;
+        anyItemsRendered = true;
 
-        const sectionEl = document.createElement("section");
-        sectionEl.id = `section-${section.id}`;
-        sectionEl.className = "section-container";
-        sectionEl.innerHTML = `<h2 class="section-title">${section.title}</h2>`;
+        const totalPages = Math.max(1, Math.ceil(sectionItems.length / MENU_PAGE_SIZE));
+        const currentPage = Math.min(Math.max(1, menuSectionPages[section.id] || 1), totalPages);
+        menuSectionPages[section.id] = currentPage;
+        const pageStart = (currentPage - 1) * MENU_PAGE_SIZE;
+        const items = sectionItems.slice(pageStart, pageStart + MENU_PAGE_SIZE);
+
+        const headerEl = document.createElement("h2");
+        headerEl.className = "section-title";
+        headerEl.textContent = section.title;
+        root.appendChild(headerEl);
 
         const itemsContainer = document.createElement("div");
         itemsContainer.className = viewMode === "grid" ? "menu-grid" : "menu-list";
@@ -1089,11 +1437,11 @@ function renderMenu(filterQuery = "") {
             itemEl.className = "menu-item";
             if (isUnavailable) itemEl.style.opacity = "0.45";
             itemEl.innerHTML = `
-                ${itemImageMarkup(item)}
+                <div class="menu-item-banner">${itemImageMarkup(item)}</div>
                 <div class="info">
                     <div class="name">${favButton}${item.name}${isSoldOut ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
-                    ${isUnavailable ? "" : `<button class="btn-customize-link" onclick="window.openCustomize(${item.id})" style="background:none; border:none; color:var(--color-accent); text-decoration:underline; font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;">+ CUSTOMIZE (SIZE/MILK/EXTRAS)</button>`}
+                    ${isUnavailable ? "" : `<button class="btn-customize-link" onclick="window.openCustomize(${item.id})" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE (SIZE/MILK/EXTRAS)</span></button>`}
                     ${staffRequestHtml}
                 </div>
                 <div class="item-controls">
@@ -1106,19 +1454,149 @@ function renderMenu(filterQuery = "") {
             itemsContainer.appendChild(wrapperEl);
         });
 
-        sectionEl.appendChild(itemsContainer);
-        root.appendChild(sectionEl);
+        root.appendChild(itemsContainer);
+        renderSectionPager(root, section.id, currentPage, sectionItems.length, totalPages);
     });
 
-    if (favoritesFilterActive && !root.hasChildNodes()) {
-        root.innerHTML = `<p style="text-align:center; padding: 30px; font-size: 9pt; color: var(--color-text-muted);">No favorites yet - tap the \u2606 on any item to add one.</p>`;
+    if (!anyItemsRendered) {
+        root.innerHTML += favoritesFilterActive
+            ? `<p style="text-align:center; padding: 30px; font-size: 9pt; color: var(--color-text-muted);">No favorites yet - tap the \u2606 on any item to add one.</p>`
+            : `<p style="text-align:center; padding: 30px; font-size: 9pt; color: var(--color-text-muted);">No items match.</p>`;
     }
 
     const footer = document.getElementById("footer-actions");
     const cartBar = document.getElementById("cart-status");
+    const jumpFab = document.querySelector(".btn-jump-fab");
 
     if (footer) footer.style.display = "flex";
     if (cartBar) cartBar.style.display = cart.length > 0 ? "flex" : "none";
+    // The jump-to-category FAB only earns its place when "All" is selected -
+    // once a specific chip narrows the grid down already, a second way to
+    // jump to a category is just clutter.
+    if (jumpFab) jumpFab.style.display = activeCategory === "All" ? "" : "none";
+
+    renderMenuCartPanel();
+}
+
+/**
+ * Persistent Cart/KOT panel beside the menu grid, for everyone - see
+ * .menu-cart-panel in theme.css and the comment in index.html for why this
+ * exists alongside (not instead of) the footer cart bar + checkout modal
+ * (the desktop-only breakpoint hides that bar once this panel is showing).
+ * Re-runs every time renderMenu() does, which already happens after every
+ * cart mutation (addCartLine/adjustCartLine/etc. all call renderMenu()), so
+ * this stays in sync for free rather than needing its own set of
+ * cart-change listeners.
+ */
+function renderMenuCartPanel() {
+    const panel = document.getElementById("menu-cart-panel");
+    if (!panel) return;
+    panel.style.display = "flex";
+
+    const breakdown = CartSystem.calculateBreakdown(cart, siteConfig);
+    const totalItems = cart.reduce((sum, c) => sum + c.quantity, 0);
+
+    // Group each item's default line together with its own customized
+    // variants (rather than raw insertion order) so a size/milk/extras
+    // version of something already in the cart lands next to it instead of
+    // trailing at the end of the list - same grouping the menu grid/list
+    // itself uses (defaultLine + customizedLines side by side per item).
+    const seenItemIds = [];
+    cart.forEach((line) => {
+        if (!seenItemIds.includes(line.id)) seenItemIds.push(line.id);
+    });
+    const groupedCart = seenItemIds.flatMap((id) => cart.filter((line) => line.id === id));
+
+    panel.innerHTML = `
+        <div style="padding:16px 18px 14px; border-bottom:1px dashed var(--color-border); flex:none;">
+            <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
+                <h2 style="font-size:12.5px; font-weight:bold; letter-spacing:.18em; margin:0; text-transform:uppercase; color:var(--color-accent);">Cart / KOT</h2>
+                <span style="font-size:10.5px; color:var(--color-text-muted);">${totalItems} item${totalItems === 1 ? "" : "s"}</span>
+            </div>
+        </div>
+        <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:4px 18px;">
+            ${
+                groupedCart.length === 0
+                    ? `<p style="padding:36px 0; text-align:center; color:var(--color-text-muted); font-size:11px; line-height:1.8;">Cart is empty.<br>Tap an item to add it.</p>`
+                    : groupedCart
+                          .map((line, i) => {
+                              const isCustomized = line.cartKey !== defaultCartKey(line.id);
+                              // Same shape as the checkout modal's own "CUSTOMIZED" breakdown
+                              // (CustomizationSystem.describeLineWithAmounts) - each choice on
+                              // its own row with what it added, not just a name tag. Same base
+                              // row styling as a plain line too - a customized line isn't a
+                              // visually different kind of cart entry, just one with more detail.
+                              // Collapsed by default (like the checkout modal's own CUSTOMIZED
+                              // tag) - a 3-4 line breakdown per line adds up fast with several
+                              // customized items in the cart at once.
+                              const detailLines = isCustomized ? CustomizationSystem.describeLineWithAmounts(line) : [];
+                              const extraTotal = detailLines.reduce((sum, d) => sum + d.amount, 0);
+                              const breakdownId = `menu-cart-breakdown-${i}`;
+                              const detailsHtml = isCustomized
+                                  ? `
+                        <div style="margin-top:4px;">
+                            <span onclick="const el=document.getElementById('${breakdownId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" style="font-size:9px; font-weight:bold; letter-spacing:.08em; color:var(--color-accent); text-transform:uppercase; cursor:pointer; text-decoration:underline;">Customized</span>
+                            <span style="font-size:9px; color:var(--color-text-muted); margin-left:4px;">₹${extraTotal.toFixed(2)}</span>
+                            <div id="${breakdownId}" style="display:none; margin-top:3px;">
+                                ${detailLines
+                                    .map(
+                                        (d) => `
+                                <div style="display:flex; justify-content:space-between; gap:8px; font-size:9.5px; color:var(--color-text-muted); padding:1px 0 1px 8px;">
+                                    <span>${escapeHtml(d.label)}</span><span>₹${d.amount.toFixed(2)}</span>
+                                </div>`
+                                    )
+                                    .join("")}
+                            </div>
+                        </div>`
+                                  : "";
+                              return `
+                <div style="display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px dashed var(--color-border);">
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:11.5px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(line.name)}</div>
+                        <div style="font-size:9.5px; color:var(--color-text-muted); margin-top:3px;">₹${line.price.toFixed(2)} each</div>
+                        ${detailsHtml}
+                        ${line.notes ? `<div style="font-size:9.5px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(line.notes)}"</div>` : ""}
+                    </div>
+                    <div class="btn-qty-container">
+                        <button onclick="window.adjustCartLine('${line.cartKey}', -1)">-</button>
+                        <span>${line.quantity}</span>
+                        <button onclick="window.adjustCartLine('${line.cartKey}', 1)">+</button>
+                    </div>
+                    <span style="width:56px; flex:none; text-align:right; font-size:11px; font-weight:bold;">₹${(line.price * line.quantity).toFixed(2)}</span>
+                </div>
+            `;
+                          })
+                          .join("")
+            }
+        </div>
+        <div style="padding:14px 18px 18px; border-top:1px solid var(--color-border); flex:none;">
+            <div style="margin-bottom:12px;">
+                <div style="font-size:9.5px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); margin-bottom:6px;">ORDER TYPE</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <button type="button" class="cart-order-type-btn" data-order-type="takeaway" style="padding:9px 6px; background:${orderType === "takeaway" ? "var(--color-accent)" : "transparent"}; color:${orderType === "takeaway" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Takeaway</button>
+                    <button type="button" class="cart-order-type-btn" data-order-type="dine-in" style="padding:9px 6px; background:${orderType === "dine-in" ? "var(--color-accent)" : "transparent"}; color:${orderType === "dine-in" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Dine-in</button>
+                </div>
+            </div>
+            <!-- Deliberately no tax/service-charge breakdown here - just the
+                 items subtotal while still browsing/adding. Tax, service
+                 charge, and tip are calculated (and shown) starting at
+                 checkout - see renderCheckoutModal() - and again on the
+                 Billing page and the printed bill, not before. -->
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:10px 0 14px;">
+                <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">SUBTOTAL</span>
+                <span style="font-size:22px; font-weight:bold; color:var(--color-accent);">₹${breakdown.subtotal.toFixed(2)}</span>
+            </div>
+            <button id="staff-cart-checkout-btn" ${cart.length === 0 ? "disabled" : ""} style="width:100%; padding:12px; background:${cart.length ? "var(--color-accent)" : "var(--color-border)"}; color:${cart.length ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:none; font-size:11.5px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:${cart.length ? "pointer" : "not-allowed"}; min-height:44px;">[ Checkout ]</button>
+            <div style="font-size:9px; color:var(--color-text-muted); text-align:center; margin-top:8px; line-height:1.5;">Tax, service charge & tip shown at checkout.</div>
+        </div>
+    `;
+    panel.querySelector("#staff-cart-checkout-btn")?.addEventListener("click", () => window.handleCartStatusClick());
+    panel.querySelectorAll(".cart-order-type-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            orderType = btn.dataset.orderType;
+            renderMenuCartPanel();
+        });
+    });
 }
 
 function paintFavoritesFilterStar() {
@@ -1130,6 +1608,7 @@ function paintFavoritesFilterStar() {
 
 window.toggleFavoritesFilter = () => {
     favoritesFilterActive = !favoritesFilterActive;
+    menuSectionPages = {};
     paintFavoritesFilterStar();
     renderMenu(document.getElementById("menu-search")?.value || "");
 };
@@ -1233,9 +1712,12 @@ window.handleCartStatusClick = async () => {
  */
 let kitchenStatusFilter = "active"; // "active" | "history" | "all"
 let kitchenSortOrder = "newest"; // "newest" | "oldest"
+let kitchenPage = 1; // 1-based; reset to 1 whenever the filtered ticket set changes
+const KITCHEN_PAGE_SIZE = 10;
 
 window.filterKitchen = async (station) => {
     currentKitchenStation = station;
+    kitchenPage = 1;
 
     document.querySelectorAll(".kitchen-tabs .admin-tab-btn").forEach((btn) => {
         btn.classList.remove("active");
@@ -1341,6 +1823,7 @@ async function renderTablesPanel() {
 
 window.setKitchenStatusFilter = (filter) => {
     kitchenStatusFilter = filter;
+    kitchenPage = 1;
     document.querySelectorAll("[data-status-filter]").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.statusFilter === filter);
     });
@@ -1349,6 +1832,7 @@ window.setKitchenStatusFilter = (filter) => {
 
 window.setKitchenSort = (sort) => {
     kitchenSortOrder = sort;
+    kitchenPage = 1;
     renderKitchen();
 };
 
@@ -1362,76 +1846,123 @@ function renderKitchen() {
         return kitchenSortOrder === "newest" ? -diff : diff;
     });
 
-    let visibleCount = 0;
-
+    // Filter first, THEN paginate the filtered set (10 tickets/page) - the
+    // old version filtered and rendered in the same pass, which had no
+    // natural place to slice for pagination.
+    const isMaster = currentKitchenStation === "MASTER";
+    const matchingOrders = [];
     sorted.forEach((order) => {
-            const isMaster = currentKitchenStation === "MASTER";
-            const orderIsComplete = order.items.every((i) => i.isDone);
+        const orderIsComplete = !!order.servedAt;
+        // ACTIVE hides served orders; HISTORY shows only served ones;
+        // ALL shows everything regardless of status.
+        if (kitchenStatusFilter === "active" && orderIsComplete) return;
+        if (kitchenStatusFilter === "history" && !orderIsComplete) return;
 
-            // ACTIVE hides fully-completed orders; HISTORY shows only
-            // completed ones; ALL shows everything regardless of status.
-            if (kitchenStatusFilter === "active" && orderIsComplete) return;
-            if (kitchenStatusFilter === "history" && !orderIsComplete) return;
+        const itemsToDisplay = isMaster
+            ? order.items
+            : order.items.filter((i) => {
+                  const station = i.station || KitchenSystem.getStation(i);
+                  return station === currentKitchenStation && (!i.isDone || kitchenStatusFilter !== "active");
+              });
+        if (!isMaster && itemsToDisplay.length === 0) return;
 
-            const itemsToDisplay = isMaster
-                ? order.items
-                : order.items.filter((i) => {
-                      const station = i.station || KitchenSystem.getStation(i);
-                      return station === currentKitchenStation && (!i.isDone || kitchenStatusFilter !== "active");
-                  });
+        matchingOrders.push({ order, itemsToDisplay });
+    });
 
-            if (!isMaster && itemsToDisplay.length === 0) return;
+    if (matchingOrders.length === 0) {
+        root.innerHTML = `<p style="color:var(--color-text-muted); font-family:'Courier New',monospace; font-size:9pt;">No ${kitchenStatusFilter === "history" ? "completed" : kitchenStatusFilter === "active" ? "active" : ""} orders${currentKitchenStation !== "MASTER" ? ` for ${currentKitchenStation}` : ""}.</p>`;
+        return;
+    }
 
-            visibleCount++;
+    const totalPages = Math.max(1, Math.ceil(matchingOrders.length / KITCHEN_PAGE_SIZE));
+    kitchenPage = Math.min(Math.max(1, kitchenPage), totalPages);
+    const pageStart = (kitchenPage - 1) * KITCHEN_PAGE_SIZE;
+    const pageOrders = matchingOrders.slice(pageStart, pageStart + KITCHEN_PAGE_SIZE);
+
+    pageOrders.forEach(({ order, itemsToDisplay }) => {
+            const allItemsDone = order.items.every((i) => i.isDone);
             const hasPendingItems = itemsToDisplay.some((i) => !i.isDone);
+            const status = KitchenSystem.statusOf(order);
+            const statusColor = KitchenSystem.STATUS_COLORS[status];
 
             const ticket = document.createElement("div");
             ticket.className = "kot-ticket";
-            const paidStatus = order.isPaid
-                ? "\u2713 PAID"
-                : `<button onclick="window.markPaid('${order.id}')" style="cursor:pointer; border:1px solid var(--color-accent); background:none; color:var(--color-accent); font-size:7pt;">MARK PAID</button>`;
+            ticket.style.borderTop = `4px solid ${statusColor}`;
+
+            const primaryActionHtml = hasPendingItems
+                ? `<button style="flex:1; padding:10px; background:var(--color-accent); border:2px solid var(--color-accent); color:var(--color-accent-contrast); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;" onclick="window.markCompleted('${order.id}')">${isMaster ? "Mark all done" : "Mark done"}</button>`
+                : isMaster && allItemsDone && !order.servedAt
+                  ? `<button style="flex:1; padding:10px; background:var(--color-success); border:2px solid var(--color-success); color:#000; font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;" onclick="window.markServed('${order.id}')">&gt; Mark served</button>`
+                  : `<span style="flex:1; padding:10px; text-align:center; font-size:11px; color:var(--color-text-muted); letter-spacing:.08em; text-transform:uppercase;">// served</span>`;
+
+            const paidActionHtml = order.isPaid
+                ? `<span style="padding:10px 13px; background:none; border:2px solid var(--color-border); color:var(--color-success); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase;">\u2713 Paid</span>`
+                : `<button style="padding:10px 13px; background:#000; border:2px solid var(--color-border); color:var(--color-text); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;" onclick="window.markPaid('${order.id}')">Bill</button>`;
 
             ticket.innerHTML = `
             <div class="kot-header">
-                <span>#${order.orderNumber || order.id}</span>
-                <span style="float:right;">${paidStatus}</span>
+                <div style="min-width:0;">
+                    <div style="font-size:11px; color:var(--color-text-muted); letter-spacing:.08em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">#${escapeHtml(order.orderNumber || order.id)} &middot; ${new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                    <div style="font-size:15px; font-weight:bold; margin-top:6px; letter-spacing:.08em; text-transform:uppercase;">${order.tableNumber ? `TABLE ${escapeHtml(order.tableNumber)}` : "COUNTER"}</div>
+                </div>
+                <span style="flex:none; padding:5px 8px; font-size:10px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; border:1px solid ${statusColor}; color:${statusColor};">${status}</span>
             </div>
-            ${order.tableNumber ? `<div style="font-size:9pt; font-weight:bold; color:var(--color-accent); margin-bottom:4px;">TABLE ${escapeHtml(order.tableNumber)}</div>` : ""}
-            <div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:6px;">${new Date(order.createdAt).toLocaleString()}</div>
             <div class="kot-body">
                 ${itemsToDisplay
                     .map((i) => {
                         const tags = customizationTagsText(i);
                         return `
-                    <div class="${i.isDone ? "item-done" : "item-pending"}">
-                        <strong>${i.quantity}x</strong> ${escapeHtml(i.name)}
-                        ${isMaster && i.isDone ? '<span style="font-size:7pt; opacity:0.5; margin-left:5px;">[OK]</span>' : ""}
-                        ${tags ? `<div style="font-size:7pt; color: var(--color-accent); font-weight:normal;">${tags}</div>` : ""}
-                        ${i.notes ? `<div style="font-size:7pt; color: var(--color-text-muted); font-weight:normal; font-style:italic;">"${escapeHtml(i.notes)}"</div>` : ""}
+                    <div class="${i.isDone ? "item-done" : "item-pending"}" style="font-size:12.5px; letter-spacing:.04em;">
+                        <strong style="color:var(--color-accent);">${i.quantity}x</strong> ${escapeHtml(i.name)}
+                        ${isMaster && i.isDone ? '<span style="font-size:10px; opacity:0.5; margin-left:5px;">[OK]</span>' : ""}
+                        ${tags ? `<div style="font-size:10.5px; color: var(--color-accent); font-weight:normal;">${tags}</div>` : ""}
+                        ${i.notes ? `<div style="font-size:10.5px; color: var(--color-text-muted); font-weight:normal; font-style:italic;">"${escapeHtml(i.notes)}"</div>` : ""}
                     </div>
                 `;
                     })
                     .join("")}
             </div>
-
-            ${
-                hasPendingItems
-                    ? `
-                <button class="btn-primary"
-                        style="width:100%; margin-top:10px; font-size:9pt; background:var(--color-accent); color:var(--color-accent-contrast); border:none; padding:8px; font-weight:bold; cursor:pointer;"
-                        onclick="window.markCompleted('${order.id}')">
-                    ${isMaster ? "MARK ALL DONE" : "MARK DONE"}
-                </button>
-            `
-                    : ""
-            }
+            <div style="display:flex; gap:8px; margin-top:2px;">${primaryActionHtml}${paidActionHtml}</div>
         `;
             root.appendChild(ticket);
         });
 
-    if (visibleCount === 0) {
-        root.innerHTML = `<p style="color:var(--color-text-muted); font-family:'Courier New',monospace; font-size:9pt;">No ${kitchenStatusFilter === "history" ? "completed" : kitchenStatusFilter === "active" ? "active" : ""} orders${currentKitchenStation !== "MASTER" ? ` for ${currentKitchenStation}` : ""}.</p>`;
-    }
+    renderKitchenPager(matchingOrders.length, totalPages);
+}
+
+/** Prev/Next pager for the Orders/Kitchen ticket grid - reuses the same
+ *  «‹ X-Y of Z ›» pattern (.admin-pg-btn) as the menu grid/list's own
+ *  per-section pager and Admin's order-history table. Appended right after
+ *  the ticket grid; a no-op when everything fits on one page. */
+function renderKitchenPager(totalOrders, totalPages) {
+    if (totalPages <= 1) return;
+    const root = document.getElementById("kitchen-orders-root");
+    if (!root) return;
+
+    const pageStart = (kitchenPage - 1) * KITCHEN_PAGE_SIZE;
+    const label = `${pageStart + 1}-${Math.min(pageStart + KITCHEN_PAGE_SIZE, totalOrders)} of ${totalOrders}`;
+
+    const pagerEl = document.createElement("div");
+    pagerEl.className = "menu-pager";
+    // #kitchen-orders-root is a CSS grid (see theme.css) - without this the
+    // pager becomes a grid cell itself instead of spanning the full row.
+    pagerEl.style.gridColumn = "1 / -1";
+    pagerEl.innerHTML = `
+        <button type="button" class="admin-pg-btn" data-page="1" ${kitchenPage <= 1 ? "disabled" : ""} title="First page">«</button>
+        <button type="button" class="admin-pg-btn" data-page="${kitchenPage - 1}" ${kitchenPage <= 1 ? "disabled" : ""} title="Previous page">‹</button>
+        <span class="menu-pager-label">${label}</span>
+        <button type="button" class="admin-pg-btn" data-page="${kitchenPage + 1}" ${kitchenPage >= totalPages ? "disabled" : ""} title="Next page">›</button>
+        <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${kitchenPage >= totalPages ? "disabled" : ""} title="Last page">»</button>
+    `;
+    root.appendChild(pagerEl);
+    pagerEl.querySelectorAll("[data-page]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const page = Number(btn.dataset.page);
+            if (!page || page < 1 || page > totalPages) return;
+            kitchenPage = page;
+            renderKitchen();
+        });
+    });
 }
 
 window.markPaid = async (orderId) => {
@@ -1457,6 +1988,15 @@ window.markCompleted = async (orderId) => {
         window.triggerGingerAnimation(msg);
     }
 
+    renderKitchen();
+};
+
+window.markServed = async (orderId) => {
+    try {
+        await KitchenSystem.markServed(orderId);
+    } catch (e) {
+        window.showToast(e.message, "error");
+    }
     renderKitchen();
 };
 
@@ -1547,7 +2087,8 @@ window.renderFooter = (config) => {
     const root = document.getElementById("site-footer");
     if (!root) return;
     const f = config.footer || {};
-    const hasAnyDetail = f.address || f.phone || f.email || f.hours;
+    const customFields = (config.customFooterFields || []).filter((c) => c.value);
+    const hasAnyDetail = f.address || f.phone || f.email || f.hours || customFields.length > 0;
 
     if (!hasAnyDetail && !f.tagline) {
         root.innerHTML = "";
@@ -1573,80 +2114,160 @@ window.renderFooter = (config) => {
                         ? `<div><div class="footer-col-title">Hours</div><div class="footer-line">${f.hours}</div></div>`
                         : ""
                 }
+                ${customFields
+                    .map((c) => `<div><div class="footer-col-title">${escapeHtml(c.label)}</div><div class="footer-line">${escapeHtml(c.value)}</div></div>`)
+                    .join("")}
             </div>
         </div>
     `;
 };
 
 /**
- * Home page "Popular Picks" - a handful of featured items so there's
+ * Home page "This week's picks" - a handful of featured items so there's
  * something to click right on arrival, not just an empty page below the
  * hero. Clicking a card adds it to the cart and jumps to the Menu page so
- * the person can see it land there.
+ * the person can see it land there. Which items show and their badge/tag
+ * text come from Admin > Branding's "This week's picks" section
+ * (siteConfig.homePicks) when the admin has actually curated one; an
+ * untouched fresh install falls back to the first few items in the top
+ * menu section with a generic static badge set, same as before this was
+ * configurable.
  */
 function renderPopularPicks() {
     const root = document.getElementById("popular-picks-grid");
     if (!root || !menuData.items.length) return;
 
-    // First section's items are the intended "signature" picks; fall back
-    // to the first few items overall if that section is ever empty/renamed.
-    const firstSectionId = menuData.sections[0]?.id;
-    const picks = (firstSectionId ? menuData.items.filter((i) => i.section === firstSectionId) : menuData.items).slice(0, 4);
+    const configuredPicks = (siteConfig.homePicks || [])
+        .map((p) => ({ item: menuData.items.find((i) => i.id === p.itemId && !i.deleted), tag: p.tag }))
+        .filter((p) => p.item);
+
+    const FALLBACK_BADGES = ["House favourite", "Slow steep", "Baker's pick"];
+    let picks;
+    if (configuredPicks.length > 0) {
+        picks = configuredPicks;
+    } else {
+        // First section's items are the intended "signature" picks; fall back
+        // to the first few items overall if that section is ever empty/renamed.
+        const firstSectionId = menuData.sections[0]?.id;
+        const items = (firstSectionId ? menuData.items.filter((i) => i.section === firstSectionId) : menuData.items).slice(0, 3);
+        picks = items.map((item, i) => ({ item, tag: FALLBACK_BADGES[i] || "" }));
+    }
 
     root.innerHTML = picks
         .map(
-            (item, i) => `
-        <div class="popular-pick-card" style="transition-delay: ${i * 60}ms;" onclick="window.pickFromHome(${item.id})">
-            ${itemImageMarkup(item)}
-            <div class="name">${item.name}</div>
-            <div class="price">\u20b9${item.price}</div>
+            ({ item, tag }) => `
+        <button type="button" class="home-pick-card" onclick="window.pickFromHome(${item.id})">
+            <div class="home-pick-banner">
+                ${itemImageMarkup(item)}
+                <span class="home-pick-badge">${escapeHtml(tag || "")}</span>
+            </div>
+            <div class="home-pick-body">
+                <span class="home-pick-name">${escapeHtml(item.name)}</span>
+                <span class="home-pick-note">${escapeHtml(item.story || "")}</span>
+                <div class="home-pick-footer">
+                    <span class="home-pick-price">\u20b9${item.price}</span>
+                    <span class="home-pick-add">+ Add</span>
+                </div>
+            </div>
+        </button>
+    `
+        )
+        .join("");
+}
+
+/**
+ * Store-facts strip under the hero - two real, live facts from the public
+ * stats endpoint (same data the old live-stats-ticker showed) plus two
+ * static facts from Branding config, laid out as one 4-up bar matching the
+ * design mockup's storeFacts row.
+ */
+async function renderHomeStoreFacts() {
+    const root = document.getElementById("home-store-facts");
+    if (!root) return;
+
+    let stats = null;
+    try {
+        const res = await fetch("/api/stats/public");
+        if (res.ok) stats = await res.json();
+    } catch (e) {
+        stats = null;
+    }
+
+    const facts = [
+        { label: "Open today", value: siteConfig.footer?.hours || "See hours below", color: "var(--color-success)" },
+        { label: "Address", value: siteConfig.footer?.address || "-", color: "var(--color-text)" },
+        { label: "Orders today", value: stats ? String(stats.ordersToday) : "-", color: "var(--color-text)" },
+        { label: "Bits brewed today", value: stats ? String(stats.itemsServedToday) : "-", color: "var(--color-accent)" }
+    ];
+    root.innerHTML = facts
+        .map(
+            (f) => `
+        <div class="home-fact">
+            <div class="home-fact-label">${escapeHtml(f.label)}</div>
+            <div class="home-fact-value" style="color:${f.color};">${escapeHtml(f.value)}</div>
         </div>
     `
         )
         .join("");
-
-    // Fade cards in as they scroll into view rather than all at once - see
-    // .popular-pick-card / .in-view in theme.css for the actual animation.
-    if ("IntersectionObserver" in window) {
-        const observer = new IntersectionObserver(
-            (entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting) {
-                        entry.target.classList.add("in-view");
-                        observer.unobserve(entry.target);
-                    }
-                });
-            },
-            { threshold: 0.15 }
-        );
-        root.querySelectorAll(".popular-pick-card").forEach((card) => observer.observe(card));
-    } else {
-        root.querySelectorAll(".popular-pick-card").forEach((card) => card.classList.add("in-view"));
-    }
 }
 
 /**
- * Small "live" ticker on the home page showing today's real order/item
- * counts - not decorative fake numbers. Uses the public, non-sensitive
- * stats endpoint (no revenue, no names) so it works for anyone, logged in
- * or not.
+ * "How we roast" process steps - admin-editable from Branding > Home Page
+ * Content (siteConfig.roastSteps) so a different shop can tell its own
+ * story instead of this one's coffee-roasting specifics. Falls back to the
+ * original hardcoded steps on a fresh install with nothing curated yet.
  */
-async function renderLiveStatsTicker() {
-    const root = document.getElementById("live-stats-ticker");
+function renderHomeRoastSteps() {
+    const root = document.getElementById("home-roast-steps");
     if (!root) return;
-    try {
-        const res = await fetch("/api/stats/public");
-        if (!res.ok) throw new Error();
-        const stats = await res.json();
-        root.innerHTML = `
-            <span class="live-dot"></span>
-            <span><strong>${stats.ordersToday}</strong> ORDER${stats.ordersToday === 1 ? "" : "S"} TODAY</span>
-            <span style="opacity:0.4;">\u00b7</span>
-            <span><strong>${stats.itemsServedToday}</strong> BITS BREWED TODAY</span>
-        `;
-    } catch (e) {
-        root.style.display = "none";
-    }
+    const DEFAULT_STEPS = [
+        { name: "Sourced", detail: "Small-batch beans, bought direct, one sack at a time." },
+        { name: "Drum roast", detail: "Twelve-minute profile, logged to the second." },
+        { name: "Rested", detail: "A few days off-gas before the first pour." },
+        { name: "Poured", detail: "Ground to order, never before you walk in." }
+    ];
+    const configured = siteConfig.roastSteps && siteConfig.roastSteps.length ? siteConfig.roastSteps : DEFAULT_STEPS;
+    const steps = configured.map((s, i) => ({ no: String(i + 1).padStart(2, "0"), name: s.name, detail: s.detail }));
+    root.innerHTML = steps
+        .map(
+            (r) => `
+        <div class="home-roast-step">
+            <span class="home-roast-step-no">${r.no}</span>
+            <span class="home-roast-step-name">${escapeHtml(r.name)}</span>
+            <span class="home-roast-step-detail">${escapeHtml(r.detail)}</span>
+        </div>
+    `
+        )
+        .join("");
+}
+
+/** "Find us" widget - real store details from Branding config, skipping any field that isn't set rather than showing a blank row. */
+function renderHomeVisitRows() {
+    const root = document.getElementById("home-visit-rows");
+    if (!root) return;
+    const f = siteConfig.footer || {};
+    const rows = [
+        { label: "Address", value: f.address },
+        { label: "Phone", value: f.phone },
+        { label: "Email", value: f.email },
+        { label: "Hours", value: f.hours },
+        // Admin-added fields beyond the fixed set above (Instagram, GST no,
+        // WhatsApp, whatever a given shop wants) - see Content -> Store
+        // Details -> "+ ADD FIELD".
+        ...(siteConfig.customFooterFields || []).map((c) => ({ label: c.label, value: c.value }))
+    ].filter((r) => r.value);
+    root.innerHTML = rows.length
+        ? rows
+              .map(
+                  (r) => `
+        <div class="home-visit-row">
+            <span class="home-visit-label">${escapeHtml(r.label)}</span>
+            <span class="home-visit-value">${escapeHtml(r.value)}</span>
+        </div>
+    `
+              )
+              .join("")
+        : `<p style="color:var(--color-text-muted); font-size:11.5px; margin-top:10px;">Store details coming soon.</p>`;
 }
 
 window.pickFromHome = (itemId) => {
@@ -1659,13 +2280,19 @@ window.pickFromHome = (itemId) => {
  */
 (async () => {
     document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
+    StaffShell.captureCustomerNav(); // before refreshSession() can possibly swap it out for an already-logged-in staff session
     await loadMenu();
     await loadCombos();
     await CustomizationSystem.loadOptions();
-    await refreshSession();
+    // Config/branding loads BEFORE refreshSession() - the shell now renders
+    // for every visitor including anonymous ones (see updateStaffShellForSession()),
+    // and it reads AdminConfig.settings (shop name, default nav layout) the
+    // moment it renders - loading config after would flash the "YOUR SHOP"
+    // fallback wordmark first.
     const config = await AdminConfig.loadSettings();
     window.applyBranding(config);
     window.renderFooter(config);
+    await refreshSession();
     window.initSearchBar();
-    window.showPage("home");
+    window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home");
 })();

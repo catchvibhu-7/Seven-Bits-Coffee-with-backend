@@ -15,6 +15,13 @@ import { AuthSystem } from "../features/auth-logic.js";
 import { CustomizationSystem } from "../features/customization-logic.js";
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
 
+// Mirrors app.js's KITCHEN_ROLES - inlined rather than imported since app.js
+// isn't set up as a module other files pull constants from (same pattern
+// as account-settings-modal.js's own copy). Only staff taking an order on
+// someone else's behalf get the "guest, no phone" bypass - a customer/guest
+// checking themselves out always already has an identity from the session.
+const STAFF_ROLES = ["employee", "manager", "admin", "owner"];
+
 function customizationDetailLines(item) {
     if (item.isCombo) return [];
     return CustomizationSystem.describeLineWithAmounts(item);
@@ -103,7 +110,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
 
     const modalHtml = `
     <div id="modal-overlay" class="modal-overlay">
-        <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(400px, 92vw); font-family: 'Courier New', monospace;">
+        <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(400px, 92vw); max-height: 90vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0;">07 //<br> TRANSACTION SUMMARY</h2>
 
             <div class="cart-items-list" style="max-height: 240px; overflow-y: auto; margin: 15px 0;">
@@ -152,11 +159,21 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
 
             <div id="checkout-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin-bottom: 10px;"></div>
 
+            ${
+                STAFF_ROLES.includes(session.role)
+                    ? `
             <div style="margin-bottom: 15px;">
                 <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">ORDER TRACKING PHONE:</label>
-                <input id="checkout-phone" type="tel" value="${session.phone || ""}" ${session.role === "customer" ? "readonly" : ""}
-                    placeholder="PHONE NUMBER" style="width: 100%; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:${session.role === "customer" ? "var(--color-text-muted)" : "var(--color-text)"}; padding: 10px; font-family: inherit;" />
-            </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <label style="display:flex; align-items:center; gap:6px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; white-space:nowrap;">
+                        <input type="checkbox" id="checkout-guest-order" />
+                        GUEST
+                    </label>
+                    <input id="checkout-phone" type="tel" maxlength="15" placeholder="PHONE NUMBER" style="flex:1; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding: 10px; font-family: inherit;" />
+                </div>
+            </div>`
+                    : ""
+            }
 
             ${
                 breakdown.hasPromoItem
@@ -190,10 +207,6 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             ${
                 isStaff
                     ? `
-            <label style="display:flex; align-items:center; gap:8px; font-size: 8pt; color: var(--color-text-muted); margin-bottom: 12px; cursor:pointer;">
-                <input type="checkbox" id="checkout-mark-paid-now" style="width:auto;" />
-                COLLECTED PAYMENT NOW (mark this order as paid immediately)
-            </label>
             ${
                 openTables.length > 0
                     ? `
@@ -209,10 +222,18 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                     : ""
             }
 
-            <div class="payment-options" style="display: grid; gap: 10px;">
-                <button id="btn-pay-cash" class="btn-pay" onclick="window.startCheckout('COUNTER')" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">PAY CASH</button>
-                <button id="btn-pay-online" class="btn-pay" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;" onclick="window.startCheckout('ONLINE')">PAY ONLINE (UPI)</button>
-            </div>
+            ${
+                isStaff
+                    ? `
+            <div class="payment-options" style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                <button id="btn-checkout-staff" class="btn-pay" onclick="window.startCheckout('COUNTER')" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 0.85rem; font-weight: bold; cursor: pointer; text-transform: uppercase;">[ CHECKOUT ]</button>
+            </div>`
+                    : `
+            <div class="payment-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button id="btn-pay-cash" class="btn-pay" onclick="window.startCheckout('COUNTER')" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 0.85rem; font-weight: bold; cursor: pointer; text-transform: uppercase;">PAY CASH</button>
+                <button id="btn-pay-online" class="btn-pay" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 0.85rem; font-weight: bold; cursor: pointer; text-transform: uppercase;" onclick="window.startCheckout('ONLINE')">PAY ONLINE (UPI)</button>
+            </div>`
+            }
 
             <button class="btn-close" onclick="window.closeModal()" style="margin-top: 15px; width: 100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">BACK</button>
 
@@ -261,6 +282,12 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             finalLine.style.display = "none";
         }
     }
+
+    document.getElementById("checkout-guest-order")?.addEventListener("change", (e) => {
+        const phoneInput = document.getElementById("checkout-phone");
+        phoneInput.style.display = e.target.checked ? "none" : "";
+        if (e.target.checked) phoneInput.value = "";
+    });
 
     document.getElementById("checkout-apply-coupon")?.addEventListener("click", async () => {
         const code = document.getElementById("checkout-coupon-code").value.trim();

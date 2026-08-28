@@ -44,7 +44,7 @@ export const MemoryGame = {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">MEMORY MATCH</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">MOVES: <strong id="mm-moves" style="color:var(--color-accent);">${this.moves}</strong></p>
-            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; max-width:280px; margin:0 auto;">
+            <div class="arcade-board" style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px;">
                 ${this.cards
                     .map((c, i) => {
                         const shown = c.matched || this.flippedIndices.includes(i);

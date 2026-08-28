@@ -73,7 +73,9 @@ export const BreakoutGame = {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">BREAKOUT</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="brk-score" style="color:var(--color-accent);">0</strong></p>
-            <canvas id="brk-canvas" width="${WIDTH}" height="${HEIGHT}" style="display:block; margin:0 auto; background:var(--color-bg); border:1px solid var(--color-border); max-width:100%; height:auto;"></canvas>
+            <div class="arcade-canvas-wrap">
+                <canvas id="brk-canvas" width="${WIDTH}" height="${HEIGHT}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
+            </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; max-width:200px; margin:10px auto 0;">
                 <button id="brk-left" class="admin-btn">←</button>
                 <button id="brk-right" class="admin-btn">→</button>

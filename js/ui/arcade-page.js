@@ -192,14 +192,14 @@ export const ArcadePage = {
     },
 
     async renderGate() {
-        this.root.innerHTML = `<p style="text-align:center; color:var(--color-text-muted);">Checking access...</p>`;
+        this.root.innerHTML = `<p style="color:var(--color-text-muted); font-size:9pt;">Checking access&hellip;</p>`;
         const access = await ArcadeSystem.checkAccess();
         if (!access.allowed) {
+            // The page's own h1 (index.html, matches Billing/Admin's header
+            // treatment) already says "ARCADE" - this used to repeat it in
+            // a second, differently-styled heading right below.
             this.root.innerHTML = `
-                <div style="text-align:center; padding:40px 20px;">
-                    <h2 style="margin-bottom:10px;">ARCADE</h2>
-                    <p style="color:var(--color-text-muted); font-size:9pt;">${escapeHtml(access.reason || "Place an order to unlock the arcade.")}</p>
-                </div>
+                <p style="color:var(--color-text-muted); font-size:9pt; padding:20px 0;">${escapeHtml(access.reason || "Place an order to unlock the arcade.")}</p>
             `;
             return;
         }
@@ -211,8 +211,7 @@ export const ArcadePage = {
             ? new Date(access.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : null;
         this.root.innerHTML = `
-            <h2 style="text-align:center; margin-bottom:4px;">ARCADE</h2>
-            ${expiresLabel ? `<p style="text-align:center; font-size:7pt; color:var(--color-text-muted); margin-bottom:10px;">Access until ${expiresLabel}</p>` : ""}
+            ${expiresLabel ? `<p style="font-size:9pt; color:var(--color-text-muted); margin:0 0 16px;">Access until ${expiresLabel}</p>` : ""}
             <div class="arcade-grid">
                 ${Object.entries(GAME_DEFS)
                     .map(

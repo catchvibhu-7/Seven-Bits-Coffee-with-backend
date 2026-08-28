@@ -46,7 +46,9 @@ export const SnakeGame = {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">SNAKE</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="snake-score" style="color:var(--color-accent);">0</strong></p>
-            <canvas id="snake-canvas" width="${COLS * CELL}" height="${ROWS * CELL}" style="display:block; margin:0 auto; background:var(--color-bg); border:1px solid var(--color-border); max-width:100%; height:auto;"></canvas>
+            <div class="arcade-canvas-wrap">
+                <canvas id="snake-canvas" width="${COLS * CELL}" height="${ROWS * CELL}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
+            </div>
             <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; max-width:160px; margin:10px auto 0;">
                 <div></div><button id="sn-up" class="admin-btn">↑</button><div></div>
                 <button id="sn-left" class="admin-btn">←</button><button id="sn-down" class="admin-btn">↓</button><button id="sn-right" class="admin-btn">→</button>

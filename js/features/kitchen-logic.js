@@ -23,7 +23,21 @@ export const KitchenSystem = {
         return res.json();
     },
 
-    async pushOrder(cartItems, method, { serviceChargeActive = true, tipApplied = false, phone = null, markPaidNow = false, tableSessionId = null, couponCode = null, redeemPoints = 0 } = {}) {
+    async pushOrder(
+        cartItems,
+        method,
+        {
+            serviceChargeActive = true,
+            tipApplied = false,
+            phone = null,
+            markPaidNow = false,
+            tableSessionId = null,
+            couponCode = null,
+            redeemPoints = 0,
+            guestOrder = false,
+            orderType = "takeaway"
+        } = {}
+    ) {
         const res = await fetch("/api/orders", {
             method: "POST",
             credentials: "include",
@@ -45,7 +59,9 @@ export const KitchenSystem = {
                 markPaidNow,
                 tableSessionId,
                 couponCode,
-                redeemPoints
+                redeemPoints,
+                guestOrder,
+                orderType
             })
         });
         const data = await res.json();
@@ -54,12 +70,28 @@ export const KitchenSystem = {
         return data;
     },
 
-    async markPaid(orderId) {
+    /** Staff tagging/correcting who a bill is for (phone/username, auto-
+     *  detected server-side) and, for a dine-in order, which table - from
+     *  the Billing page. */
+    async tagOrderInfo(orderId, { contact, tableNumber }) {
         const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
             method: "PATCH",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "markPaid" })
+            body: JSON.stringify({ action: "tagInfo", contact, tableNumber })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not update order");
+        await this.fetchOrders();
+        return data;
+    },
+
+    async markPaid(orderId, paymentMethod = null) {
+        const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "markPaid", paymentMethod })
         });
         if (res.ok) await this.fetchOrders();
     },
@@ -96,5 +128,34 @@ export const KitchenSystem = {
         const baristaSections = ["fast-sellers", "limited", "classics"];
         if (baristaSections.includes(item.section)) return "BARISTA";
         return "KITCHEN";
+    },
+
+    async markServed(orderId) {
+        const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "markServed" })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Order isn't ready yet");
+        await this.fetchOrders();
+        return data;
+    },
+
+    /** Mirrors server.js's orderStatusOf() - only /api/orders/mine includes
+     *  a computed status server-side, so anything working from the staff
+     *  order list (GET /api/orders) derives it the same way here instead. */
+    statusOf(order) {
+        if (order.servedAt) return "SERVED";
+        if (!order.items.length) return "RECEIVED";
+        return order.items.every((i) => i.isDone) ? "READY" : "PREPARING";
+    },
+
+    STATUS_COLORS: {
+        RECEIVED: "var(--color-accent)",
+        PREPARING: "var(--color-cyan)",
+        READY: "var(--color-success)",
+        SERVED: "var(--color-text-muted)"
     }
 };

@@ -33,74 +33,116 @@
         <title>Seven Bits Coffee // Hazaribagh</title>
     </head>
     <body>
+        <!-- APP SHELL: for a customer/guest (or anyone logged out), #staff-rail
+             stays display:none below and this wrapper is visually a no-op -
+             the customer experience is byte-for-byte what it was before this
+             wrapper existed. Once a staff (employee/manager/admin/owner)
+             session is active, js/ui/staff-shell.js shows #staff-rail (rail
+             layout) or restyles .system-nav into a top-bar (top-bar layout)
+             instead - see StaffShell in staff-shell.js for the switch. -->
+        <div id="app-shell" style="display:flex; min-height:100vh;">
+            <aside id="staff-rail" class="staff-rail" style="display:none;"></aside>
+            <div id="app-main" style="flex:1; min-width:0; display:flex; flex-direction:column;">
+
         <!-- SYSTEM NAVIGATION: Persistent header for page switching -->
         <nav class="system-nav">
             <img id="site-logo" src="" alt="" style="display:none; height: 28px; margin-right: 8px; align-self: center;" />
             <button onclick="showPage('home')">HOME</button>
             <button onclick="showPage('menu')">MENU</button>
             <button onclick="showPage('arcade')">ARCADE</button>
-            <button id="nav-kitchen" onclick="showPage('kitchen')" style="display:none;">ORDERS</button>
-            <button id="nav-admin" onclick="showPage('admin')" style="display:none;">ADMIN</button>
-            <button id="nav-timeclock" onclick="window.handleTimeclockClick()" style="display:none; margin-left:auto;"></button>
+            <!-- ORDERS/ADMIN/Clock-In-Out used to live here, but anyone who
+                 could ever see any of them (KITCHEN_ROLES and its
+                 PAYROLL_ROLES subset) always has the staff shell active
+                 instead (js/ui/staff-shell.js hides or replaces this nav for
+                 that session) - this customer nav is never visible to them
+                 anymore, so those buttons moved into the shell rather than
+                 staying here as unreachable dead markup. -->
             <button id="nav-account" onclick="window.handleAccountClick()" style="margin-left:auto;">LOGIN</button>
         </nav>
 
-        <!-- PAGE: HOME (Landing section with hero logo and story) -->
+        <!-- PAGE: STAFF HOME (new dashboard for employee/manager/admin/owner -
+             see js/ui/staff-home.js. Customers/guests never see this page;
+             their home page is #page-home below, unchanged.) -->
+        <div id="page-staff-home" class="page"></div>
+
+        <!-- PAGE: HOME (Guest/customer storefront - matches the Claude Design
+             mockup's "isGuestHome" screen: hero, store-facts strip, featured
+             picks, roast story, and a right-column widget rail. Populated by
+             renderCustomerHome() in app.js from real data (menu items,
+             /api/stats/public, Branding config) - nothing here is fake. -->
         <div id="page-home" class="page active">
-            <!-- Ambient animated backdrop for the hero - pure CSS, no images/deps -->
-            <div class="hero-backdrop" aria-hidden="true"></div>
-
-            <div class="hero-section">
-                <div class="icon-logo icon-logo-hero hero-reveal" style="animation-delay: 0s;"></div>
-                <h1 class="hero-reveal" id="hero-shop-name" style="animation-delay: 0.1s;">SEVEN BITS COFFEE</h1>
-                <p class="story-text hero-reveal" id="hero-tagline" style="animation-delay: 0.2s;">
-                    Born from love for Physics, Coffee, a cat named Ginger and an obssesion with the number seven. We
-                    don't just brew; we process flavor with low-latency precision.
-                </p>
-                <button class="btn-primary btn-glitch hero-reveal" style="animation-delay: 0.3s;" onclick="showPage('menu')">
-                    <span data-text="ORDER NOW">ORDER NOW</span>
-                </button>
-                <div class="pixel-kitty-container">
-                    <!-- The Mover handles screen travel, tripping, and flipping -->
-                    <div class="kitty-mover">
-                        <!-- Cat 1: Walking on two legs -->
-                        <div class="kitty-biped"></div>
-
-                        <!-- Cat 2: Walking on four legs -->
-                        <div class="kitty-quad"></div>
-
-                        <!-- The randomized held item (coffee/food icon) - id="held-item" is
-                             required here, not just class="latte-cup": cat.css defines a
-                             dedicated #held-item rule (small 20x20 box positioned in the
-                             cat's paw, its own item-fly animation) separate from the older
-                             fixed-size .latte-cup layer. Using #held-item is what lets
-                             app.js's icon-randomizing script (below) swap which icon shows -
-                             .latte-cup alone would only ever display one fixed cup and
-                             wouldn't respond to the randomizer at all. -->
-                        <div id="held-item"></div>
+            <div class="home-hero">
+                <div class="home-hero-inner">
+                    <div class="home-hero-copy">
+                        <div class="home-hero-badge" id="home-hero-badge">Est. 2019 &middot; 8-bit roastery</div>
+                        <h1 class="home-hero-title" id="hero-shop-name">SEVEN BITS COFFEE<span class="staff-blink-cursor">_</span></h1>
+                        <p class="home-hero-tagline" id="hero-tagline">
+                            Born from love for Physics, Coffee, a cat named Ginger and an obssesion with the number seven. We
+                            don't just brew; we process flavor with low-latency precision.
+                        </p>
+                        <div class="home-hero-actions">
+                            <button class="btn-primary" onclick="showPage('menu')">[ START ORDER ]</button>
+                            <!-- Hidden until ArcadeSystem.checkAccess() (called from
+                                 refreshHomeArcadeButton() in app.js) confirms the arcade is
+                                 actually unlocked - same server-enforced window used to gate
+                                 the Arcade page itself, so this never invites a click that
+                                 just bounces to a "place an order to unlock" message. -->
+                            <button id="home-hero-arcade-btn" class="home-hero-secondary" onclick="showPage('arcade')" style="display:none;">Arcade</button>
+                        </div>
+                    </div>
+                    <div class="home-hero-image">
+                        <div class="home-hero-image-bg" id="home-hero-image-bg"></div>
+                        <div class="home-hero-image-gradient"></div>
+                        <span class="home-hero-image-caption" id="home-hero-caption">The counter</span>
                     </div>
                 </div>
 
-                <!-- Live ticker - real numbers from the server, not decorative fakery -->
-                <div id="live-stats-ticker" class="live-stats-ticker hero-reveal" style="animation-delay: 0.4s;"></div>
+                <!-- The walking-cat mascot (css/cat.css) - a full-width overlay
+                     pinned to .home-hero's own accent-colored border-bottom (see
+                     .home-hero .pixel-kitty-container in theme.css) so the cat
+                     treads right along that line instead of adding its own
+                     separate strip below it, like it did in the pre-redesign
+                     hero layout. -->
+                <div class="pixel-kitty-container">
+                    <div class="kitty-mover">
+                        <div class="kitty-biped"></div>
+                        <div class="kitty-quad"></div>
+                        <!-- id="held-item" (not just a class) is required - cat.css
+                             defines a dedicated #held-item rule the randomizer
+                             script below targets by that id. -->
+                        <div id="held-item"></div>
+                    </div>
+                </div>
             </div>
 
-            <!-- A few featured items so the home page has something to browse/click
-                 right away, not just a hero banner over empty space -->
-            <div class="popular-picks-section">
-                <h3>POPULAR PICKS</h3>
-                <div id="popular-picks-grid" class="popular-picks-grid"></div>
-            </div>
+            <div id="home-store-facts" class="home-store-facts"></div>
 
-            <!-- Shows the signed-in customer's/guest's most recent ACTIVE order + live
-                 status - hidden entirely (see refreshOrderStatusWidget in app.js) unless
-                 there's actually something to show, rather than showing an empty prompt. -->
-            <div id="order-status-section" class="order-status-section" style="max-width: 420px; margin: 20px auto; padding: 0 15px; display: none;">
-                <h3 style="font-size: 10pt; letter-spacing: 1px; color: var(--color-accent); margin-bottom: 10px;">YOUR ORDER</h3>
-                <div id="order-status-root"></div>
-            </div>
-            <div id="my-orders-link-section" style="max-width: 420px; margin: 10px auto; padding: 0 15px; display: none; text-align:center;">
-                <button onclick="window.openMyOrders()" style="background:none; border:1px solid var(--color-accent); color: var(--color-accent); font-size: 8pt; padding: 8px 16px; cursor:pointer; font-family: 'Courier New', monospace; text-transform: uppercase;">MY ORDERS &amp; REORDER</button>
+            <div class="home-body">
+                <div class="home-section-header">
+                    <h2 id="home-heading-picks">This week&rsquo;s picks</h2>
+                    <span>Tap to add</span>
+                </div>
+                <div id="popular-picks-grid" class="home-picks-grid"></div>
+
+                <div class="home-grid-2col">
+                    <div class="home-panel">
+                        <h2 id="home-heading-roast">How we roast</h2>
+                        <p>Seven origins, one drum roaster, no shortcuts. We cup every batch on Thursday and pull anything that doesn&rsquo;t sing. Beans go from roast to cup inside nine days &mdash; the freshness window we refuse to argue about.</p>
+                        <div id="home-roast-steps" class="home-roast-steps"></div>
+                    </div>
+
+                    <div class="home-side-col">
+                        <!-- "Your order" moved to a compact widget in the nav shell itself
+                             (rail/topbar, next to the account button - see
+                             refreshOrderStatusWidget in app.js) so it's visible from any
+                             page, not just here - Find us now takes the accent-highlighted
+                             slot that used to be its. -->
+                        <div class="home-widget home-widget-accent">
+                            <h2 id="home-heading-findus">Find us</h2>
+                            <div id="home-visit-rows"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Store details footer - content populated from admin Branding settings -->
@@ -108,106 +150,152 @@
         </div>
 
         <!-- PAGE: MENU (Dynamic menu rendering with view toggles) -->
-       <!-- PAGE: MENU -->
 <div id="page-menu" class="page">
-    <div class="menu-controls" style="padding: 10px; display: flex; justify-content: flex-end; align-items:center; gap: 15px">
-    <label id="favorites-filter-label" onclick="window.toggleFavoritesFilter()" style="display:none; align-items:center; gap:5px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace; user-select:none;">
-        <span id="favorites-filter-star" style="font-size:11pt; line-height:1; color: var(--color-text-muted);">&#9734;</span> FAVORITES ONLY
-    </label>
-    <!-- Search is wired via window.initSearchBar() in app.js (debounced), not an inline
-         handler - the old oninput="renderMenu(...)" called a function that was never
-         attached to window, so it silently errored on every keystroke. -->
-    <input type="text" id="menu-search" placeholder="SEARCH_BITS..."
-           style="background: black; border: 1px solid #333; color: #d97706; padding: 5px 10px; font-family: 'Courier New';">
-    
-    <button class="btn-view-toggle" onclick="window.setViewMode('list')">
-        <span class="icon icon-hamburger"></span>
-    </button>
-    <button class="btn-view-toggle" onclick="window.setViewMode('grid')">
-        <span class="icon icon-grid"></span>
-    </button>
-</div>
+    <!-- Persistent Cart/KOT panel beside the grid - see renderMenuCartPanel()
+         in app.js - matching the design mockup's always-visible cart panel,
+         for everyone (customer/guest/staff alike). Desktop-only progressive
+         enhancement: hidden below the breakpoint in theme.css, where the
+         footer cart bar + checkout modal below is the fallback - still fully
+         functional, just less convenient on a small screen. -->
+    <div class="menu-layout">
+        <!-- Heading, category chips/view-toggle, favorites/search, the grid
+             itself, and #footer-actions all live in this one column (not
+             spanning the full page behind #menu-cart-panel) - .menu-controls
+             and #footer-actions both use a sticky "right edge" trick (see
+             .footer-container in theme.css) that resolves against whatever
+             element contains them, so they used to align to the page's
+             actual right edge and land visually inside/behind the cart
+             panel instead of this column's own right edge. -->
+        <div class="menu-grid-column">
+            <!-- Pinned to the top of the scrolling page while the item grid/
+                 list below scrolls past it - see .menu-sticky-header. -->
+            <div class="menu-sticky-header">
+                <div class="menu-page-header">
+                    <h1 class="menu-page-title">MENU<span>/</span>ORDER</h1>
+                </div>
 
-    <div id="menu-root"></div>
+                <div class="menu-header-controls">
+                    <!-- Category filter chips - populated in renderMenuCategoryChips()
+                         (app.js) once menuData.sections loads, since the section list
+                         isn't known until then. -->
+                    <div id="menu-cat-chips" class="menu-cat-chips"></div>
+                    <div class="menu-view-toggle-group">
+                        <button type="button" id="menu-view-grid-btn" onclick="window.setViewMode('grid')">&#9638; Grid</button>
+                        <button type="button" id="menu-view-list-btn" onclick="window.setViewMode('list')">&#9776; List</button>
+                    </div>
+                </div>
+            </div>
 
-   
-    <!-- UNIFIED ACTION FOOTER -->
-<div id="footer-actions" class="footer-container" style="display: none;">
-    
-    <!-- JUMP MENU (NESTED INSIDE) -->
-    <!-- This now follows the footer's sticky position and 500px max-width -->
-    <div id="jump-menu" class="jump-overlay">
-        <div class="jump-header">CATEGORIES:</div>
-        <div id="jump-options-container">
-            <!-- Options injected by JS -->
+            <div class="menu-controls">
+                <label id="favorites-filter-label" onclick="window.toggleFavoritesFilter()" style="display:none; align-items:center; gap:5px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace; user-select:none;">
+                    <span id="favorites-filter-star" style="font-size:11pt; line-height:1; color: var(--color-text-muted);">&#9734;</span> FAVORITES ONLY
+                </label>
+                <!-- Search is wired via window.initSearchBar() in app.js (debounced), not an inline
+                     handler - the old oninput="renderMenu(...)" called a function that was never
+                     attached to window, so it silently errored on every keystroke. -->
+                <input type="text" id="menu-search" placeholder="SEARCH_BITS...">
+            </div>
+
+            <div id="menu-root"></div>
+
+            <!-- UNIFIED ACTION FOOTER -->
+            <div id="footer-actions" class="footer-container" style="display: none;">
+                <!-- JUMP MENU (NESTED INSIDE) - content fully rebuilt by
+                     window.toggleJumpMenu() (app.js) each time it opens, so
+                     this starts empty rather than with markup that's always
+                     immediately overwritten anyway. -->
+                <div id="jump-menu" class="jump-overlay"></div>
+
+                <!-- CART BAR -->
+                <div id="cart-status" class="cart-bar" onclick="window.handleCartStatusClick()">
+                    <span>BITS IN CART:</span>
+                    <span id="cart-count">0</span>
+                </div>
+
+                <!-- JUMP BUTTON -->
+                <button class="btn-jump-fab" onclick="window.toggleJumpMenu(event)">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3">
+                        <path d="M3 12h18M3 6h18M3 18h18"/>
+                    </svg>
+                </button>
+            </div>
         </div>
+        <aside id="menu-cart-panel" class="menu-cart-panel" style="display:none;"></aside>
     </div>
-
-    <!-- CART BAR -->
-    <div id="cart-status" class="cart-bar" onclick="window.handleCartStatusClick()">
-        <span>BITS IN CART:</span>
-        <span id="cart-count">0</span>
-    </div>
-    
-    <!-- JUMP BUTTON -->
-    <button class="btn-jump-fab" onclick="window.toggleJumpMenu(event)">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3">
-            <path d="M3 12h18M3 6h18M3 18h18"/>
-        </svg>
-    </button>
 </div>
-
-    <div id="jump-menu" class="jump-overlay"></div>
-</div>
-
-        <!-- PAGE: ARCADE (in-store games, unlocked after placing an order) -->
+        <!-- PAGE: ARCADE (in-store games, unlocked after placing an order) -
+             same page-header treatment (bold left-aligned h1, accent
+             underline, 1600px/26-28-44 wrapper) as Billing/Admin, which this
+             used to not match (a plain centered h2, no underline, its own
+             1400px/20px wrapper) despite otherwise sharing the same visual
+             language (arcade-page.js's .arcade-grid/.arcade-card already
+             echo .menu-grid's card chrome). -->
         <div id="page-arcade" class="page">
-            <div id="arcade-root" style="max-width: 1000px; margin: 0 auto; padding: 20px;"></div>
+            <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
+                <div style="border-bottom:2px solid var(--color-accent); padding-bottom:16px; margin-bottom:22px;">
+                    <h1 style="font-size:26px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">ARCADE</h1>
+                </div>
+                <div id="arcade-root"></div>
+            </div>
         </div>
 
         <!-- PAGE: ORDERS (Kitchen Display System / KOT Management) -->
         <div id="page-kitchen" class="page">
-            <!-- Station tabs restyled to match the admin panel's sub-tab look.
-                 TABLES/TABS sits here too (not a separate toggle button) since
-                 it's another way of tracking active orders - just grouped by
-                 table instead of by station. -->
-            <div class="kitchen-tabs admin-tabs">
-                <button class="admin-tab-btn active" data-station="MASTER" onclick="filterKitchen('MASTER')">ALL STATIONS</button>
-                <button class="admin-tab-btn" data-station="BARISTA" onclick="filterKitchen('BARISTA')">BARISTA</button>
-                <button class="admin-tab-btn" data-station="KITCHEN" onclick="filterKitchen('KITCHEN')">KITCHEN</button>
-                <button class="admin-tab-btn" data-station="DESSERTS" onclick="window.filterKitchen('DESSERTS')">DESSERTS</button>
-                <button class="admin-tab-btn" data-station="TABLES" onclick="window.filterKitchen('TABLES')">TABLES / TABS</button>
-            </div>
-
-            <!-- Active vs. history filter + date sort - not relevant to the Tables view -->
-            <div class="kitchen-toolbar" id="kitchen-status-toolbar">
-                <div class="kitchen-status-filter">
-                    <button class="admin-btn active" data-status-filter="active" onclick="window.setKitchenStatusFilter('active')">ACTIVE</button>
-                    <button class="admin-btn" data-status-filter="history" onclick="window.setKitchenStatusFilter('history')">HISTORY</button>
-                    <button class="admin-btn" data-status-filter="all" onclick="window.setKitchenStatusFilter('all')">SHOW ALL</button>
+            <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
+                <!-- Station tabs restyled to match the admin panel's sub-tab look.
+                     TABLES/TABS sits here too (not a separate toggle button) since
+                     it's another way of tracking active orders - just grouped by
+                     table instead of by station. -->
+                <div class="kitchen-tabs admin-tabs">
+                    <button class="admin-tab-btn active" data-station="MASTER" onclick="filterKitchen('MASTER')">ALL STATIONS</button>
+                    <button class="admin-tab-btn" data-station="BARISTA" onclick="filterKitchen('BARISTA')">BARISTA</button>
+                    <button class="admin-tab-btn" data-station="KITCHEN" onclick="filterKitchen('KITCHEN')">KITCHEN</button>
+                    <button class="admin-tab-btn" data-station="DESSERTS" onclick="window.filterKitchen('DESSERTS')">DESSERTS</button>
+                    <button class="admin-tab-btn" data-station="TABLES" onclick="window.filterKitchen('TABLES')">TABLES / TABS</button>
                 </div>
-                <select id="kitchen-sort" onchange="window.setKitchenSort(this.value)"
-                    style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:8pt;">
-                    <option value="newest">NEWEST FIRST</option>
-                    <option value="oldest">OLDEST FIRST</option>
-                </select>
+
+                <!-- Active vs. history filter + date sort - not relevant to the Tables view -->
+                <div class="kitchen-toolbar" id="kitchen-status-toolbar">
+                    <div class="kitchen-status-filter">
+                        <button class="admin-btn active" data-status-filter="active" onclick="window.setKitchenStatusFilter('active')">ACTIVE</button>
+                        <button class="admin-btn" data-status-filter="history" onclick="window.setKitchenStatusFilter('history')">HISTORY</button>
+                        <button class="admin-btn" data-status-filter="all" onclick="window.setKitchenStatusFilter('all')">SHOW ALL</button>
+                    </div>
+                    <select id="kitchen-sort" onchange="window.setKitchenSort(this.value)"
+                        style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:8pt;">
+                        <option value="newest">NEWEST FIRST</option>
+                        <option value="oldest">OLDEST FIRST</option>
+                    </select>
+                </div>
+
+                <!-- Postpaid table tabs - staff open/close these to group multiple
+                     orders into one combined bill. Only visible when the
+                     TABLES/TABS tab above is selected. -->
+                <div id="tables-panel-root" style="display:none; margin-bottom:20px;"></div>
+
+                <!-- Target for dynamic KOT ticket injection -->
+                <div id="kitchen-orders-root"></div>
             </div>
+        </div>
 
-            <!-- Postpaid table tabs - staff open/close these to group multiple
-                 orders into one combined bill. Only visible when the
-                 TABLES/TABS tab above is selected. -->
-            <div id="tables-panel-root" style="display:none; margin-bottom:20px;"></div>
-
-            <!-- Target for dynamic KOT ticket injection -->
-            <div id="kitchen-orders-root"></div>
+        <!-- PAGE: BILLING (staff-only - js/ui/billing-page.js) - a direct way
+             to settle any open table or standalone unpaid order with a
+             recorded payment method, alongside (not instead of) the
+             existing TABLES/TABS close-and-bill flow above. -->
+        <div id="page-billing" class="page">
+            <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
+                <div style="border-bottom:2px solid var(--color-accent); padding-bottom:16px; margin-bottom:22px;">
+                    <h1 style="font-size:26px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">BILLING</h1>
+                </div>
+                <div id="billing-root"></div>
+            </div>
         </div>
 
         <!-- PAGE: ADMIN (System configuration and menu repository) -->
         <div id="page-admin" class="page">
             <div class="admin-wrapper">
-                <header class="admin-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <header class="admin-header">
                     <h1 style="margin:0;">SYSTEM CONFIGURATION</h1>
-                    <button class="admin-btn-secondary" onclick="AdminPortal.logout()">LOGOUT</button>
                 </header>
 
                 <!-- Sub-tab nav: Global Settings / Menu Items / User Management / Branding -->
@@ -216,10 +304,14 @@
             </div>
         </div>
 
+        </div>
+        <!-- /APP SHELL -->
+
         <!-- Randomizes which icon the walking cat is "holding" each time its
-             15s walk-and-tumble animation loop restarts. Needs to run after
-             the pixel-kitty-container markup above (for getElementById to
-             find #held-item) but before app.js, which is just where it's
+             walk-and-tumble animation loop restarts, and keeps its walking
+             PACE constant (px/second) across screen sizes. Needs to run
+             after the pixel-kitty-container markup above (for getElementById
+             to find #held-item) but before app.js, which is just where it's
              placed - a plain non-module script always runs synchronously as
              the parser reaches it, so no DOMContentLoaded wrapper is needed
              here since the container HTML is already above it in the file. -->
@@ -234,6 +326,9 @@
             ];
             const heldItem = document.getElementById('held-item');
             const mover = document.querySelector('.kitty-mover');
+            const biped = document.querySelector('.kitty-biped');
+            const quad = document.querySelector('.kitty-quad');
+            const kittyStage = document.querySelector('.pixel-kitty-container');
 
             function randomizeItem() {
                 heldItem.classList.remove(...itemClasses);
@@ -250,6 +345,43 @@
                 if (event.animationName === 'move-and-tumble') {
                     randomizeItem();
                 }
+            });
+
+            // cat.css's move-and-tumble keyframes cover the walk-right leg
+            // (0%-35% of the loop) over a distance of (stage width - 50px) -
+            // see .kitty-mover's left:-70px -> left:calc(100% - 120px). With
+            // a single fixed 15s loop duration, that same 35%-of-15s time
+            // budget has to cover far more ground on a wide desktop hero
+            // than on a phone, so the cat visibly sprints on big screens.
+            // Scaling the loop duration by the stage's actual width keeps
+            // the walking speed - not the loop's wall-clock length -
+            // constant, so it reads as the same casual pace everywhere.
+            const CASUAL_WALK_PX_PER_SEC = 80;
+            const WALK_RIGHT_FRACTION = 0.35; // matches the 0%-35% keyframe span
+            const MIN_LOOP_SECONDS = 8; // guards against a near-zero duration on a tiny/hidden stage
+
+            function applyCasualWalkPace() {
+                const stageWidth = kittyStage.getBoundingClientRect().width;
+                if (!stageWidth) return; // page not visible right now (e.g. display:none) - keep the last-known pace
+                const walkDistance = Math.max(stageWidth - 50, 50);
+                const loopSeconds = Math.max(walkDistance / (CASUAL_WALK_PX_PER_SEC * WALK_RIGHT_FRACTION), MIN_LOOP_SECONDS);
+                const loop = `${loopSeconds}s`;
+                // Only move-and-tumble/toggle-*/item-fly (the loop-position and
+                // sync animations) scale with the stage - walk-biped/walk-quad
+                // (the 1.4s leg-frame cycle) stay fixed so the actual stride
+                // cadence still looks like a normal walk, just covering more
+                // steps over the now-longer loop instead of shuffling faster.
+                mover.style.animationDuration = loop;
+                heldItem.style.animationDuration = loop;
+                biped.style.animationDuration = `1.4s, ${loop}`;
+                quad.style.animationDuration = `1.4s, ${loop}`;
+            }
+
+            applyCasualWalkPace();
+            let resizePaceTimer = null;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizePaceTimer);
+                resizePaceTimer = setTimeout(applyCasualWalkPace, 200);
             });
         </script>
 

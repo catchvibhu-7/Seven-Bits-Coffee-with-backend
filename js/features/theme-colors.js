@@ -14,18 +14,3 @@ export function themeColor(varName, fallback) {
     const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
     return value || fallback;
 }
-
-/** Common palette every canvas game pulls from, read fresh each time a game
- *  mounts (branding rarely changes mid-session, so caching per-mount is
- *  plenty live without re-reading computed styles every frame). */
-export function readArcadePalette() {
-    return {
-        bg: themeColor("--color-bg", "#0a0a0a"),
-        surface: themeColor("--color-surface", "#111111"),
-        border: themeColor("--color-border", "#333333"),
-        text: themeColor("--color-text", "#f9fafb"),
-        textMuted: themeColor("--color-text-muted", "#888888"),
-        accent: themeColor("--color-accent", "#d97706"),
-        cyan: themeColor("--color-cyan", "#22d3ee")
-    };
-}

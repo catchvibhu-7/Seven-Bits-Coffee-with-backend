@@ -183,7 +183,7 @@ export const CheckersGame = {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:4px;">CHECKERS - VS ${opponentName.toUpperCase()}</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:12px;">You are ${myColorLabel} &middot; ${message}</p>
-            <div style="display:grid; grid-template-columns:repeat(${SIZE},1fr); max-width:320px; margin:0 auto; border:1px solid var(--color-border);">
+            <div class="arcade-board" style="display:grid; grid-template-columns:repeat(${SIZE},1fr); border:1px solid var(--color-border);">
                 ${cellsHtml}
             </div>
             <div style="display:grid; gap:10px; max-width:280px; margin:16px auto 0;">

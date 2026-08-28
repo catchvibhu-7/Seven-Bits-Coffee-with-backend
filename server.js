@@ -40,6 +40,12 @@ const { URL } = require("url");
 const ROOT_DIR = __dirname;
 const DATA_DIR = path.join(ROOT_DIR, "data");
 const SEED_DIR = path.join(ROOT_DIR, "data-seed");
+// Deliberately its own top-level directory, not data/uploads - uploaded
+// images are the only user-generated files ever meant to be servable by
+// path with no auth (see STATIC_ROOTS below), so keeping them out of data/
+// entirely means a future change to data/'s own handling can't accidentally
+// re-expose it alongside them.
+const UPLOADS_DIR = path.join(ROOT_DIR, "uploads");
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hour shift
 const IS_HTTPS = process.env.FORCE_SECURE_COOKIE === "1";
@@ -53,8 +59,10 @@ const MANAGER_UP_ROLES = ["manager", "admin", "owner"]; // Manager Dashboard + e
 const KITCHEN_ROLES = ["employee", "manager", "admin", "owner"];
 const TRACKING_ROLES = ["customer", "guest"];
 const PAYROLL_ROLES = ["employee", "manager"]; // who payroll/timeclock applies to
+const PAYMENT_METHODS = ["UPI", "Card", "Cash", "Wallet"]; // recorded on an order/table session once it's actually settled
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // ---------------------------------------------------------------------------
 // Tiny JSON file "database" helpers
@@ -91,6 +99,16 @@ const COMBOS_FILE = path.join(DATA_DIR, "combos.json");
 const TABLE_SESSIONS_FILE = path.join(DATA_DIR, "table-sessions.json");
 const COUPONS_FILE = path.join(DATA_DIR, "coupons.json");
 const ARCADE_SCORES_FILE = path.join(DATA_DIR, "arcade-scores.json");
+// Per-user settings that aren't tied to any one feature enough to live on the
+// user record itself (users.json) - starts with just the staff nav layout
+// choice (rail/top-bar), keyed by userId so it follows a person across
+// devices/browsers instead of being stuck in one browser's localStorage.
+const USER_PREFERENCES_FILE = path.join(DATA_DIR, "user-preferences.json");
+// Metadata for files actually stored under UPLOADS_DIR - the images
+// themselves are plain files on disk (served statically, see STATIC_ROOTS);
+// this just tracks what's there for the admin image picker (id, original
+// name, size, who/when) and to resolve an id back to a filename on delete.
+const UPLOADS_MANIFEST_FILE = path.join(DATA_DIR, "uploads.json");
 
 if (!fs.existsSync(AUDIT_LOG_FILE)) writeJson(AUDIT_LOG_FILE, []);
 if (!fs.existsSync(BRANDING_PROFILES_FILE)) writeJson(BRANDING_PROFILES_FILE, {});
@@ -102,6 +120,8 @@ if (!fs.existsSync(OVERTIME_APPROVALS_FILE)) writeJson(OVERTIME_APPROVALS_FILE, 
 // a storeId, but with a single store seeded there's no behavior change yet -
 // this just means a real second store later doesn't need a data migration.
 if (!fs.existsSync(STORES_FILE)) writeJson(STORES_FILE, [{ id: 1, name: "Main Store", address: "" }]);
+if (!fs.existsSync(UPLOADS_MANIFEST_FILE)) writeJson(UPLOADS_MANIFEST_FILE, []);
+if (!fs.existsSync(USER_PREFERENCES_FILE)) writeJson(USER_PREFERENCES_FILE, {});
 
 /**
  * Records sensitive admin actions (currently: password resets and staff
@@ -132,7 +152,10 @@ if (!fs.existsSync(MENU_FILE)) {
 if (!fs.existsSync(CONFIG_FILE)) {
   writeJson(CONFIG_FILE, {
     shopName: "SEVEN BITS COFFEE",
-    currency: "\u20b9",
+    // GST registration number (India) - printed on bills when set (see
+    // window.printBill in app.js); blank means "not GST-registered", not an
+    // error, so it's simply omitted from the printout.
+    gstNumber: "",
     cgstRate: 0.05,
     sgstRate: 0.05,
     serviceChargeRate: 0.02,
@@ -169,6 +192,15 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // from Global Settings so a shop can rebrand without touching code.
     heroTagline:
       "Born from love for Physics, Coffee, a cat named Ginger and an obssesion with the number seven. We don't just brew; we process flavor with low-latency precision.",
+    // Small badge line above the hero heading (e.g. "Est. 2019 - 8-bit
+    // roastery") - was hardcoded in index.html, same reasoning as heroTagline.
+    heroBadgeText: "Est. 2019 · 8-bit roastery",
+    // Printed at the bottom of the customer bill (window.printBill, app.js) -
+    // was a hardcoded "- G=7 | Processed with precision -" signature.
+    receiptFooterText: "Thank you for visiting!",
+    // Label under the home page's storefront photo, before the address
+    // (e.g. "The counter · 123 Main St") - was hardcoded as "The counter".
+    heroCaptionLabel: "The counter",
     // Admin-added icon options beyond the built-in set (see Branding tab).
     // Key -> image URL; menu items reference these by key just like the
     // built-in CSS icon names.
@@ -181,10 +213,17 @@ if (!fs.existsSync(CONFIG_FILE)) {
       email: "",
       hours: ""
     },
+    // Admin-added fields beyond the fixed set above (Instagram, GST no,
+    // WhatsApp, etc.) - see Content -> Store Details -> "+ ADD FIELD".
+    customFooterFields: [],
     // Number of physical tables the shop has. Table 0 is a reserved label
     // for "Online / Counter" (no physical table), never an openable tab -
     // real tabs are numbered 1..tableCount. See /api/table-sessions.
     tableCount: 10,
+    // "rail" or "topbar" - which staff-shell layout a browser sees the
+    // first time it visits with nobody logged in yet, before it has its own
+    // saved localStorage preference (see StaffShell in staff-shell.js).
+    defaultNavLayout: "rail",
     // Industry-standard "earn on spend, redeem for a discount" loyalty
     // program - both rates admin-editable from Discounts & Loyalty.
     loyalty: {
@@ -309,6 +348,16 @@ bootstrapOwnerAccount();
 function findUserByUsername(username) {
   const users = readJson(USERS_FILE, []);
   return users.find((u) => u.username.toLowerCase() === String(username || "").toLowerCase());
+}
+
+// Digits-only comparison so "98765 43210", "+91 9876543210", and
+// "9876543210" all match the same stored number regardless of how either
+// side happened to be formatted/punctuated.
+function findUserByPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return null;
+  const users = readJson(USERS_FILE, []);
+  return users.find((u) => u.phone && String(u.phone).replace(/\D/g, "") === digits);
 }
 
 function findUserById(id) {
@@ -648,12 +697,16 @@ function round2(n) {
 // SB26082402. Safe without locking: server.js handles one request at a time
 // and this runs synchronously between the readJson/writeJson in the order
 // creation route, so two orders can never see the same existing count.
-function generateOrderNumber(existingOrders) {
+// storeId/multiStore only change the format once a second store actually
+// exists - a single-store deployment keeps the plain "SB..." numbers it
+// always had, so this is invisible unless someone actually expands.
+function generateOrderNumber(existingOrders, storeId, multiStore) {
   const now = new Date();
   const yy = String(now.getFullYear()).slice(-2);
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const dd = String(now.getDate()).padStart(2, "0");
-  const datePrefix = `SB${yy}${mm}${dd}`;
+  const storePrefix = multiStore && storeId != null ? `SB${storeId}_` : "SB";
+  const datePrefix = `${storePrefix}${yy}${mm}${dd}`;
   const todayCount = existingOrders.filter((o) => o.orderNumber && o.orderNumber.startsWith(datePrefix)).length;
   return `${datePrefix}${String(todayCount + 1).padStart(2, "0")}`;
 }
@@ -821,7 +874,7 @@ function resolveComboLine(requested, menu, combos) {
   return lines;
 }
 
-function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCode = null, redeemPoints = 0, customerId = null } = {}) {
+function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCode = null, redeemPoints = 0, customerId = null, storeId = null } = {}) {
   const menu = readJson(MENU_FILE, { items: [] });
   const config = readJson(CONFIG_FILE, {});
   const combos = readJson(COMBOS_FILE, []);
@@ -839,6 +892,7 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
     const product = menu.items.find((i) => i.id === id);
     if (!product) continue; // ignore unknown items rather than trusting the client
     if (product.available === false) continue; // item was taken off the menu - never trust client to skip it itself
+    if (storeId != null && (product.disabledStores || []).includes(storeId)) continue; // out of stock at this store specifically
     if (product.stockCount != null && product.stockCount <= 0) continue; // sold out - dropped silently, same as unavailable
     if (product.stockCount != null && quantity > product.stockCount) {
       throw new Error(`${product.name} only has ${product.stockCount} left in stock`);
@@ -956,6 +1010,7 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
 }
 
 function orderStatusOf(order) {
+  if (order.servedAt) return "SERVED";
   if (!order.items.length) return "RECEIVED";
   return order.items.every((i) => i.isDone) ? "READY" : "PREPARING";
 }
@@ -1020,7 +1075,12 @@ route("POST", /^\/api\/auth\/login\/?$/, async (req, res) => {
   }
 
   const body = await readBody(req);
-  const user = findUserByUsername(body.username);
+  // The login field accepts either a username or a phone number,
+  // auto-detected by trying username first (usernames and phone numbers
+  // can never collide - phone lookup only ever matches digits) rather than
+  // guessing from the input's shape, which would misfire on an all-numeric
+  // username.
+  const user = findUserByUsername(body.username) || findUserByPhone(body.username);
 
   if (!user || !verifyPassword(body.password, user.salt, user.hash)) {
     recordAuthFailure(ip);
@@ -1166,6 +1226,55 @@ function canManageTarget(session, targetUser) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Customer accounts (admin view) - staff-facing search/profile/order-history/
+// loyalty lookup, separate from /api/users (staff accounts only). Read-only:
+// there's no edit-customer-from-admin action here, just visibility.
+// ---------------------------------------------------------------------------
+route("GET", /^\/api\/admin\/customers\/?$/, async (req, res, params, url) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const search = (url.searchParams.get("search") || "").trim().toLowerCase();
+  const orders = readJson(ORDERS_FILE, []);
+  let customers = readJson(USERS_FILE, []).filter((u) => u.role === "customer");
+  if (search) {
+    const searchDigits = search.replace(/\D/g, "");
+    customers = customers.filter((u) => {
+      const nameMatch = (u.name || "").toLowerCase().includes(search);
+      const usernameMatch = (u.username || "").toLowerCase().includes(search);
+      const phoneMatch = searchDigits && (u.phone || "").replace(/\D/g, "").includes(searchDigits);
+      return nameMatch || usernameMatch || phoneMatch;
+    });
+  }
+  sendJson(
+    res,
+    200,
+    customers.map((u) => ({
+      id: u.id,
+      username: u.username,
+      name: u.name,
+      phone: u.phone,
+      loyaltyPoints: u.loyaltyPoints || 0,
+      orderCount: orders.filter((o) => o.customerId === u.id).length
+    }))
+  );
+});
+
+route("GET", /^\/api\/admin\/customers\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const user = readJson(USERS_FILE, []).find((u) => u.id === Number(params.id) && u.role === "customer");
+  if (!user) return sendJson(res, 404, { error: "Customer not found" });
+  const orders = readJson(ORDERS_FILE, [])
+    .filter((o) => o.customerId === user.id)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  sendJson(res, 200, {
+    profile: publicUser(user),
+    orders,
+    totalSpent: round2(orders.reduce((sum, o) => sum + (o.isPaid ? o.total : 0), 0))
+  });
+});
+
 route("GET", /^\/api\/users\/?$/, async (req, res) => {
   const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
@@ -1306,6 +1415,32 @@ route("POST", /^\/api\/stores\/?$/, async (req, res) => {
   stores.push(store);
   writeJson(STORES_FILE, stores);
   sendJson(res, 201, store);
+});
+
+// Per-store branding override (shopName/logo/hero/colors/footer/etc,
+// anything Branding & Content also sets globally) - fields left unset here
+// fall back to the global config, see configForSession() above. Owner-only,
+// same as opening a new store - this is a business-structure change, not
+// day-to-day config a manager should be able to touch.
+route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, ["owner"])) return;
+  const stores = readJson(STORES_FILE, []);
+  const store = stores.find((s) => s.id === Number(params.id));
+  if (!store) return sendJson(res, 404, { error: "Store not found" });
+  const body = await readBody(req);
+  if (typeof body.name === "string") {
+    const name = body.name.trim();
+    if (!name) return sendJson(res, 400, { error: "Store name is required" });
+    store.name = name.slice(0, 60);
+  }
+  if (typeof body.address === "string") store.address = body.address.trim().slice(0, 200);
+  if (body.branding && typeof body.branding === "object") {
+    store.branding = { ...store.branding, ...body.branding };
+    if (body.branding.colors) store.branding.colors = { ...(store.branding.colors || {}), ...body.branding.colors };
+    if (body.branding.footer) store.branding.footer = { ...(store.branding.footer || {}), ...body.branding.footer };
+  }
+  writeJson(STORES_FILE, stores);
+  sendJson(res, 200, store);
 });
 
 route("GET", /^\/api\/audit-log\/?$/, async (req, res) => {
@@ -1472,6 +1607,23 @@ route("GET", /^\/api\/timeclock\/status\/?$/, async (req, res) => {
   const shifts = readJson(TIMECLOCK_FILE, []);
   const open = shifts.find((s) => s.userId === session.userId && !s.clockOut);
   sendJson(res, 200, { clockedIn: !!open, since: open ? open.clockIn : null });
+});
+
+/** Live "who's clocked in right now" for the Admin dashboard's Crew widget -
+ *  distinct from /api/payroll, which is period earnings, not live status. */
+route("GET", /^\/api\/timeclock\/roster\/?$/, async (req, res) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const staff = visibleStaffFor(session);
+  const shifts = readJson(TIMECLOCK_FILE, []);
+  const roster = staff.map((u) => ({
+    userId: u.id,
+    name: u.name,
+    role: u.role,
+    tag: u.tag || null,
+    clockedIn: shifts.some((s) => s.userId === u.id && !s.clockOut)
+  }));
+  sendJson(res, 200, roster);
 });
 
 route("GET", /^\/api\/payroll\/?$/, async (req, res) => {
@@ -1812,7 +1964,19 @@ route("GET", /^\/api\/menu\/?$/, async (req, res, params, url) => {
   // Soft-deleted items are hidden from the public/customer menu by default -
   // only the admin Menu Items screen passes includeDeleted to manage/restore them.
   const includeDeleted = url.searchParams.get("includeDeleted") === "true";
-  const items = includeDeleted ? menu.items : menu.items.filter((i) => !i.deleted);
+  let items = includeDeleted ? menu.items : menu.items.filter((i) => !i.deleted);
+  // The menu itself is shared across every store (per the "branding-only"
+  // multi-store decision - see configForSession()), but a store can still
+  // be out of stock on a shared item without affecting other locations.
+  // Only applies to a session tied to a store (staff assigned to one) - a
+  // customer/guest browsing has no storeId, so they see the item's plain
+  // global availability regardless of any one store's stock.
+  const session = currentSession(req);
+  if (session && session.storeId != null) {
+    items = items.map((i) =>
+      (i.disabledStores || []).includes(session.storeId) ? { ...i, available: false, disabledAtThisStore: true } : i
+    );
+  }
   sendJson(res, 200, { ...menu, items });
 });
 
@@ -1950,6 +2114,13 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
       item.promoDiscount = sanitized;
     }
   }
+  if (body.disabledStores !== undefined) {
+    const validIds = new Set(readJson(STORES_FILE, []).map((s) => s.id));
+    const disabledStores = (Array.isArray(body.disabledStores) ? body.disabledStores : [])
+      .map((id) => Number(id))
+      .filter((id) => validIds.has(id));
+    item.disabledStores = [...new Set(disabledStores)];
+  }
   writeJson(MENU_FILE, menu);
   sendJson(res, 200, item);
 });
@@ -2074,8 +2245,27 @@ route("DELETE", /^\/api\/combos\/(?<id>\d+)\/?$/, async (req, res, params) => {
 });
 
 // --- Config ---
+// Per-store branding is layered on top of the global config when the
+// requester's own session is tied to a store (staff assigned to a
+// location) - a customer/guest session has no storeId, so they always see
+// the plain global config. This keeps the merge entirely server-side: the
+// client's existing applyBranding()/AdminConfig flow doesn't need to know
+// stores exist at all, it just receives whatever's already effective.
+function configForSession(session) {
+  const config = readJson(CONFIG_FILE, {});
+  if (!session || session.storeId == null) return config;
+  const store = readJson(STORES_FILE, []).find((s) => s.id === session.storeId);
+  if (!store || !store.branding) return config;
+  return {
+    ...config,
+    ...store.branding,
+    colors: { ...config.colors, ...(store.branding.colors || {}) },
+    footer: { ...config.footer, ...(store.branding.footer || {}) }
+  };
+}
+
 route("GET", /^\/api\/config\/?$/, async (req, res) => {
-  sendJson(res, 200, readJson(CONFIG_FILE, {}));
+  sendJson(res, 200, configForSession(currentSession(req)));
 });
 
 route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
@@ -2084,19 +2274,23 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   const config = readJson(CONFIG_FILE, {});
   const allowed = [
     "shopName",
+    "gstNumber",
     "heroTagline",
+    "heroBadgeText",
+    "receiptFooterText",
     "tipEnabled",
     "tipAmount",
     "cgstRate",
     "sgstRate",
     "serviceChargeRate",
-    "currency",
     "theme",
     "heroImageUrl",
     "logoUrl",
     "upiVpa",
     "upiPayeeName",
-    "tableCount"
+    "tableCount",
+    "defaultNavLayout",
+    "heroCaptionLabel"
   ];
   for (const key of allowed) {
     if (body[key] !== undefined) config[key] = body[key];
@@ -2113,10 +2307,29 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     const n = parseInt(config.tableCount, 10);
     config.tableCount = Number.isFinite(n) && n >= 0 ? Math.min(n, 200) : 10;
   }
+  if (config.defaultNavLayout !== undefined && config.defaultNavLayout !== "rail" && config.defaultNavLayout !== "topbar") {
+    config.defaultNavLayout = "rail";
+  }
   // shopName/heroTagline are rendered directly into the home page - cap
   // length and strip control chars so a bad paste can't break layout.
   if (typeof config.shopName === "string") config.shopName = config.shopName.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 60);
+  if (typeof config.gstNumber === "string") config.gstNumber = Array.from(config.gstNumber).filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; }).join("").trim().toUpperCase().slice(0, 20);
+  if (typeof config.receiptFooterText === "string") config.receiptFooterText = config.receiptFooterText.trim().slice(0, 120);
+  if (typeof config.heroCaptionLabel === "string") {
+    config.heroCaptionLabel = Array.from(config.heroCaptionLabel)
+      .filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; })
+      .join("")
+      .trim()
+      .slice(0, 40);
+  }
   if (typeof config.heroTagline === "string") config.heroTagline = config.heroTagline.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400);
+  if (typeof config.heroBadgeText === "string") {
+    config.heroBadgeText = Array.from(config.heroBadgeText)
+      .filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; })
+      .join("")
+      .trim()
+      .slice(0, 80);
+  }
   // Colors, footer, and customIcons are objects - merge individual keys
   // instead of replacing the whole thing, so a partial update (e.g. just
   // "accent", or just one new icon) doesn't wipe out the rest.
@@ -2142,6 +2355,19 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   if (body.footer && typeof body.footer === "object") {
     config.footer = { ...config.footer, ...body.footer };
   }
+  // Admin-defined extra footer/"Find us" fields (Instagram, GST no,
+  // WhatsApp, whatever a given shop wants) beyond the fixed
+  // tagline/address/phone/email/hours set - replaced wholesale like
+  // homePicks/roastSteps, since it's an ordered custom list, not independent keys.
+  if (Array.isArray(body.customFooterFields)) {
+    config.customFooterFields = body.customFooterFields
+      .filter((f) => f && (f.label || f.value))
+      .slice(0, 6)
+      .map((f) => ({
+        label: String(f.label || "").trim().slice(0, 30),
+        value: String(f.value || "").trim().slice(0, 100)
+      }));
+  }
   if (body.customIcons && typeof body.customIcons === "object") {
     config.customIcons = { ...config.customIcons, ...body.customIcons };
   }
@@ -2150,6 +2376,50 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     config.arcade.enabled = config.arcade.enabled !== false;
     const hours = Number(config.arcade.sessionHours);
     config.arcade.sessionHours = Number.isFinite(hours) && hours > 0 ? Math.min(hours, 24) : 2;
+  }
+  // Home page "This week's picks" - which items feature there and what tag
+  // each shows (e.g. "House favourite"). Replaced wholesale (not merged like
+  // colors/footer above) since it's an ordered, curated list, not a bag of
+  // independent keys - a partial update wouldn't make sense here. Falls back
+  // to the original auto-picked-from-first-section behavior on the client
+  // (see renderPopularPicks() in app.js) whenever this is empty/unset, so a
+  // fresh install with no curation yet still shows something.
+  if (Array.isArray(body.homePicks)) {
+    const menu = readJson(MENU_FILE, { items: [] });
+    const validItemIds = new Set(menu.items.map((i) => i.id));
+    config.homePicks = body.homePicks
+      .filter((p) => p && validItemIds.has(Number(p.itemId)))
+      .slice(0, 3)
+      .map((p) => ({
+        itemId: Number(p.itemId),
+        tag: String(p.tag || "")
+          .replace(/[\r\n\t]/g, " ")
+          .trim()
+          .slice(0, 40)
+      }));
+  }
+  // Home page "How we roast" story steps - was a hardcoded array in app.js
+  // (renderHomeRoastSteps), same reasoning as homePicks: replaced wholesale
+  // since it's an ordered story, not independent keys. Empty/unset falls
+  // back to the original hardcoded steps client-side.
+  if (Array.isArray(body.roastSteps)) {
+    config.roastSteps = body.roastSteps
+      .filter((s) => s && (s.name || s.detail))
+      .slice(0, 6)
+      .map((s) => ({
+        name: String(s.name || "").trim().slice(0, 40),
+        detail: String(s.detail || "").trim().slice(0, 160)
+      }));
+  }
+  // The three home page section headings ("This week's picks"/"How we
+  // roast"/"Find us") - were hardcoded text in index.html.
+  if (body.homeHeadings && typeof body.homeHeadings === "object") {
+    config.homeHeadings = { ...config.homeHeadings };
+    for (const key of ["picks", "roast", "findUs"]) {
+      if (typeof body.homeHeadings[key] === "string") {
+        config.homeHeadings[key] = body.homeHeadings[key].trim().slice(0, 60);
+      }
+    }
   }
   writeJson(CONFIG_FILE, config);
   sendJson(res, 200, config);
@@ -2161,6 +2431,174 @@ route("DELETE", /^\/api\/config\/custom-icons\/(?<key>[\w-]+)\/?$/, async (req, 
   if (config.customIcons) delete config.customIcons[params.key];
   writeJson(CONFIG_FILE, config);
   sendJson(res, 200, config);
+});
+
+// ---------------------------------------------------------------------------
+// Image uploads (menu item photos, hero/storefront image, logo) - a plain
+// on-disk bucket under UPLOADS_DIR rather than an external object-storage
+// service, consistent with this app's whole "no external dependencies, just
+// JSON files on disk" approach. Uploaded as a base64 data URL in a JSON body
+// rather than multipart/form-data, since the raw http module here has no
+// multipart parser and adding one just for this felt like more risk than a
+// same-style JSON endpoint. Staff-only (KITCHEN_ROLES) - customers never
+// upload anything.
+// ---------------------------------------------------------------------------
+
+const UPLOAD_MIME_EXT = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/svg+xml": ".svg"
+};
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB decoded
+
+route("GET", /^\/api\/uploads\/?$/, async (req, res) => {
+  if (!requireRole(req, res, KITCHEN_ROLES)) return;
+  const uploads = readJson(UPLOADS_MANIFEST_FILE, []);
+  sendJson(
+    res,
+    200,
+    uploads.map((u) => ({ ...u, url: `/uploads/${u.filename}` })).sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
+  );
+});
+
+route("POST", /^\/api\/uploads\/?$/, async (req, res) => {
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  // Base64 inflates size by ~33% - allow enough body room for a 5MB image
+  // plus JSON overhead, then re-check the actual decoded size below.
+  let body;
+  try {
+    body = await readBody(req, Math.ceil(MAX_UPLOAD_BYTES * 1.4) + 4096);
+  } catch (e) {
+    return sendJson(res, 413, { error: "Image too large (max 5MB)" });
+  }
+  const mimeType = String(body.mimeType || "");
+  const ext = UPLOAD_MIME_EXT[mimeType];
+  if (!ext) return sendJson(res, 400, { error: "Unsupported image type - use PNG, JPEG, GIF, WEBP, or SVG" });
+  const dataUrlPrefix = /^data:[^;]+;base64,/;
+  const base64 = String(body.dataBase64 || "").replace(dataUrlPrefix, "");
+  let buffer;
+  try {
+    buffer = Buffer.from(base64, "base64");
+  } catch (e) {
+    return sendJson(res, 400, { error: "Invalid image data" });
+  }
+  if (!buffer.length || buffer.length > MAX_UPLOAD_BYTES) {
+    return sendJson(res, 413, { error: "Image too large (max 5MB)" });
+  }
+  const id = crypto.randomBytes(8).toString("hex");
+  const filename = `${id}${ext}`;
+  fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+
+  const uploads = readJson(UPLOADS_MANIFEST_FILE, []);
+  const entry = {
+    id,
+    filename,
+    // Original filename is only ever displayed as text in the admin picker,
+    // never used to build a path - stripped/capped so a weird paste can't
+    // break that list's layout.
+    originalName: Array.from(String(body.originalName || filename))
+      .filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; })
+      .join("")
+      .slice(0, 120),
+    mimeType,
+    sizeBytes: buffer.length,
+    uploadedAt: new Date().toISOString(),
+    uploadedBy: session.name || session.role
+  };
+  uploads.push(entry);
+  writeJson(UPLOADS_MANIFEST_FILE, uploads);
+  sendJson(res, 201, { ...entry, url: `/uploads/${filename}` });
+});
+
+route("DELETE", /^\/api\/uploads\/(?<id>[\w-]+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, KITCHEN_ROLES)) return;
+  const uploads = readJson(UPLOADS_MANIFEST_FILE, []);
+  const entry = uploads.find((u) => u.id === params.id);
+  if (!entry) return sendJson(res, 404, { error: "Upload not found" });
+  try {
+    fs.unlinkSync(path.join(UPLOADS_DIR, entry.filename));
+  } catch (e) {
+    // Already gone from disk somehow - still clean up the manifest entry below.
+  }
+  writeJson(
+    UPLOADS_MANIFEST_FILE,
+    uploads.filter((u) => u.id !== params.id)
+  );
+  sendJson(res, 200, { ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Data backup/restore - since this whole app is just JSON files on disk with
+// no real database, a full backup is just bundling those files into one
+// downloadable JSON. Restoring is the risky direction (silently overwrites
+// live data), so it's owner-only and requires the same "confirmYes"-style
+// explicit body flag the client's confirm dialog sets, not just a valid
+// file upload - a stray automated retry can't wipe live data by accident.
+// Uploaded images themselves (uploads/*.svg etc.) are NOT included - only
+// their metadata (uploads.json) is, same as everything else here being
+// metadata/records rather than binary blobs.
+// ---------------------------------------------------------------------------
+const BACKUP_FILES = {
+  "config.json": CONFIG_FILE,
+  "menu.json": MENU_FILE,
+  "users.json": USERS_FILE,
+  "orders.json": ORDERS_FILE,
+  "combos.json": COMBOS_FILE,
+  "coupons.json": COUPONS_FILE,
+  "table-sessions.json": TABLE_SESSIONS_FILE,
+  "favorites.json": FAVORITES_FILE,
+  "arcade-scores.json": ARCADE_SCORES_FILE,
+  "stores.json": STORES_FILE,
+  "timeclock.json": TIMECLOCK_FILE,
+  "payroll.json": PAYROLL_FILE,
+  "attendance.json": ATTENDANCE_FILE,
+  "overtime-approvals.json": OVERTIME_APPROVALS_FILE,
+  "uploads.json": UPLOADS_MANIFEST_FILE,
+  "branding-profiles.json": BRANDING_PROFILES_FILE
+};
+
+route("GET", /^\/api\/admin\/backup\/?$/, async (req, res) => {
+  const session = requireRole(req, res, ["owner"]);
+  if (!session) return;
+  const files = {};
+  for (const [name, filePath] of Object.entries(BACKUP_FILES)) {
+    files[name] = readJson(filePath, null);
+  }
+  const backup = { exportedAt: new Date().toISOString(), files };
+  const body = JSON.stringify(backup, null, 2);
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Disposition": `attachment; filename="backup-${new Date().toISOString().slice(0, 10)}.json"`
+  });
+  res.end(body);
+});
+
+route("POST", /^\/api\/admin\/restore\/?$/, async (req, res) => {
+  const session = requireRole(req, res, ["owner"]);
+  if (!session) return;
+  let body;
+  try {
+    body = await readBody(req, 20 * 1024 * 1024); // backups can be a few MB with enough order history
+  } catch (e) {
+    return sendJson(res, 413, { error: "Backup file too large" });
+  }
+  if (!body.confirmYes) {
+    return sendJson(res, 400, { error: "Missing confirmation" });
+  }
+  if (!body.files || typeof body.files !== "object") {
+    return sendJson(res, 400, { error: "That doesn't look like a backup file" });
+  }
+  let restoredCount = 0;
+  for (const [name, filePath] of Object.entries(BACKUP_FILES)) {
+    if (body.files[name] !== undefined && body.files[name] !== null) {
+      writeJson(filePath, body.files[name]);
+      restoredCount++;
+    }
+  }
+  sendJson(res, 200, { ok: true, restoredCount });
 });
 
 route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
@@ -2274,42 +2712,74 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     return sendJson(res, 400, { error: e.message });
   }
 
-  const phone = normalizePhone(body.phone || session.phone);
-  if (!phone) {
+  // Staff taking a counter order can mark it explicitly as a walk-in guest
+  // who doesn't want to give a number - only staff get this bypass, since a
+  // self-checkout customer/guest session always has some identity already
+  // (a login, or the guest session's own phone). A guest order like this
+  // can never be tracked/looked-up afterward (no phone, no account) - an
+  // accepted trade-off for someone who declines to give a number.
+  const isGuestOrder = KITCHEN_ROLES.includes(session.role) && body.guestOrder === true;
+  const phone = isGuestOrder ? null : normalizePhone(body.phone || session.phone);
+  if (!isGuestOrder && !phone) {
     return sendJson(res, 400, { error: "A valid phone number is required to place an order" });
   }
 
   const method = body.method === "ONLINE" ? "ONLINE" : "COUNTER";
   const serviceChargeActive = body.serviceChargeActive !== false;
   const tipApplied = !!body.tipApplied;
+  const orderType = body.orderType === "dine-in" ? "dine-in" : "takeaway";
+
+  // Staff placing an order on someone's behalf: if the phone they typed
+  // matches a registered customer account, attribute the order to that
+  // account (loyalty points, "My Orders" history) instead of leaving it a
+  // phone-only record only that customer's own guest-lookup could ever see.
+  // A customer/guest session placing their own order already has the
+  // correct identity from the session itself.
+  let matchedCustomer = null;
+  if (KITCHEN_ROLES.includes(session.role) && phone) {
+    const staffEnteredUser = findUserByPhone(phone);
+    if (staffEnteredUser && staffEnteredUser.role === "customer") matchedCustomer = staffEnteredUser;
+  }
 
   let computed;
   try {
-    const customerId = session.role === "customer" ? session.userId : null;
+    const customerId = session.role === "customer" ? session.userId : matchedCustomer ? matchedCustomer.id : null;
     computed = computeOrder(Array.isArray(body.items) ? body.items : [], method, serviceChargeActive, tipApplied, {
       couponCode: body.couponCode || null,
       redeemPoints: parseInt(body.redeemPoints, 10) || 0,
-      customerId
+      customerId,
+      storeId: session.storeId != null ? session.storeId : null
     });
   } catch (e) {
     return sendJson(res, 400, { error: e.message });
   }
 
   const orders = readJson(ORDERS_FILE, []);
+  const multiStore = readJson(STORES_FILE, []).length > 1;
   // Staff placing an order at the counter on a customer's behalf can mark it
   // paid immediately (cash already collected) instead of having to find it
   // in Order History afterwards - customers/guests can never self-mark paid.
   const staffMarkedPaid = KITCHEN_ROLES.includes(session.role) && body.markPaidNow === true;
   const order = {
     id: `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
-    orderNumber: generateOrderNumber(orders),
+    orderNumber: generateOrderNumber(orders, session.storeId, multiStore),
+    storeId: session.storeId != null ? session.storeId : null,
     createdAt: new Date().toISOString(),
     method,
     isPaid: method === "ONLINE" || staffMarkedPaid, // still trust-based until a real payment webhook is wired up - see README
+    paymentMethod: method === "ONLINE" ? "UPI" : staffMarkedPaid ? "Cash" : null,
     tipApplied,
     serviceChargeActive,
-    customerId: session.role === "customer" ? session.userId : null,
-    customerName: session.name || null,
+    orderType,
+    // Set later from Billing (see PATCH .../tagInfo below) - staff tag which
+    // physical table a dine-in order belongs to once seated, rather than
+    // asking for it at the moment of ordering.
+    tableNumber: null,
+    // Was `session.name || null`, which for a staff-placed order recorded
+    // the STAFF MEMBER's own name as the "customer" - placedByStaff already
+    // covers who took the order; this should be who it's actually for.
+    customerId: session.role === "customer" ? session.userId : matchedCustomer ? matchedCustomer.id : null,
+    customerName: session.role === "customer" ? session.name : matchedCustomer ? matchedCustomer.name : isGuestOrder ? "Guest" : null,
     customerPhone: phone,
     placedByStaff: KITCHEN_ROLES.includes(session.role) ? session.name : null,
     // Only staff can tag an order to an open table tab, and only if that
@@ -2381,11 +2851,42 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
 
   if (body.action === "markPaid") {
     order.isPaid = true;
+    order.paymentMethod = PAYMENT_METHODS.includes(body.paymentMethod) ? body.paymentMethod : "Cash";
   } else if (body.action === "markDone") {
     const station = body.station;
     order.items.forEach((i) => {
       if (!station || station === "MASTER" || i.station === station) i.isDone = true;
     });
+  } else if (body.action === "markServed") {
+    // Only meaningful once every item is actually ready - staff hand off a
+    // partially-made order to nobody. Idempotent (re-marking an already-
+    // served order just no-ops) rather than erroring, since a double-tap
+    // shouldn't need special handling on the client.
+    if (!order.items.length || !order.items.every((i) => i.isDone)) {
+      return sendJson(res, 400, { error: "Order isn't ready yet" });
+    }
+    if (!order.servedAt) order.servedAt = new Date().toISOString();
+  } else if (body.action === "tagInfo") {
+    // Staff filling in/correcting who a bill is for and (for a dine-in
+    // order) which table, from the Billing page - a phone typed at order
+    // time may have been skipped (guest order) or wrong, and the table
+    // usually isn't known until the customer is actually seated. One
+    // combined field auto-detects phone vs. username, same as the login
+    // field - whichever it looks like gets updated, the other is left as-is.
+    if (typeof body.contact === "string") {
+      const trimmed = body.contact.trim();
+      if (!trimmed) {
+        order.customerPhone = null;
+        order.customerName = null;
+      } else if (/^[\d\s()+-]{7,20}$/.test(trimmed) && trimmed.replace(/\D/g, "").length >= 7) {
+        order.customerPhone = normalizePhone(trimmed) || trimmed.slice(0, 20);
+      } else {
+        order.customerName = trimmed.slice(0, 60);
+      }
+    }
+    if (typeof body.tableNumber === "string") {
+      order.tableNumber = body.tableNumber.trim().slice(0, 20) || null;
+    }
   } else {
     return sendJson(res, 400, { error: "Unknown action" });
   }
@@ -2463,6 +2964,28 @@ route("DELETE", /^\/api\/favorites\/(?<itemId>\d+)\/?$/, async (req, res, params
     favorites.filter((f) => !(f.ownerKey === key && f.itemId === itemId))
   );
   sendJson(res, 200, { ok: true });
+});
+
+// Per-user preferences (currently just the staff rail/top-bar layout choice)
+// - one object keyed by userId, {} until someone has actually set anything.
+route("GET", /^\/api\/user-preferences\/?$/, async (req, res) => {
+  const session = currentSession(req);
+  if (!session || session.userId == null) return sendJson(res, 200, {});
+  const all = readJson(USER_PREFERENCES_FILE, {});
+  sendJson(res, 200, all[session.userId] || {});
+});
+
+route("PATCH", /^\/api\/user-preferences\/?$/, async (req, res) => {
+  const session = currentSession(req);
+  if (!session || session.userId == null) return sendJson(res, 401, { error: "Not authenticated" });
+  const body = await readBody(req);
+  if (body.layout && !["rail", "topbar"].includes(body.layout)) {
+    return sendJson(res, 400, { error: "Invalid layout" });
+  }
+  const all = readJson(USER_PREFERENCES_FILE, {});
+  all[session.userId] = { ...all[session.userId], ...(body.layout ? { layout: body.layout } : {}) };
+  writeJson(USER_PREFERENCES_FILE, all);
+  sendJson(res, 200, all[session.userId]);
 });
 
 // ---------------------------------------------------------------------------
@@ -3249,10 +3772,15 @@ route("POST", /^\/api\/table-sessions\/(?<id>[\w-]+)\/close\/?$/, async (req, re
   tableSession.closedBy = session.name;
 
   if (body.markPaid === true) {
+    const paymentMethod = PAYMENT_METHODS.includes(body.paymentMethod) ? body.paymentMethod : "Cash";
     tableSession.isPaid = true;
+    tableSession.paymentMethod = paymentMethod;
     const orders = readJson(ORDERS_FILE, []);
     orders.forEach((o) => {
-      if (o.tableSessionId === tableSession.id) o.isPaid = true;
+      if (o.tableSessionId === tableSession.id) {
+        o.isPaid = true;
+        o.paymentMethod = paymentMethod;
+      }
     });
     writeJson(ORDERS_FILE, orders);
     broadcastOrdersChanged();
@@ -3293,19 +3821,30 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
   ".ico": "image/x-icon"
 };
 
-function serveStatic(req, res, pathname) {
-  let rel = pathname === "/" ? "/index.html" : pathname;
-  const filePath = path.normalize(path.join(ROOT_DIR, rel));
+// Explicit allowlist of servable directories, each scoped to its own root -
+// anything not under one of these (data/, data-seed/, server.js, the .md/
+// .bat files at the project root, etc.) 404s instead of being served.
+// Serving the WHOLE project root used to mean any GET request for
+// /data/users.json (password hashes+salts) or /data/orders.json (customer
+// names/phones) succeeded with zero auth - a real, live data exposure bug,
+// not just a defense-in-depth nicety. UPLOADS_DIR sits at the project root
+// (not under data/) specifically so that mistake can't recur even if a
+// future change re-widens data/'s own exposure - uploaded images are the
+// only files anyone unauthenticated should ever be able to fetch by path.
+const STATIC_ROOTS = [
+  { prefix: "/css/", dir: path.join(ROOT_DIR, "css") },
+  { prefix: "/js/", dir: path.join(ROOT_DIR, "js") },
+  { prefix: "/uploads/", dir: UPLOADS_DIR }
+];
 
-  // Prevent path traversal outside the project root.
-  if (!filePath.startsWith(ROOT_DIR)) {
-    res.writeHead(403);
-    return res.end("Forbidden");
-  }
-
+function serveFile(res, filePath) {
   fs.readFile(filePath, (err, data) => {
     if (err) {
       res.writeHead(404, { "Content-Type": "text/plain" });
@@ -3326,6 +3865,29 @@ function serveStatic(req, res, pathname) {
     });
     res.end(data);
   });
+}
+
+function serveStatic(req, res, pathname) {
+  if (pathname === "/" || pathname === "/index.html") {
+    return serveFile(res, path.join(ROOT_DIR, "index.html"));
+  }
+
+  const root = STATIC_ROOTS.find((r) => pathname.startsWith(r.prefix));
+  if (!root) {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    return res.end("Not found");
+  }
+
+  const rel = pathname.slice(root.prefix.length);
+  const filePath = path.normalize(path.join(root.dir, rel));
+
+  // Prevent path traversal (e.g. /css/../server.js) escaping this root.
+  if (!filePath.startsWith(root.dir)) {
+    res.writeHead(403);
+    return res.end("Forbidden");
+  }
+
+  serveFile(res, filePath);
 }
 
 // ---------------------------------------------------------------------------

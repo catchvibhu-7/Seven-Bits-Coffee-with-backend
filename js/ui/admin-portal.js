@@ -10,12 +10,22 @@
 import { AdminConfig } from "../features/config-logic.js";
 import { AuthSystem } from "../features/auth-logic.js";
 import { PayrollSystem } from "../features/payroll-logic.js";
+import { KitchenSystem } from "../features/kitchen-logic.js";
 import { renderAddStaffModal, renderEditStaffModal } from "./staff-modal.js";
 import { renderInfoModal } from "./info-modal.js";
 import { renderItemModal } from "./item-modal.js";
 import { renderComboModal } from "./combo-modal.js";
 import { renderAccountSettingsModal } from "./account-settings-modal.js";
+import { renderImagePickerModal } from "./image-picker-modal.js";
 
+// Reorganized from the original 5 groups, which had grown into two
+// unrelated grab-bags: "Global Settings" mixed shop-identity copy
+// (name/badge/about text) with tax rates, UPI, AND arcade config, while
+// "Branding" mixed colors/images with multi-location store management
+// that has nothing to do with branding. Each group below now has one clear
+// job: content owners look in BRANDING & CONTENT, money/tax people look in
+// PAYMENTS, day-to-day operational toggles are in OPERATIONS, and
+// business-structure/data tools (locations, backup) are in STORE SETUP.
 function tabGroupsForRole(role) {
     const isManagerOnly = role === "manager";
     const groups = [
@@ -25,14 +35,16 @@ function tabGroupsForRole(role) {
             tabs: [
                 { id: "menu", label: "Menu Items" },
                 { id: "combos", label: "Combos" },
-                { id: "customization", label: "Customization Pricing" }
+                { id: "customization", label: "Customization" }
             ]
         },
         {
             label: "SALES",
             tabs: [
+                { id: "customers", label: "Customers" },
                 { id: "discounts", label: "Discounts & Loyalty" },
-                { id: "orders", label: "Order History" }
+                { id: "orders", label: "Order History" },
+                { id: "reports", label: "Reports & Export" }
             ]
         },
         {
@@ -43,15 +55,33 @@ function tabGroupsForRole(role) {
             ]
         },
         {
-            // Global Settings (tax rates, UPI payment ID) and Branding are
-            // both shop-wide/business-critical, so owner/admin only - not
-            // part of what a manager gets, even though everything else
-            // here is. Group disappears entirely for a manager.
+            // Everything here is shop-wide/business-critical, so owner/admin
+            // only - not part of what a manager gets. Group disappears
+            // entirely for a manager.
+            label: "BRANDING & CONTENT",
+            tabs: isManagerOnly
+                ? []
+                : [
+                      { id: "branding", label: "Branding" },
+                      { id: "content", label: "Content" }
+                  ]
+        },
+        {
+            label: "PAYMENTS",
+            tabs: isManagerOnly ? [] : [{ id: "payments", label: "Payments & Tax" }]
+        },
+        {
+            label: "OPERATIONS",
+            tabs: isManagerOnly ? [] : [{ id: "operations", label: "Operations" }]
+        },
+        {
             label: "STORE SETUP",
-            tabs: isManagerOnly ? [] : [
-                { id: "global", label: "Global Settings" },
-                { id: "branding", label: "Branding" }
-            ]
+            tabs: isManagerOnly
+                ? []
+                : [
+                      { id: "stores", label: "Locations" },
+                      { id: "data", label: "Data & Backup" }
+                  ]
         }
     ];
     return groups.filter((g) => g.tabs.length > 0);
@@ -114,17 +144,40 @@ export const AdminPortal = {
         const root = document.getElementById("admin-tabs");
         if (!root) return;
         const groups = tabGroupsForRole(this.session.role);
-        root.innerHTML = groups.map((g) => `
-            <div class="admin-tab-group">
-                <div class="admin-tab-group-label">${g.label}</div>
-                <div class="admin-tab-group-btns">
-                    ${g.tabs.map(
-                        (t) => `<button class="admin-tab-btn ${t.id === this.activeTab ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`
-                    ).join("")}
-                </div>
+        // A single-tab section (Dashboard, Payments, Operations) IS its page -
+        // the top row shows its one tab's own label, and clicking it goes
+        // straight there. A multi-tab section shows the group name on top,
+        // and clicking it reveals its tabs below with the first preselected.
+        const activeGroup = groups.find((g) => g.tabs.some((t) => t.id === this.activeTab)) || groups[0];
+        root.innerHTML = `
+            <div class="admin-top-tabs">
+                ${groups
+                    .map(
+                        (g) =>
+                            `<button class="admin-tab-btn ${g === activeGroup ? "active" : ""}" data-group="${escapeHtmlAttr(g.label)}">${g.tabs.length === 1 ? g.tabs[0].label : g.label}</button>`
+                    )
+                    .join("")}
             </div>
-        `).join("");
-        root.querySelectorAll(".admin-tab-btn").forEach((btn) => {
+            ${
+                activeGroup.tabs.length > 1
+                    ? `<div class="admin-sub-tabs">
+                    ${activeGroup.tabs
+                        .map((t) => `<button class="admin-tab-btn ${t.id === this.activeTab ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`)
+                        .join("")}
+                </div>`
+                    : ""
+            }
+        `;
+        root.querySelectorAll("[data-group]").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+                const group = groups.find((g) => g.label === btn.dataset.group);
+                if (!group) return;
+                this.activeTab = group.tabs[0].id;
+                this.renderTabs();
+                await this.renderActiveTab();
+            });
+        });
+        root.querySelectorAll("[data-tab]").forEach((btn) => {
             btn.addEventListener("click", async () => {
                 this.activeTab = btn.dataset.tab;
                 this.renderTabs();
@@ -137,100 +190,148 @@ export const AdminPortal = {
         const root = document.getElementById("admin-tab-content");
         if (!root) return;
         if (this.activeTab === "kpi") return this.renderKpiDashboard(root);
-        if (this.activeTab === "global") return this.renderGlobalSettings(root);
+        if (this.activeTab === "payments") return this.renderPayments(root);
+        if (this.activeTab === "operations") return this.renderOperations(root);
+        if (this.activeTab === "stores") return this.renderStores(root);
+        if (this.activeTab === "data") return this.renderDataBackup(root);
+        if (this.activeTab === "reports") return this.renderReportsExport(root);
         if (this.activeTab === "menu") {
             await this.loadMenu(); // pending staff disable-requests can arrive between tab switches
             return this.renderMenuItems(root);
         }
         if (this.activeTab === "combos") return this.renderCombos(root);
         if (this.activeTab === "customization") return this.renderCustomizationPricing(root);
+        if (this.activeTab === "customers") return this.renderCustomers(root);
         if (this.activeTab === "discounts") return this.renderDiscountsLoyalty(root);
         if (this.activeTab === "orders") return this.renderOrderHistory(root);
         if (this.activeTab === "payroll") return this.renderPayroll(root);
         if (this.activeTab === "staff") return this.renderStaffManagement(root);
         if (this.activeTab === "branding") return this.renderBranding(root);
+        if (this.activeTab === "content") return this.renderContent(root);
     },
 
     // ---------------------------------------------------------------- GLOBAL
-    async renderGlobalSettings(root) {
+    // ---------------------------------------------------------------- PAYMENTS & TAX
+    async renderPayments(root) {
         const c = AdminConfig.settings;
 
         root.innerHTML = `
             <div class="config-controls">
-                <div class="control-group">
-                    <label>SHOP NAME</label>
-                    <input type="text" id="cfg-shop-name" value="${escapeHtmlAttr(c.shopName || "")}" />
+                <h3 style="margin-top:0;">TAX &amp; GST (INDIAN SUBCONTINENT)</h3>
+                <div class="control-group" style="max-width:280px;">
+                    <label>GST NUMBER (GSTIN) - printed on bills when set. Leave blank if not GST-registered.</label>
+                    <input type="text" id="cfg-gst-number" maxlength="20" value="${escapeHtmlAttr(c.gstNumber || "")}" placeholder="22AAAAA0000A1Z5" />
                 </div>
-                <div class="control-group">
-                    <label>HOME PAGE ABOUT TEXT</label>
-                    <textarea id="cfg-hero-tagline" rows="3" maxlength="400" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;">${escapeHtmlAttr(c.heroTagline || "")}</textarea>
+                <div style="display:flex; gap: 15px; flex-wrap:wrap;">
+                    <div class="control-group" style="flex:0 0 130px;">
+                        <label>CGST RATE (%)</label>
+                        <input type="text" id="cfg-cgst" maxlength="6" value="${(c.cgstRate * 100).toFixed(2)}" />
+                    </div>
+                    <div class="control-group" style="flex:0 0 130px;">
+                        <label>SGST RATE (%)</label>
+                        <input type="text" id="cfg-sgst" maxlength="6" value="${(c.sgstRate * 100).toFixed(2)}" />
+                    </div>
+                    <div class="control-group" style="flex:0 0 160px;">
+                        <label>SERVICE CHARGE RATE (%)</label>
+                        <input type="text" id="cfg-service-charge" maxlength="6" value="${(c.serviceChargeRate * 100).toFixed(2)}" />
+                    </div>
+                    <div class="control-group" style="flex:0 0 130px;">
+                        <label>TIP AMOUNT (\u20b9)</label>
+                        <input type="text" id="cfg-tip-amount" maxlength="6" value="${c.tipAmount ?? 0}" />
+                    </div>
                 </div>
                 <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="cfg-tip-enabled" ${c.tipEnabled ? "checked" : ""} style="width:auto;" />
+                    <input type="checkbox" id="cfg-tip-enabled" ${c.tipEnabled ? "checked" : ""} />
                     <label style="margin:0;" for="cfg-tip-enabled">ENABLE GINGER TIP</label>
                 </div>
-                <div class="control-group">
-                    <label>TIP AMOUNT (\u20b9)</label>
-                    <input type="text" id="cfg-tip-amount" value="${c.tipAmount ?? 0}" />
-                </div>
-                <div class="control-group">
-                    <label>CGST RATE (%)</label>
-                    <input type="text" id="cfg-cgst" value="${(c.cgstRate * 100).toFixed(2)}" />
-                </div>
-                <div class="control-group">
-                    <label>SGST RATE (%)</label>
-                    <input type="text" id="cfg-sgst" value="${(c.sgstRate * 100).toFixed(2)}" />
-                </div>
-                <div class="control-group">
-                    <label>SERVICE CHARGE RATE (%)</label>
-                    <input type="text" id="cfg-service-charge" value="${(c.serviceChargeRate * 100).toFixed(2)}" />
-                </div>
-                <div class="control-group">
-                    <label>NUMBER OF TABLES (0 = only Online/Counter, no physical tabs)</label>
-                    <input type="text" id="cfg-table-count" value="${c.tableCount ?? 10}" />
-                    <p class="admin-help-text" style="margin-top:4px;">Staff can open a tab for tables numbered 1 through this count. Table "0" always means Online/Counter (no tab).</p>
-                </div>
+                <p class="admin-help-text">Tax, service charge, and tip are calculated and shown at checkout, on the Billing page, and on the printed bill - not while someone's still browsing/adding to their cart.</p>
 
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">PAYMENT SETTINGS</h3>
-                <div class="control-group">
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">UPI PAYMENT</h3>
+                <div class="control-group" style="max-width:320px;">
                     <label>UPI ID (VPA) - shown as a QR code for "Pay Online" orders. Leave blank to disable online payment and show "pay at counter" instead.</label>
-                    <input type="text" id="cfg-upi-vpa" value="${c.upiVpa || ""}" placeholder="yourshop@upi" />
+                    <input type="text" id="cfg-upi-vpa" maxlength="80" value="${c.upiVpa || ""}" placeholder="yourshop@upi" />
                 </div>
-                <div class="control-group">
+                <div class="control-group" style="max-width:320px;">
                     <label>PAYEE NAME (shown to the customer in their UPI app)</label>
-                    <input type="text" id="cfg-upi-payee-name" value="${c.upiPayeeName || ""}" placeholder="${c.shopName || "Your Shop"}" />
+                    <input type="text" id="cfg-upi-payee-name" maxlength="60" value="${c.upiPayeeName || ""}" placeholder="${c.shopName || "Your Shop"}" />
                 </div>
 
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ARCADE (GAMES TAB)</h3>
-                <p class="admin-help-text" style="margin-bottom:10px;">In-store only: a customer/guest unlocks the arcade for the session length below, starting from their most recent order.</p>
-                <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="cfg-arcade-enabled" ${(c.arcade?.enabled ?? true) ? "checked" : ""} style="width:auto;" />
-                    <label style="margin:0;" for="cfg-arcade-enabled">ENABLE ARCADE</label>
-                </div>
-                <div class="control-group">
-                    <label>SESSION LENGTH (hours)</label>
-                    <input type="text" id="cfg-arcade-hours" value="${c.arcade?.sessionHours ?? 2}" />
-                </div>
-
-                <p id="global-settings-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <p id="payments-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="cfg-save">SAVE SETTINGS</button>
             </div>
         `;
 
         document.getElementById("cfg-save").addEventListener("click", async () => {
-            const errorEl = document.getElementById("global-settings-error");
+            const errorEl = document.getElementById("payments-error");
             errorEl.textContent = "";
             const cgst = parseFloat(document.getElementById("cfg-cgst").value) / 100;
             const sgst = parseFloat(document.getElementById("cfg-sgst").value) / 100;
             const serviceCharge = parseFloat(document.getElementById("cfg-service-charge").value) / 100;
             const tipAmount = parseFloat(document.getElementById("cfg-tip-amount").value);
-            const tableCount = parseInt(document.getElementById("cfg-table-count").value, 10);
-            const arcadeHours = parseFloat(document.getElementById("cfg-arcade-hours").value);
 
             if ([cgst, sgst, serviceCharge, tipAmount].some((n) => !Number.isFinite(n) || n < 0)) {
                 errorEl.textContent = "Rates and amounts must be positive numbers.";
                 return;
             }
+
+            try {
+                await AdminConfig.saveSettings({
+                    gstNumber: document.getElementById("cfg-gst-number").value,
+                    tipEnabled: document.getElementById("cfg-tip-enabled").checked,
+                    tipAmount,
+                    cgstRate: cgst,
+                    sgstRate: sgst,
+                    serviceChargeRate: serviceCharge,
+                    upiVpa: document.getElementById("cfg-upi-vpa").value.trim(),
+                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim()
+                });
+                if (window.applyBranding) window.applyBranding(AdminConfig.settings);
+                ok("Settings saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
+    },
+
+    // ---------------------------------------------------------------- OPERATIONS
+    async renderOperations(root) {
+        const c = AdminConfig.settings;
+
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">TABLES</h3>
+                <div class="control-group" style="max-width:130px;">
+                    <label>NUMBER OF TABLES</label>
+                    <input type="text" id="cfg-table-count" maxlength="4" value="${c.tableCount ?? 10}" />
+                </div>
+                <p class="admin-help-text" style="margin-top:-4px;">0 = only Online/Counter, no physical tabs. Staff can open a tab for tables numbered 1 through this count.</p>
+
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ARCADE (GAMES TAB)</h3>
+                <p class="admin-help-text" style="margin-bottom:10px;">In-store only: a customer/guest unlocks the arcade for the session length below, starting from their most recent order.</p>
+                <div class="control-group" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="cfg-arcade-enabled" ${(c.arcade?.enabled ?? true) ? "checked" : ""} />
+                    <label style="margin:0;" for="cfg-arcade-enabled">ENABLE ARCADE</label>
+                </div>
+                <div class="control-group" style="max-width:130px;">
+                    <label>SESSION LENGTH (hours)</label>
+                    <input type="text" id="cfg-arcade-hours" maxlength="4" value="${c.arcade?.sessionHours ?? 2}" />
+                </div>
+
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">NOTIFICATIONS</h3>
+                <p class="admin-help-text">Order-ready and low-stock alerts currently only show in-app (staff dashboard, order status widget). SMS/WhatsApp delivery is planned but not built yet - see README-BACKEND.md for the tracked feature request once you're ready to wire up a provider (e.g. Twilio, MSG91, or Meta's WhatsApp Business API).</p>
+
+                <p id="operations-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="cfg-save">SAVE SETTINGS</button>
+            </div>
+        `;
+
+        document.getElementById("cfg-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("operations-error");
+            errorEl.textContent = "";
+            const tableCount = parseInt(document.getElementById("cfg-table-count").value, 10);
+            const arcadeHours = parseFloat(document.getElementById("cfg-arcade-hours").value);
+
             if (!Number.isFinite(tableCount) || tableCount < 0) {
                 errorEl.textContent = "Number of tables must be zero or a positive whole number.";
                 return;
@@ -242,16 +343,7 @@ export const AdminPortal = {
 
             try {
                 await AdminConfig.saveSettings({
-                    shopName: document.getElementById("cfg-shop-name").value,
-                    heroTagline: document.getElementById("cfg-hero-tagline").value,
-                    tipEnabled: document.getElementById("cfg-tip-enabled").checked,
-                    tipAmount,
-                    cgstRate: cgst,
-                    sgstRate: sgst,
-                    serviceChargeRate: serviceCharge,
                     tableCount,
-                    upiVpa: document.getElementById("cfg-upi-vpa").value.trim(),
-                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim(),
                     arcade: { enabled: document.getElementById("cfg-arcade-enabled").checked, sessionHours: arcadeHours }
                 });
                 if (window.applyBranding) window.applyBranding(AdminConfig.settings);
@@ -263,15 +355,345 @@ export const AdminPortal = {
         });
     },
 
+    // ---------------------------------------------------------------- LOCATIONS (STORES)
+    // Pulled out of the Branding tab, where it had nothing to do with
+    // colors/copy - multi-location structure belongs with the other
+    // business-structure tools in Store Setup.
+    expandedStoreBranding: {},
+
+    async renderStores(root) {
+        const isOwner = this.session.role === "owner";
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">STORES</h3>
+                <p class="admin-help-text">Every store sells the same menu - use "EDIT BRANDING" to give a store its own name, logo, colors, hero image, and hours (staff assigned to that store will see it instead of the global default). Leave a field blank to fall back to the global setting.</p>
+                <div id="stores-list" style="margin-bottom:10px;"></div>
+                ${
+                    isOwner
+                        ? `
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="new-store-name" maxlength="60" placeholder="Store name" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" id="new-store-address" maxlength="200" placeholder="Address (optional)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                    <button class="admin-btn" id="add-store">ADD STORE</button>
+                </div>`
+                        : `<p class="admin-help-text">Only the owner can add stores.</p>`
+                }
+            </div>
+        `;
+
+        const colorField = (id, label, value) => `
+            <div class="control-group" style="flex:0 0 auto;">
+                <label>${label}</label>
+                <input type="color" id="${id}" value="${value}" />
+            </div>
+        `;
+
+        const renderStoresList = async () => {
+            const stores = await PayrollSystem.fetchStores();
+            document.getElementById("stores-list").innerHTML = stores
+                .map((s) => {
+                    const b = s.branding || {};
+                    const colors = b.colors || {};
+                    const footer = b.footer || {};
+                    const expanded = !!this.expandedStoreBranding[s.id];
+                    return `
+                    <div style="border-bottom:1px solid var(--color-border); padding:8px 0;">
+                        <div style="display:flex; align-items:center; gap:10px; font-size:8pt;">
+                            <span style="flex:1;">${escapeHtmlAttr(s.name)}${s.address ? ` — ${escapeHtmlAttr(s.address)}` : ""}</span>
+                            ${isOwner ? `<button class="admin-btn-secondary" data-toggle-branding="${s.id}" style="padding:4px 8px; font-size:7pt;">${expanded ? "CLOSE" : "EDIT BRANDING"}</button>` : ""}
+                        </div>
+                        ${
+                            expanded
+                                ? `
+                        <div style="margin-top:10px; padding:12px; border:1px solid var(--color-border); background:var(--color-bg);">
+                            <div class="control-group">
+                                <label>STORE-SPECIFIC SHOP NAME (blank = use global)</label>
+                                <input type="text" id="store-${s.id}-name" maxlength="60" value="${escapeHtmlAttr(b.shopName || "")}" />
+                            </div>
+                            <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+                                ${colorField(`store-${s.id}-accent`, "ACCENT", colors.accent || "#d97706")}
+                                ${colorField(`store-${s.id}-background`, "BACKGROUND", colors.background || "#0a0a0a")}
+                                ${colorField(`store-${s.id}-surface`, "SURFACE", colors.surface || "#111111")}
+                                ${colorField(`store-${s.id}-text`, "TEXT", colors.text || "#f9fafb")}
+                                ${colorField(`store-${s.id}-secondary`, "SECONDARY", colors.secondary || "#22d3ee")}
+                                <button type="button" class="admin-btn-secondary" data-reset-colors="${s.id}" style="padding:6px 10px; font-size:7pt;">USE GLOBAL COLORS</button>
+                            </div>
+                            <div class="control-group" style="margin-top:10px;">
+                                <label>LOGO IMAGE (blank = use global)</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="text" id="store-${s.id}-logo" maxlength="500" value="${escapeHtmlAttr(b.logoUrl || "")}" style="flex:1;" />
+                                    <button type="button" class="admin-btn-secondary" data-pick-logo="${s.id}" style="white-space:nowrap;">BROWSE</button>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <label>HERO / STOREFRONT IMAGE (blank = use global)</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="text" id="store-${s.id}-hero" maxlength="500" value="${escapeHtmlAttr(b.heroImageUrl || "")}" style="flex:1;" />
+                                    <button type="button" class="admin-btn-secondary" data-pick-hero="${s.id}" style="white-space:nowrap;">BROWSE</button>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <label>HOURS (blank = use global)</label>
+                                <input type="text" id="store-${s.id}-hours" maxlength="60" value="${escapeHtmlAttr(footer.hours || "")}" placeholder="Mon-Sat: 8am - 8pm" />
+                            </div>
+                            <p id="store-${s.id}-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:6px;"></p>
+                            <button class="admin-btn-primary" data-save-branding="${s.id}">SAVE STORE BRANDING</button>
+                        </div>
+                        `
+                                : ""
+                        }
+                    </div>
+                `;
+                })
+                .join("");
+
+            if (!isOwner) return;
+
+            root.querySelectorAll("[data-toggle-branding]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = Number(btn.dataset.toggleBranding);
+                    this.expandedStoreBranding[id] = !this.expandedStoreBranding[id];
+                    renderStoresList();
+                });
+            });
+
+            root.querySelectorAll("[data-reset-colors]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = btn.dataset.resetColors;
+                    ["accent", "background", "surface", "text", "secondary"].forEach((k) => {
+                        const preset = { accent: "#d97706", background: "#0a0a0a", surface: "#111111", text: "#f9fafb", secondary: "#22d3ee" };
+                        document.getElementById(`store-${id}-${k}`).value = preset[k];
+                    });
+                });
+            });
+
+            root.querySelectorAll("[data-pick-logo]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = btn.dataset.pickLogo;
+                    renderImagePickerModal({ onSelect: (url) => (document.getElementById(`store-${id}-logo`).value = url) });
+                });
+            });
+            root.querySelectorAll("[data-pick-hero]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = btn.dataset.pickHero;
+                    renderImagePickerModal({ onSelect: (url) => (document.getElementById(`store-${id}-hero`).value = url) });
+                });
+            });
+
+            root.querySelectorAll("[data-save-branding]").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    const id = btn.dataset.saveBranding;
+                    const errorEl = document.getElementById(`store-${id}-error`);
+                    errorEl.textContent = "";
+                    try {
+                        await PayrollSystem.updateStore(id, {
+                            branding: {
+                                shopName: document.getElementById(`store-${id}-name`).value.trim(),
+                                logoUrl: document.getElementById(`store-${id}-logo`).value.trim(),
+                                heroImageUrl: document.getElementById(`store-${id}-hero`).value.trim(),
+                                colors: {
+                                    accent: document.getElementById(`store-${id}-accent`).value,
+                                    background: document.getElementById(`store-${id}-background`).value,
+                                    surface: document.getElementById(`store-${id}-surface`).value,
+                                    text: document.getElementById(`store-${id}-text`).value,
+                                    secondary: document.getElementById(`store-${id}-secondary`).value
+                                },
+                                footer: { hours: document.getElementById(`store-${id}-hours`).value.trim() }
+                            }
+                        });
+                        ok("Store branding saved");
+                    } catch (e) {
+                        errorEl.textContent = e.message;
+                        fail(e.message);
+                    }
+                });
+            });
+        };
+        await renderStoresList();
+
+        if (isOwner) {
+            document.getElementById("add-store").addEventListener("click", async () => {
+                const name = document.getElementById("new-store-name").value.trim();
+                const address = document.getElementById("new-store-address").value.trim();
+                if (!name) return fail("Enter a store name");
+                try {
+                    await PayrollSystem.addStore({ name, address });
+                    document.getElementById("new-store-name").value = "";
+                    document.getElementById("new-store-address").value = "";
+                    await renderStoresList();
+                    ok("Store added");
+                } catch (e) {
+                    fail(e.message);
+                }
+            });
+        }
+    },
+
+    // ---------------------------------------------------------------- DATA & BACKUP
+    async renderDataBackup(root) {
+        const isOwner = this.session.role === "owner";
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">BACKUP</h3>
+                <p class="admin-help-text">Downloads every record this app stores (menu, orders, staff accounts, config, etc.) as one JSON file. Uploaded images themselves aren't included, only their filenames/metadata - keep the "uploads" folder alongside any backup you keep long-term.</p>
+                ${isOwner ? `<button class="admin-btn-primary" id="backup-download">DOWNLOAD BACKUP</button>` : `<p class="admin-help-text">Only the owner can download or restore a backup.</p>`}
+
+                ${
+                    isOwner
+                        ? `
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">RESTORE</h3>
+                <p class="admin-help-text" style="color:var(--color-danger);">Overwrites current data with whatever's in the backup file - menu, orders, staff accounts, everything it contains. This can't be undone. Only restore a backup you trust.</p>
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+                    <label for="restore-file-input" class="admin-btn-secondary" style="cursor:pointer;">CHOOSE FILE</label>
+                    <input type="file" id="restore-file-input" accept="application/json" style="display:none;" />
+                    <span id="restore-file-name" style="font-size:8pt; color:var(--color-text-muted);">No file selected.</span>
+                </div>
+                <button class="admin-btn-secondary" id="restore-upload" style="border-color:var(--color-danger); color:var(--color-danger);" disabled>RESTORE FROM BACKUP</button>
+                `
+                        : ""
+                }
+                <p id="backup-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+            </div>
+        `;
+
+        if (!isOwner) return;
+
+        document.getElementById("backup-download").addEventListener("click", () => {
+            // A plain navigation (not fetch+blob) so the browser's own
+            // download handling (Content-Disposition) takes over - simplest
+            // way to trigger a real file save from a GET endpoint.
+            window.open("/api/admin/backup", "_blank");
+        });
+
+        let restoreFile = null;
+        const restoreBtn = document.getElementById("restore-upload");
+        document.getElementById("restore-file-input").addEventListener("change", (e) => {
+            restoreFile = e.target.files[0] || null;
+            restoreBtn.disabled = !restoreFile;
+            document.getElementById("restore-file-name").textContent = restoreFile ? restoreFile.name : "No file selected.";
+        });
+
+        restoreBtn.addEventListener("click", () => {
+            if (!restoreFile) return;
+            renderInfoModal({
+                title: "RESTORE FROM BACKUP",
+                message: `This will overwrite current menu, orders, staff accounts, and settings with the contents of "${restoreFile.name}". This can't be undone. Continue?`,
+                confirmText: "RESTORE",
+                cancelText: "CANCEL",
+                onConfirm: async () => {
+                    const errorEl = document.getElementById("backup-error");
+                    errorEl.textContent = "";
+                    try {
+                        const text = await restoreFile.text();
+                        const parsed = JSON.parse(text);
+                        const res = await fetch("/api/admin/restore", {
+                            method: "POST",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ ...parsed, confirmYes: true })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || "Restore failed");
+                        ok(`Restored ${data.restoredCount} file(s) - reloading...`);
+                        setTimeout(() => window.location.reload(), 1200);
+                    } catch (e) {
+                        errorEl.textContent = e.message || "Could not restore backup";
+                    }
+                }
+            });
+        });
+    },
+
+    // ---------------------------------------------------------------- REPORTS & EXPORT
+    async renderReportsExport(root) {
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">EXPORT ORDERS (CSV)</h3>
+                <p class="admin-help-text">Downloads a spreadsheet-ready CSV of orders for bookkeeping/tax filing - one row per order with items, tax, and totals.</p>
+                <div style="display:flex; gap:12px; margin-bottom:14px;">
+                    <div class="control-group" style="flex:0 0 150px;">
+                        <label>FROM (optional)</label>
+                        <input type="date" id="report-from" />
+                    </div>
+                    <div class="control-group" style="flex:0 0 150px;">
+                        <label>TO (optional)</label>
+                        <input type="date" id="report-to" />
+                    </div>
+                </div>
+                <button class="admin-btn-primary" id="report-export-csv">EXPORT CSV</button>
+                <p id="report-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+            </div>
+        `;
+
+        document.getElementById("report-export-csv").addEventListener("click", async () => {
+            const errorEl = document.getElementById("report-error");
+            errorEl.textContent = "";
+            try {
+                const res = await fetch("/api/orders", { credentials: "include" });
+                if (!res.ok) throw new Error("Could not load orders");
+                let orders = await res.json();
+
+                const fromVal = document.getElementById("report-from").value;
+                const toVal = document.getElementById("report-to").value;
+                if (fromVal) orders = orders.filter((o) => new Date(o.createdAt) >= new Date(fromVal));
+                if (toVal) orders = orders.filter((o) => new Date(o.createdAt) <= new Date(toVal + "T23:59:59"));
+
+                if (orders.length === 0) {
+                    errorEl.textContent = "No orders in that range.";
+                    return;
+                }
+
+                const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+                const header = ["Order #", "Date", "Method", "Customer Phone", "Items", "Subtotal", "CGST", "SGST", "Service Charge", "Tip", "Discount", "Total", "Paid"];
+                const rows = orders.map((o) => [
+                    o.orderNumber || o.id,
+                    new Date(o.createdAt).toLocaleString(),
+                    o.method || "",
+                    o.customerPhone || "",
+                    o.items.map((i) => `${i.quantity}x ${i.name}`).join("; "),
+                    (o.subtotal || 0).toFixed(2),
+                    (o.cgst || 0).toFixed(2),
+                    (o.sgst || 0).toFixed(2),
+                    (o.serviceCharge || 0).toFixed(2),
+                    (o.tipAmount || 0).toFixed(2),
+                    (o.discountAmount || 0).toFixed(2),
+                    (o.total || 0).toFixed(2),
+                    o.isPaid ? "Yes" : "No"
+                ]);
+                const csv = [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                ok(`Exported ${orders.length} order(s)`);
+            } catch (e) {
+                errorEl.textContent = e.message || "Export failed";
+            }
+        });
+    },
+
     // ---------------------------------------------------------------- KPI DASHBOARD
     kpiRange: "7d",
 
     async renderKpiDashboard(root) {
-        const kpi = await PayrollSystem.fetchKpi(this.kpiRange);
+        const [kpi, roster] = await Promise.all([PayrollSystem.fetchKpi(this.kpiRange), PayrollSystem.fetchTimeclockRoster()]);
         if (!kpi) {
             root.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">Could not load dashboard data.</p>`;
             return;
         }
+        await KitchenSystem.fetchOrders();
+        const pendingByStation = { BARISTA: 0, KITCHEN: 0, DESSERTS: 0 };
+        KitchenSystem.orders.forEach((o) =>
+            o.items.forEach((i) => {
+                if (!i.isDone) pendingByStation[i.station || KitchenSystem.getStation(i)]++;
+            })
+        );
 
         const maxDaily = Math.max(1, ...kpi.chart.map((d) => d.revenue));
         const maxSeller = Math.max(1, ...kpi.bestSellers.map((s) => s.quantity));
@@ -283,6 +705,11 @@ export const AdminPortal = {
         ];
 
         root.innerHTML = `
+            ${
+                this.session.role !== "manager"
+                    ? `<button class="admin-btn-secondary" id="open-setup-wizard" style="margin-bottom:16px;">&#9881; GETTING STARTED / SETUP WIZARD</button>`
+                    : ""
+            }
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
                 <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">\u20b9${kpi.today.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
                 <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">\u20b9${kpi.week.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
@@ -342,12 +769,70 @@ export const AdminPortal = {
                     }
                 </div>
             </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; margin-top:20px;">
+                <div>
+                    <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">CREW</h3>
+                    ${
+                        roster.length === 0
+                            ? `<p class="admin-help-text">No staff to show.</p>`
+                            : roster
+                                  .map((p) => {
+                                      const initials = (p.name || "?")
+                                          .split(" ")
+                                          .map((w) => w[0])
+                                          .filter(Boolean)
+                                          .slice(0, 2)
+                                          .join("")
+                                          .toUpperCase();
+                                      return `
+                                <div style="display:flex; align-items:center; gap:12px; padding:9px 0; border-top:1px dashed var(--color-border);">
+                                    <span style="width:30px; height:30px; flex:none; border:1px solid var(--color-accent); color:var(--color-accent); display:flex; align-items:center; justify-content:center; font-size:10pt; font-weight:bold;">${initials}</span>
+                                    <div style="flex:1; min-width:0;">
+                                        <div style="font-size:9pt; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${p.name}</div>
+                                        <div style="font-size:7pt; color:var(--color-text-muted); margin-top:2px; letter-spacing:.06em; text-transform:uppercase;">${p.role}${p.tag ? " &middot; " + p.tag : ""}</div>
+                                    </div>
+                                    <span style="flex:none; font-size:7pt; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; color:${p.clockedIn ? "var(--color-success)" : "var(--color-text-muted)"};">${p.clockedIn ? "● ON SHIFT" : "OFF SHIFT"}</span>
+                                </div>
+                            `;
+                                  })
+                                  .join("")
+                    }
+                </div>
+                <div>
+                    <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">STATIONS</h3>
+                    ${Object.entries(pendingByStation)
+                        .map(
+                            ([name, pending]) => `
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:9px 0; border-top:1px dashed var(--color-border);">
+                            <div style="min-width:0;">
+                                <div style="font-size:9pt; font-weight:bold; letter-spacing:.06em; text-transform:uppercase;">${name}</div>
+                                <div style="font-size:7pt; color:var(--color-text-muted); margin-top:2px; letter-spacing:.08em; text-transform:uppercase;">Pending items</div>
+                            </div>
+                            <span style="font-size:16pt; font-weight:bold; color:${pending > 0 ? "var(--color-accent)" : "var(--color-success)"};">${pending}</span>
+                        </div>
+                    `
+                        )
+                        .join("")}
+                </div>
+            </div>
         `;
 
         root.querySelectorAll(".kpi-range-btn").forEach((btn) => {
             btn.addEventListener("click", async () => {
                 this.kpiRange = btn.dataset.range;
                 await this.renderKpiDashboard(root);
+            });
+        });
+
+        document.getElementById("open-setup-wizard")?.addEventListener("click", async () => {
+            const mod = await import("./setup-wizard-modal.js");
+            mod.renderSetupWizardModal({
+                onNavigate: (tabId) => {
+                    this.activeTab = tabId;
+                    this.renderTabs();
+                    this.renderActiveTab();
+                }
             });
         });
     },
@@ -565,11 +1050,23 @@ export const AdminPortal = {
     // ------------------------------------------------------------ MENU ITEMS
     menuItemPages: {}, // per-section current page number, keyed by section id
     showDeletedMenuItems: false, // toggled via the SHOW INACTIVE checkbox on Menu Items
+    // Sections start collapsed (header + count only) - showing every item
+    // table for every section at once, each with 3 always-visible action
+    // buttons per row, was the main source of "cluttered/intimidating"
+    // feedback on this tab. Keyed by section id, true = expanded.
+    expandedMenuSections: {},
+    // Per-item per-store availability panel (only shown when there's more
+    // than one store) - keyed by item id, true = expanded.
+    expandedItemStores: {},
 
-    renderMenuItems(root) {
+    async renderMenuItems(root) {
         const sectionById = Object.fromEntries(this.menu.sections.map((s) => [s.id, s.title]));
         const customIcons = AdminConfig.settings.customIcons || {};
         const PAGE_SIZE = 10;
+        // The menu is shared across stores by design - this only matters once
+        // there's more than one store to disable an item at.
+        const stores = await PayrollSystem.fetchStores();
+        const multiStore = stores.length > 1;
 
         const pendingRequestItems = this.menu.items.filter((i) => (i.disableRequests || []).length > 0);
 
@@ -589,7 +1086,7 @@ export const AdminPortal = {
                 <td>\u20b9${item.price}</td>
                 <td></td>
                 <td style="text-align:right;">
-                    <button class="admin-btn" data-restore="${item.id}">RESTORE</button>
+                    <button class="admin-btn" data-restore="${item.id}" style="padding:4px 8px; font-size:7pt;">RESTORE</button>
                 </td>
             </tr>
         `;
@@ -600,22 +1097,51 @@ export const AdminPortal = {
                     : item.stockCount === 0
                       ? `<span style="color:var(--color-danger); font-size:8pt;">OUT OF STOCK</span>`
                       : `<span style="${item.stockCount <= 5 ? "color:var(--color-danger);" : ""} font-size:8pt;">${item.stockCount}</span>`;
+            const disabledStores = item.disabledStores || [];
+            const storesExpanded = !!this.expandedItemStores[item.id];
             return `
             <tr style="${item.available === false ? "opacity:0.5;" : ""}">
                 <td>${iconHtml(item)}</td>
-                <td>${escapeHtmlAttr(item.name)}${item.available === false ? ' <span style="color:var(--color-danger); font-size:7pt;">UNAVAILABLE</span>' : ""}</td>
+                <td>${escapeHtmlAttr(item.name)}${item.available === false ? ' <span style="color:var(--color-danger); font-size:7pt;">UNAVAILABLE</span>' : ""}${disabledStores.length ? ` <span style="color:var(--color-text-muted); font-size:7pt;">OUT AT ${disabledStores.length} STORE${disabledStores.length > 1 ? "S" : ""}</span>` : ""}</td>
                 <td>\u20b9${item.price}${
                     item.promoDiscount
                         ? `<br><span style="color: var(--color-accent); font-size: 7pt;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `\u20b9${item.promoDiscount.value} OFF`}</span>`
                         : ""
                 }</td>
                 <td>${stockCell}</td>
-                <td style="text-align:right;">
-                    <button class="admin-btn" data-edit="${item.id}">EDIT</button>
-                    <button class="admin-btn" data-toggle-available="${item.id}">${item.available === false ? "MARK AVAILABLE" : "MARK UNAVAILABLE"}</button>
-                    <button class="admin-btn admin-btn-danger" data-delete="${item.id}">DELETE</button>
+                <td style="text-align:right; white-space:nowrap;">
+                    <button class="admin-btn" data-edit="${item.id}" style="padding:4px 8px; font-size:7pt;">EDIT</button>
+                    <button class="admin-btn" data-toggle-available="${item.id}" style="padding:4px 8px; font-size:7pt;" title="${item.available === false ? "Mark available" : "Mark unavailable"}">${item.available === false ? "SHOW" : "HIDE"}</button>
+                    ${multiStore ? `<button class="admin-btn" data-toggle-item-stores="${item.id}" style="padding:4px 8px; font-size:7pt;">STORES</button>` : ""}
+                    <button class="admin-btn admin-btn-danger" data-delete="${item.id}" style="padding:4px 8px; font-size:7pt;">DEL</button>
                 </td>
             </tr>
+            ${
+                multiStore && storesExpanded
+                    ? `
+            <tr>
+                <td colspan="5" style="background:var(--color-bg);">
+                    <div style="padding:8px 10px;">
+                        <p class="admin-help-text" style="margin:0 0 6px;">Uncheck a store to take "${escapeHtmlAttr(item.name)}" off the menu there only (e.g. out of stock at that location).</p>
+                        <div style="display:flex; flex-wrap:wrap; gap:12px;">
+                            ${stores
+                                .map(
+                                    (s) => `
+                                <label style="display:flex; align-items:center; gap:5px; font-size:8pt; cursor:pointer;">
+                                    <input type="checkbox" data-item-store="${item.id}" value="${s.id}" ${disabledStores.includes(s.id) ? "" : "checked"} />
+                                    ${escapeHtmlAttr(s.name)}
+                                </label>
+                            `
+                                )
+                                .join("")}
+                        </div>
+                        <button class="admin-btn-primary" data-save-item-stores="${item.id}" style="margin-top:8px; padding:4px 8px; font-size:7pt;">SAVE</button>
+                    </div>
+                </td>
+            </tr>
+            `
+                    : ""
+            }
         `;
         };
 
@@ -629,16 +1155,26 @@ export const AdminPortal = {
             const items = this.showDeletedMenuItems
                 ? [...rawItems].sort((a, b) => (a.deleted === b.deleted ? 0 : a.deleted ? 1 : -1))
                 : rawItems.filter((i) => !i.deleted);
+            const expanded = !!this.expandedMenuSections[section.id];
+            const headerHtml = `
+                <div class="menu-section-header" data-toggle-section="${section.id}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; cursor:pointer; border-bottom:1px solid var(--color-border);">
+                    <h3 style="font-size:9.5pt; letter-spacing:1px; color:var(--color-accent); display:flex; align-items:center; gap:8px; margin:0;">
+                        <span style="display:inline-block; transition:transform .1s; transform:rotate(${expanded ? "90deg" : "0deg"});">&#9656;</span>
+                        ${escapeHtmlAttr(section.title)} <span style="color:var(--color-text-muted); font-size:8pt;">(${items.length})</span>
+                    </h3>
+                    <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}" style="padding:4px 8px; font-size:7pt;">DELETE SECTION</button>
+                </div>
+            `;
             if (items.length === 0) {
                 return `
-                    <div class="menu-section-block" style="margin-bottom:26px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                            <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent);">${escapeHtmlAttr(section.title)}</h3>
-                            <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}">DELETE SECTION</button>
-                        </div>
-                        <p class="admin-help-text">No items in this section yet.</p>
+                    <div class="menu-section-block" style="margin-bottom:10px;">
+                        ${headerHtml}
+                        ${expanded ? `<p class="admin-help-text" style="padding:8px 4px;">No items in this section yet.</p>` : ""}
                     </div>
                 `;
+            }
+            if (!expanded) {
+                return `<div class="menu-section-block" style="margin-bottom:10px;">${headerHtml}</div>`;
             }
             const page = this.menuItemPages[section.id] || 1;
             const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
@@ -646,11 +1182,8 @@ export const AdminPortal = {
             const pageItems = items.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
 
             return `
-                <div class="menu-section-block" data-section="${section.id}" style="margin-bottom:26px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent);">${escapeHtmlAttr(section.title)} <span style="color:var(--color-text-muted); font-size:8pt;">(${items.length})</span></h3>
-                        <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}">DELETE SECTION</button>
-                    </div>
+                <div class="menu-section-block" data-section="${section.id}" style="margin-bottom:10px;">
+                    ${headerHtml}
                     <table class="admin-table">
                         <thead><tr><th>ICON</th><th>NAME</th><th>PRICE</th><th>STOCK</th><th style="text-align:right;">ACTION</th></tr></thead>
                         <tbody>${pageItems.map(rowHtml).join("")}</tbody>
@@ -702,8 +1235,10 @@ export const AdminPortal = {
             <div class="admin-toolbar" style="display:flex; align-items:center; flex-wrap:wrap; gap:14px;">
                 <button class="admin-btn-primary" id="menu-add-item">+ ADD ITEM</button>
                 <button class="admin-btn" id="menu-add-section">+ ADD SECTION</button>
+                <button class="admin-btn" id="menu-expand-all">EXPAND ALL</button>
+                <button class="admin-btn" id="menu-collapse-all">COLLAPSE ALL</button>
                 <label style="display:flex; align-items:center; gap:5px; font-size: var(--admin-help-font-size, 7.5pt); color: var(--admin-help-color, var(--color-text-muted)); cursor:pointer; font-family: 'Courier New', monospace; margin-left:auto;">
-                    <input type="checkbox" id="menu-show-deleted" ${this.showDeletedMenuItems ? "checked" : ""} style="width:auto;" />
+                    <input type="checkbox" id="menu-show-deleted" ${this.showDeletedMenuItems ? "checked" : ""} />
                     SHOW INACTIVE
                 </label>
             </div>
@@ -713,6 +1248,14 @@ export const AdminPortal = {
 
         document.getElementById("menu-add-item").addEventListener("click", () => this.openItemModal(null));
         document.getElementById("menu-add-section").addEventListener("click", () => this.addMenuSection(root));
+        document.getElementById("menu-expand-all").addEventListener("click", () => {
+            this.menu.sections.forEach((s) => (this.expandedMenuSections[s.id] = true));
+            this.renderMenuItems(root);
+        });
+        document.getElementById("menu-collapse-all").addEventListener("click", () => {
+            this.menu.sections.forEach((s) => (this.expandedMenuSections[s.id] = false));
+            this.renderMenuItems(root);
+        });
         document.getElementById("menu-show-deleted").addEventListener("change", (e) => {
             this.showDeletedMenuItems = e.target.checked;
             this.menuItemPages = {}; // page numbers may no longer be valid once the item counts change
@@ -725,7 +1268,29 @@ export const AdminPortal = {
         root.querySelectorAll("[data-toggle-available]").forEach((btn) =>
             btn.addEventListener("click", () => this.toggleItemAvailable(Number(btn.dataset.toggleAvailable), root))
         );
-        root.querySelectorAll("[data-delete-section]").forEach((btn) => btn.addEventListener("click", () => this.deleteMenuSection(btn.dataset.deleteSection, root)));
+        root.querySelectorAll("[data-toggle-item-stores]").forEach((btn) =>
+            btn.addEventListener("click", () => {
+                const id = Number(btn.dataset.toggleItemStores);
+                this.expandedItemStores[id] = !this.expandedItemStores[id];
+                this.renderMenuItems(root);
+            })
+        );
+        root.querySelectorAll("[data-save-item-stores]").forEach((btn) =>
+            btn.addEventListener("click", () => this.saveItemStores(Number(btn.dataset.saveItemStores), root))
+        );
+        root.querySelectorAll("[data-delete-section]").forEach((btn) =>
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation(); // sits inside the collapsible header - don't also toggle it
+                this.deleteMenuSection(btn.dataset.deleteSection, root);
+            })
+        );
+        root.querySelectorAll("[data-toggle-section]").forEach((header) =>
+            header.addEventListener("click", () => {
+                const id = header.dataset.toggleSection;
+                this.expandedMenuSections[id] = !this.expandedMenuSections[id];
+                this.renderMenuItems(root);
+            })
+        );
         root.querySelectorAll("[data-approve-disable]").forEach((btn) =>
             btn.addEventListener("click", () => this.toggleItemAvailable(Number(btn.dataset.approveDisable), root, false))
         );
@@ -819,6 +1384,29 @@ export const AdminPortal = {
             await this.loadMenu();
             this.renderMenuItems(root);
             ok(nextAvailable ? "Item marked available" : "Item marked unavailable");
+        } catch (e) {
+            fail(e.message);
+        }
+    },
+
+    /** Saves which stores an item is disabled at, from the STORES panel's
+     *  checkboxes (unchecked = disabled there). */
+    async saveItemStores(itemId, root) {
+        const checkboxes = root.querySelectorAll(`[data-item-store="${itemId}"]`);
+        const disabledStores = Array.from(checkboxes)
+            .filter((cb) => !cb.checked)
+            .map((cb) => Number(cb.value));
+        try {
+            const res = await fetch(`/api/menu/${itemId}`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ disabledStores })
+            });
+            if (!res.ok) throw new Error((await res.json()).error || "Could not update item");
+            await this.loadMenu();
+            this.renderMenuItems(root);
+            ok("Store availability saved");
         } catch (e) {
             fail(e.message);
         }
@@ -947,8 +1535,8 @@ export const AdminPortal = {
             .map(
                 (opt, idx) => `
                 <tr data-idx="${idx}">
-                    <td><input class="cp-label" type="text" value="${escapeHtmlAttr(opt.label)}" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
-                    <td><input class="cp-key" type="text" value="${escapeHtmlAttr(opt.key)}" placeholder="auto from label" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text-muted); padding:5px; font-family:inherit; font-size:8pt;" /></td>
+                    <td><input class="cp-label" type="text" maxlength="30" value="${escapeHtmlAttr(opt.label)}" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
+                    <td><input class="cp-key" type="text" maxlength="30" value="${escapeHtmlAttr(opt.key)}" placeholder="auto from label" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text-muted); padding:5px; font-family:inherit; font-size:8pt;" /></td>
                     <td><input class="cp-price" type="number" min="0" step="1" value="${opt.priceDelta}" style="width:90px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
                     <td><button class="admin-btn admin-btn-danger cp-remove-row">REMOVE</button></td>
                 </tr>
@@ -997,6 +1585,129 @@ export const AdminPortal = {
         }
     },
 
+    // ------------------------------------------------------------ CUSTOMERS
+    customerSearchQuery: "",
+    viewingCustomerId: null,
+
+    async renderCustomers(root) {
+        root.innerHTML = `
+            <div class="control-group" style="max-width:320px;">
+                <label>SEARCH BY NAME, USERNAME, OR PHONE</label>
+                <input type="text" id="customer-search" maxlength="60" value="${escapeHtmlAttr(this.customerSearchQuery)}" placeholder="Start typing..." />
+            </div>
+            <div id="customers-results"></div>
+        `;
+
+        const searchInput = document.getElementById("customer-search");
+        let debounceTimer;
+        searchInput.addEventListener("input", () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                this.customerSearchQuery = searchInput.value;
+                this.renderCustomerResults(root);
+            }, 200);
+        });
+        searchInput.focus();
+        searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+
+        await this.renderCustomerResults(root);
+    },
+
+    async renderCustomerResults(root) {
+        const resultsEl = document.getElementById("customers-results");
+        if (!resultsEl) return;
+        if (this.viewingCustomerId) return this.renderCustomerDetail(root);
+
+        const res = await fetch(`/api/admin/customers?search=${encodeURIComponent(this.customerSearchQuery)}`, { credentials: "include" });
+        const customers = res.ok ? await res.json() : [];
+
+        resultsEl.innerHTML =
+            customers.length === 0
+                ? `<p class="admin-help-text" style="margin-top:14px;">${this.customerSearchQuery ? "No matching customers." : "No customer accounts yet."}</p>`
+                : `
+                <table class="admin-table" style="margin-top:14px;">
+                    <thead><tr><th>NAME</th><th>USERNAME</th><th>PHONE</th><th>LOYALTY PTS</th><th>ORDERS</th><th></th></tr></thead>
+                    <tbody>
+                        ${customers
+                            .map(
+                                (c) => `
+                            <tr>
+                                <td>${escapeHtmlAttr(c.name || "—")}</td>
+                                <td style="color:var(--color-text-muted); font-size:8pt;">${escapeHtmlAttr(c.username || "—")}</td>
+                                <td style="font-size:8pt;">${escapeHtmlAttr(c.phone || "—")}</td>
+                                <td>${c.loyaltyPoints}</td>
+                                <td>${c.orderCount}</td>
+                                <td style="text-align:right;"><button class="admin-btn" data-view-customer="${c.id}" style="padding:4px 8px; font-size:7pt;">VIEW</button></td>
+                            </tr>
+                        `
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+            `;
+
+        resultsEl.querySelectorAll("[data-view-customer]").forEach((btn) =>
+            btn.addEventListener("click", () => {
+                this.viewingCustomerId = Number(btn.dataset.viewCustomer);
+                this.renderCustomerDetail(root);
+            })
+        );
+    },
+
+    async renderCustomerDetail(root) {
+        const resultsEl = document.getElementById("customers-results");
+        if (!resultsEl) return;
+        resultsEl.innerHTML = `<p class="admin-help-text" style="margin-top:14px;">Loading&hellip;</p>`;
+
+        const res = await fetch(`/api/admin/customers/${this.viewingCustomerId}`, { credentials: "include" });
+        if (!res.ok) {
+            resultsEl.innerHTML = `<p style="color:var(--color-danger); font-size:9pt; margin-top:14px;">Could not load that customer.</p>`;
+            return;
+        }
+        const { profile, orders, totalSpent } = await res.json();
+
+        resultsEl.innerHTML = `
+            <button type="button" class="admin-btn-secondary" id="customer-back" style="margin:14px 0;">&larr; BACK TO SEARCH</button>
+            <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom:16px;">
+                <div class="stat-card"><div class="stat-label">NAME</div><div class="stat-value" style="font-size:14pt;">${escapeHtmlAttr(profile.name || "—")}</div></div>
+                <div class="stat-card"><div class="stat-label">LOYALTY POINTS</div><div class="stat-value">${profile.loyaltyPoints || 0}</div></div>
+                <div class="stat-card"><div class="stat-label">ORDERS</div><div class="stat-value">${orders.length}</div></div>
+                <div class="stat-card"><div class="stat-label">TOTAL SPENT (PAID)</div><div class="stat-value">₹${totalSpent.toFixed(0)}</div></div>
+            </div>
+            <p style="font-size:8pt; color:var(--color-text-muted); margin-bottom:14px;">USERNAME: ${escapeHtmlAttr(profile.username || "—")} &middot; PHONE: ${escapeHtmlAttr(profile.phone || "—")}</p>
+            <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:8px;">ORDER HISTORY</h3>
+            ${
+                orders.length === 0
+                    ? `<p class="admin-help-text">No orders yet.</p>`
+                    : `
+                <table class="admin-table">
+                    <thead><tr><th>ORDER #</th><th>DATE</th><th>ITEMS</th><th>TOTAL</th><th>STATUS</th></tr></thead>
+                    <tbody>
+                        ${orders
+                            .map(
+                                (o) => `
+                            <tr>
+                                <td>${escapeHtmlAttr(o.orderNumber || o.id)}</td>
+                                <td style="font-size:8pt;">${new Date(o.createdAt).toLocaleString()}</td>
+                                <td style="font-size:8pt;">${escapeHtmlAttr(o.items.map((i) => `${i.quantity}x ${i.name}`).join(", "))}</td>
+                                <td>₹${o.total.toFixed(2)}</td>
+                                <td style="font-size:8pt; color:${o.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${o.isPaid ? "PAID" : "UNPAID"}</td>
+                            </tr>
+                        `
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+            `
+            }
+        `;
+
+        document.getElementById("customer-back").addEventListener("click", () => {
+            this.viewingCustomerId = null;
+            this.renderCustomerResults(root);
+        });
+    },
+
     // ------------------------------------------------------------ DISCOUNTS & LOYALTY
     async renderDiscountsLoyalty(root) {
         const config = AdminConfig.settings;
@@ -1011,18 +1722,18 @@ export const AdminPortal = {
             </p>
             <div class="config-controls" style="margin-bottom:30px;">
                 <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="loyalty-enabled" ${loyalty.enabled ? "checked" : ""} style="width:auto;" />
+                    <input type="checkbox" id="loyalty-enabled" ${loyalty.enabled ? "checked" : ""} />
                     <label style="margin:0;" for="loyalty-enabled">ENABLE LOYALTY PROGRAM</label>
                 </div>
-                <div class="control-group">
-                    <label>POINTS EARNED PER \u20b91 SPENT</label>
-                    <input type="text" id="loyalty-earn-rate" value="${loyalty.pointsPerRupeeSpent}" />
-                    <p class="admin-help-text" style="margin-top:4px;">e.g. 0.1 = 1 point per \u20b910 spent (industry-typical "1 point per \u20b910" rate)</p>
+                <div class="control-group" style="max-width:130px;">
+                    <label>POINTS PER \u20b91 SPENT</label>
+                    <input type="text" id="loyalty-earn-rate" maxlength="8" value="${loyalty.pointsPerRupeeSpent}" />
+                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.1 = 1 point per \u20b910 spent (industry-typical "1 point per \u20b910" rate)</p>
                 </div>
-                <div class="control-group">
-                    <label>\u20b9 VALUE PER POINT REDEEMED</label>
-                    <input type="text" id="loyalty-redeem-rate" value="${loyalty.rupeeValuePerPoint}" />
-                    <p class="admin-help-text" style="margin-top:4px;">e.g. 0.5 = each point is worth \u20b90.50 off when redeemed</p>
+                <div class="control-group" style="max-width:130px;">
+                    <label>\u20b9 PER POINT REDEEMED</label>
+                    <input type="text" id="loyalty-redeem-rate" maxlength="8" value="${loyalty.rupeeValuePerPoint}" />
+                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.5 = each point is worth \u20b90.50 off when redeemed</p>
                 </div>
                 <p id="loyalty-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="loyalty-save">SAVE LOYALTY SETTINGS</button>
@@ -1032,7 +1743,7 @@ export const AdminPortal = {
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; background:var(--color-bg); padding:12px; border:1px solid var(--color-border);">
                 <div>
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">CODE</label>
-                    <input type="text" id="coupon-code" placeholder="WELCOME10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:130px;" />
+                    <input type="text" id="coupon-code" maxlength="24" placeholder="WELCOME10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:130px;" />
                 </div>
                 <div>
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">TYPE</label>
@@ -1043,14 +1754,14 @@ export const AdminPortal = {
                 </div>
                 <div>
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">VALUE</label>
-                    <input type="text" id="coupon-value" placeholder="10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:80px;" />
+                    <input type="text" id="coupon-value" maxlength="8" placeholder="10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:80px;" />
                 </div>
                 <div>
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
-                    <input type="text" id="coupon-limit" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
+                    <input type="text" id="coupon-limit" maxlength="8" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
                 </div>
                 <label style="display:flex; align-items:center; gap:5px; font-size: 8pt; cursor:pointer;">
-                    <input type="checkbox" id="coupon-private" style="width:auto;" />
+                    <input type="checkbox" id="coupon-private" />
                     PRIVATE
                 </label>
                 <button class="admin-btn-primary" id="coupon-add">+ ADD COUPON</button>
@@ -1646,7 +2357,7 @@ export const AdminPortal = {
         });
     },
 
-    // ------------------------------------------------------------ BRANDING
+    // ------------------------------------------------------------ BRANDING (visual: theme/colors/images/icons)
     async renderBranding(root) {
         const c = AdminConfig.settings;
         const colors = c.colors || {};
@@ -1655,199 +2366,137 @@ export const AdminPortal = {
         const profilesRes = await fetch("/api/branding-profiles", { credentials: "include" });
         const profiles = profilesRes.ok ? await profilesRes.json() : {};
 
-        root.innerHTML = `
-            <div class="config-controls">
-                <div class="control-group">
-                    <label>THEME (choosing a preset fills in its standard colors below - tweak them after, or pick CUSTOM to leave your own colors alone)</label>
-                    <select id="brand-theme" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; width:100%; box-sizing:border-box; font-family:inherit;">
-                        <option value="dark" ${c.theme !== "light" && c.theme !== "custom" ? "selected" : ""}>DARK</option>
-                        <option value="light" ${c.theme === "light" ? "selected" : ""}>LIGHT</option>
-                        <option value="custom" ${c.theme === "custom" ? "selected" : ""}>CUSTOM</option>
-                    </select>
-                </div>
-
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="control-group">
-                        <label>ACCENT COLOR</label>
-                        <input type="color" id="brand-accent" value="${colors.accent || "#d97706"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>BACKGROUND COLOR</label>
-                        <input type="color" id="brand-background" value="${colors.background || "#0a0a0a"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>SURFACE COLOR (CARDS)</label>
-                        <input type="color" id="brand-surface" value="${colors.surface || "#111111"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>TEXT COLOR</label>
-                        <input type="color" id="brand-text" value="${colors.text || "#f9fafb"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>SECONDARY / INFO COLOR (used for "preparing" status, station tabs, etc.)</label>
-                        <input type="color" id="brand-secondary" value="${colors.secondary || "#22d3ee"}" />
-                    </div>
-                </div>
-
-                <div class="control-group">
-                    <label>HERO IMAGE URL (shown on the home page - leave blank to keep the default icon)</label>
-                    <input type="text" id="brand-hero" value="${c.heroImageUrl || ""}" placeholder="https://..." />
-                </div>
-                <div class="control-group">
-                    <label>LOGO URL (shown in the top nav - leave blank to hide)</label>
-                    <input type="text" id="brand-logo" value="${c.logoUrl || ""}" placeholder="https://..." />
-                </div>
-                <p class="admin-help-text">Images are linked by URL (hosted elsewhere) rather than uploaded here.</p>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ADMIN PANEL TEXT</h3>
-                <p class="admin-help-text">Font size and color for the admin panel's own sub-tab navigation row (Dashboard / Menu Items / etc.), its small muted helper/description text (like this line), and its form field labels (ACCENT COLOR, STAFF, DATE, etc.) - staff/admin-facing only, not shown to customers.</p>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="control-group">
-                        <label>TAB NAVIGATION - FONT SIZE (PT)</label>
-                        <input type="number" id="brand-admintabs-size" min="5" max="24" step="0.5" value="${(textStyles.adminTabs && textStyles.adminTabs.fontSize) || 9}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; width:100%; box-sizing:border-box; font-family:inherit;" />
-                    </div>
-                    <div class="control-group">
-                        <label>TAB NAVIGATION - COLOR</label>
-                        <input type="color" id="brand-admintabs-color" value="${(textStyles.adminTabs && textStyles.adminTabs.color) || "#888888"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>HELPER TEXT - FONT SIZE (PT)</label>
-                        <input type="number" id="brand-adminhelp-size" min="5" max="24" step="0.5" value="${(textStyles.adminHelp && textStyles.adminHelp.fontSize) || 7.5}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; width:100%; box-sizing:border-box; font-family:inherit;" />
-                    </div>
-                    <div class="control-group">
-                        <label>HELPER TEXT - COLOR</label>
-                        <input type="color" id="brand-adminhelp-color" value="${(textStyles.adminHelp && textStyles.adminHelp.color) || "#888888"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>FIELD LABELS - FONT SIZE (PT)</label>
-                        <input type="number" id="brand-adminlabels-size" min="5" max="24" step="0.5" value="${(textStyles.adminLabels && textStyles.adminLabels.fontSize) || 8}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; width:100%; box-sizing:border-box; font-family:inherit;" />
-                    </div>
-                    <div class="control-group">
-                        <label>FIELD LABELS - COLOR</label>
-                        <input type="color" id="brand-adminlabels-color" value="${(textStyles.adminLabels && textStyles.adminLabels.color) || "#888888"}" />
-                    </div>
-                </div>
-
-                <p id="branding-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <button class="admin-btn-primary" id="branding-save">SAVE BRANDING</button>
-                    <button class="admin-btn-secondary" id="branding-reset">RESET TO DEFAULT</button>
-                </div>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">CUSTOM ICONS</h3>
-                <p class="admin-help-text">Add your own icon (by image URL) to make it available in the menu item editor, alongside the built-in icon set.</p>
-                <div id="custom-icons-list" style="margin-bottom:10px;">
-                    ${
-                        Object.keys(customIcons).length === 0
-                            ? `<p class="admin-help-text">No custom icons added yet.</p>`
-                            : Object.entries(customIcons)
-                                  .map(
-                                      ([key, url]) => `
-                                <div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--color-border);">
-                                    <img src="${url}" style="width:24px; height:24px; object-fit:contain;" />
-                                    <span style="flex:1; font-size:8pt;">${key}</span>
-                                    <button class="admin-btn admin-btn-danger" data-remove-icon="${key}">REMOVE</button>
-                                </div>
-                            `
-                                  )
-                                  .join("")
-                    }
-                </div>
-                <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-icon-key" placeholder="icon name (e.g. pumpkin-spice)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" id="new-icon-url" placeholder="image URL" style="flex:2; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <button class="admin-btn" id="add-custom-icon">ADD</button>
-                </div>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">SAVED THEMES (e.g. HOLIDAY PROFILES)</h3>
-                <p class="admin-help-text">Save the branding above as a named profile (Diwali, Christmas, etc.) to switch back to instantly later.</p>
-                <div id="branding-profiles-list" style="margin-bottom:10px;">
-                    ${
-                        Object.keys(profiles).length === 0
-                            ? `<p class="admin-help-text">No saved profiles yet.</p>`
-                            : Object.keys(profiles)
-                                  .map(
-                                      (name) => `
-                                <div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--color-border);">
-                                    <span style="flex:1; font-size:8pt;">${name}</span>
-                                    <button class="admin-btn" data-activate-profile="${name}">ACTIVATE</button>
-                                    <button class="admin-btn admin-btn-danger" data-delete-profile="${name}">DELETE</button>
-                                </div>
-                            `
-                                  )
-                                  .join("")
-                    }
-                </div>
-                <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-profile-name" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <button class="admin-btn" id="save-profile">SAVE CURRENT AS PROFILE</button>
-                </div>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">STORE DETAILS (HOME PAGE FOOTER)</h3>
-                <div class="control-group">
-                    <label>TAGLINE</label>
-                    <input type="text" id="brand-footer-tagline" value="${(c.footer && c.footer.tagline) || ""}" placeholder="e.g. Hand-brewed since 2024" />
-                </div>
-                <div class="control-group">
-                    <label>ADDRESS</label>
-                    <input type="text" id="brand-footer-address" value="${(c.footer && c.footer.address) || ""}" placeholder="Street, City, State, PIN" />
-                </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="control-group">
-                        <label>PHONE</label>
-                        <input type="text" id="brand-footer-phone" value="${(c.footer && c.footer.phone) || ""}" placeholder="+91 ..." />
-                    </div>
-                    <div class="control-group">
-                        <label>EMAIL</label>
-                        <input type="text" id="brand-footer-email" value="${(c.footer && c.footer.email) || ""}" placeholder="hello@..." />
-                    </div>
-                </div>
-                <div class="control-group">
-                    <label>HOURS</label>
-                    <input type="text" id="brand-footer-hours" value="${(c.footer && c.footer.hours) || ""}" placeholder="Mon-Sat: 8am - 8pm" />
-                </div>
-
-                <button class="admin-btn-primary" id="branding-save-2">SAVE BRANDING</button>
-
-                ${
-                    this.session.role === "owner"
-                        ? `
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">STORES</h3>
-                <p class="admin-help-text">Right now everything runs as one store - add another here when you're ready to expand, then assign managers/employees to it from User Management.</p>
-                <div id="stores-list" style="margin-bottom:10px;"></div>
-                <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-store-name" placeholder="Store name" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" id="new-store-address" placeholder="Address (optional)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <button class="admin-btn" id="add-store">ADD STORE</button>
-                </div>`
-                        : ""
-                }
+        const colorField = (id, label, value) => `
+            <div class="control-group" style="flex:0 0 auto;">
+                <label>${label}</label>
+                <input type="color" id="${id}" value="${value}" />
             </div>
         `;
 
-        if (this.session.role === "owner") {
-            const renderStoresList = async () => {
-                const stores = await PayrollSystem.fetchStores();
-                document.getElementById("stores-list").innerHTML = stores
-                    .map((s) => `<div style="padding:6px 0; border-bottom:1px solid var(--color-border); font-size:8pt;">${s.name}${s.address ? ` \u2014 ${s.address}` : ""}</div>`)
-                    .join("");
-            };
-            await renderStoresList();
-            document.getElementById("add-store").addEventListener("click", async () => {
-                const name = document.getElementById("new-store-name").value.trim();
-                const address = document.getElementById("new-store-address").value.trim();
-                if (!name) return fail("Enter a store name");
-                try {
-                    await PayrollSystem.addStore({ name, address });
-                    document.getElementById("new-store-name").value = "";
-                    document.getElementById("new-store-address").value = "";
-                    await renderStoresList();
-                    ok("Store added");
-                } catch (e) {
-                    fail(e.message);
-                }
-            });
-        }
+        root.innerHTML = `
+            <div class="config-controls">
+                <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+                    <div style="flex:1 1 380px; min-width:300px;">
+                        <h3 style="margin-top:0;">THEME</h3>
+                        <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+                            <div class="control-group" style="flex:0 0 130px;">
+                                <label>PRESET</label>
+                                <select id="brand-theme">
+                                    <option value="dark" ${c.theme !== "light" && c.theme !== "custom" ? "selected" : ""}>DARK</option>
+                                    <option value="light" ${c.theme === "light" ? "selected" : ""}>LIGHT</option>
+                                    <option value="custom" ${c.theme === "custom" ? "selected" : ""}>CUSTOM</option>
+                                </select>
+                            </div>
+                            ${colorField("brand-accent", "ACCENT", colors.accent || "#d97706")}
+                            ${colorField("brand-background", "BACKGROUND", colors.background || "#0a0a0a")}
+                            ${colorField("brand-surface", "SURFACE", colors.surface || "#111111")}
+                            ${colorField("brand-text", "TEXT", colors.text || "#f9fafb")}
+                            ${colorField("brand-secondary", "SECONDARY", colors.secondary || "#22d3ee")}
+                        </div>
+                        <p class="admin-help-text">Preset fills in its standard colors below - tweak after, or pick CUSTOM to leave your own alone. Secondary is used for "preparing" status, station tabs, etc.</p>
+                    </div>
+                    <div style="flex:1 1 280px; min-width:240px;">
+                        <h3 style="margin-top:0;">SAVED THEMES (e.g. HOLIDAY PROFILES)</h3>
+                        <p class="admin-help-text">Save the branding on this page as a named profile (Diwali, Christmas, etc.) to switch back to instantly later.</p>
+                        <div id="branding-profiles-list" style="margin-bottom:10px;">
+                            ${
+                                Object.keys(profiles).length === 0
+                                    ? `<p class="admin-help-text">No saved profiles yet.</p>`
+                                    : Object.keys(profiles)
+                                          .map(
+                                              (name) => `
+                                        <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
+                                            <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(name)}</span>
+                                            <button class="admin-btn" data-activate-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">ACTIVATE</button>
+                                            <button class="admin-btn admin-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">DELETE</button>
+                                        </div>
+                                    `
+                                          )
+                                          .join("")
+                            }
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="new-profile-name" maxlength="40" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                            <button class="admin-btn" id="save-profile">SAVE AS PROFILE</button>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">ADMIN PANEL TEXT</h3>
+                <p class="admin-help-text">Font size/color for the admin panel's own sub-tab row, muted helper text, and field labels - staff-facing only, not shown to customers.</p>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end;">
+                    <div class="control-group" style="flex:0 0 100px;">
+                        <label>TABS SIZE</label>
+                        <input type="number" id="brand-admintabs-size" min="5" max="24" step="0.5" value="${(textStyles.adminTabs && textStyles.adminTabs.fontSize) || 9}" />
+                    </div>
+                    ${colorField("brand-admintabs-color", "TABS COLOR", (textStyles.adminTabs && textStyles.adminTabs.color) || "#888888")}
+                    <div class="control-group" style="flex:0 0 100px;">
+                        <label>HELPER TEXT SIZE</label>
+                        <input type="number" id="brand-adminhelp-size" min="5" max="24" step="0.5" value="${(textStyles.adminHelp && textStyles.adminHelp.fontSize) || 7.5}" />
+                    </div>
+                    ${colorField("brand-adminhelp-color", "HELPER COLOR", (textStyles.adminHelp && textStyles.adminHelp.color) || "#888888")}
+                    <div class="control-group" style="flex:0 0 100px;">
+                        <label>LABELS SIZE</label>
+                        <input type="number" id="brand-adminlabels-size" min="5" max="24" step="0.5" value="${(textStyles.adminLabels && textStyles.adminLabels.fontSize) || 8}" />
+                    </div>
+                    ${colorField("brand-adminlabels-color", "LABELS COLOR", (textStyles.adminLabels && textStyles.adminLabels.color) || "#888888")}
+                </div>
+
+                <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">
+                    <div style="flex:1 1 320px; min-width:280px;">
+                        <h3 style="margin-top:0;">IMAGES</h3>
+                        <div class="control-group">
+                            <label>HERO / STOREFRONT IMAGE (home page - blank keeps the default icon)</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="brand-hero" maxlength="500" value="${escapeHtmlAttr(c.heroImageUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
+                                <button type="button" id="brand-hero-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label>LOGO IMAGE (top nav - blank hides it)</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="brand-logo" maxlength="500" value="${escapeHtmlAttr(c.logoUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
+                                <button type="button" id="brand-logo-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+                            </div>
+                        </div>
+                        <p class="admin-help-text">Paste a URL, or BROWSE to upload/pick from the bucket (shared with menu item photos).</p>
+                    </div>
+                    <div style="flex:1 1 280px; min-width:240px;">
+                        <h3 style="margin-top:0;">CUSTOM ICONS</h3>
+                        <p class="admin-help-text">Upload or link your own icon to make it available in the menu item editor, alongside the built-in set.</p>
+                        <div id="custom-icons-list" style="margin-bottom:10px;">
+                            ${
+                                Object.keys(customIcons).length === 0
+                                    ? `<p class="admin-help-text">No custom icons added yet.</p>`
+                                    : Object.entries(customIcons)
+                                          .map(
+                                              ([key, url]) => `
+                                        <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
+                                            <img src="${escapeHtmlAttr(url)}" style="width:22px; height:22px; object-fit:contain;" />
+                                            <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(key)}</span>
+                                            <button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>
+                                        </div>
+                                    `
+                                          )
+                                          .join("")
+                            }
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <input type="text" id="new-icon-key" maxlength="40" placeholder="icon name" style="flex:1 1 120px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                            <input type="text" id="new-icon-url" maxlength="500" placeholder="image URL" style="flex:1 1 140px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                            <button type="button" class="admin-btn-secondary" id="new-icon-pick" style="white-space:nowrap;">BROWSE</button>
+                            <button class="admin-btn" id="add-custom-icon">ADD</button>
+                        </div>
+                    </div>
+                </div>
+
+                <p id="branding-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:16px;"></p>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; border-top:1px solid var(--color-border); padding-top:16px;">
+                    <button class="admin-btn-primary" id="branding-save">SAVE BRANDING</button>
+                    <button class="admin-btn-secondary" id="branding-reset">RESET TO DEFAULT</button>
+                </div>
+            </div>
+        `;
 
         const collectColors = () => ({
             accent: document.getElementById("brand-accent").value,
@@ -1867,6 +2516,16 @@ export const AdminPortal = {
             document.getElementById("brand-surface").value = preset.surface;
             document.getElementById("brand-text").value = preset.text;
             document.getElementById("brand-secondary").value = preset.secondary;
+        });
+
+        document.getElementById("brand-hero-pick").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-hero").value = url) });
+        });
+        document.getElementById("brand-logo-pick").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-logo").value = url) });
+        });
+        document.getElementById("new-icon-pick").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("new-icon-url").value = url) });
         });
 
         const doSaveBranding = async () => {
@@ -1891,17 +2550,9 @@ export const AdminPortal = {
                             fontSize: Number(document.getElementById("brand-adminlabels-size").value) || 8,
                             color: document.getElementById("brand-adminlabels-color").value
                         }
-                    },
-                    footer: {
-                        tagline: document.getElementById("brand-footer-tagline").value.trim(),
-                        address: document.getElementById("brand-footer-address").value.trim(),
-                        phone: document.getElementById("brand-footer-phone").value.trim(),
-                        email: document.getElementById("brand-footer-email").value.trim(),
-                        hours: document.getElementById("brand-footer-hours").value.trim()
                     }
                 });
                 if (window.applyBranding) window.applyBranding(updated);
-                if (window.renderFooter) window.renderFooter(updated);
                 ok("Branding saved");
             } catch (e) {
                 errorEl.textContent = e.message;
@@ -1909,12 +2560,11 @@ export const AdminPortal = {
             }
         };
         document.getElementById("branding-save").addEventListener("click", doSaveBranding);
-        document.getElementById("branding-save-2").addEventListener("click", doSaveBranding);
 
         document.getElementById("branding-reset").addEventListener("click", () => {
             renderInfoModal({
                 title: "RESET BRANDING",
-                message: "Reset theme, colors, hero image, logo, and admin panel text size/color back to the original defaults? Store details (footer) and shop settings are not affected.",
+                message: "Reset theme, colors, hero image, logo, and admin panel text size/color back to the original defaults? Shop identity, home page content, and store details are not affected.",
                 confirmText: "RESET",
                 cancelText: "CANCEL",
                 onConfirm: async () => {
@@ -2007,11 +2657,436 @@ export const AdminPortal = {
         );
     },
 
-    async logout() {
-        await AuthSystem.logout();
-        if (window.showPage) window.showPage("home");
+    // ------------------------------------------------------------ CONTENT (shop identity/copy/home page text)
+    async renderContent(root) {
+        const c = AdminConfig.settings;
+
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">SHOP IDENTITY</h3>
+                <div class="control-group">
+                    <label>SHOP NAME</label>
+                    <input type="text" id="cfg-shop-name" maxlength="60" value="${escapeHtmlAttr(c.shopName || "")}" />
+                </div>
+                <div class="control-group">
+                    <label>HOME PAGE BADGE (e.g. "Est. 2019 &middot; 8-bit roastery")</label>
+                    <input type="text" id="cfg-hero-badge" maxlength="80" value="${escapeHtmlAttr(c.heroBadgeText || "")}" />
+                </div>
+                <div class="control-group">
+                    <label>HOME PAGE ABOUT TEXT</label>
+                    <textarea id="cfg-hero-tagline" rows="3" maxlength="400" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8.5pt;">${escapeHtmlAttr(c.heroTagline || "")}</textarea>
+                </div>
+                <div class="control-group">
+                    <label>RECEIPT FOOTER MESSAGE (printed at the bottom of the bill, under the logo from Branding)</label>
+                    <input type="text" id="cfg-receipt-footer" maxlength="120" value="${escapeHtmlAttr(c.receiptFooterText || "")}" />
+                </div>
+                <div class="control-group" style="max-width:260px;">
+                    <label>HERO IMAGE CAPTION (label under the storefront photo, before the address)</label>
+                    <input type="text" id="cfg-hero-caption-label" maxlength="40" placeholder="The counter" value="${escapeHtmlAttr(c.heroCaptionLabel || "")}" />
+                </div>
+                <p id="identity-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="identity-save">SAVE SHOP IDENTITY</button>
+
+                <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">SITE NAVIGATION</h3>
+                <div class="control-group" style="max-width:180px;">
+                    <label>DEFAULT LAYOUT</label>
+                    <select id="cfg-default-nav-layout">
+                        <option value="rail" ${c.defaultNavLayout !== "topbar" ? "selected" : ""}>LEFT RAIL</option>
+                        <option value="topbar" ${c.defaultNavLayout === "topbar" ? "selected" : ""}>TOP BAR</option>
+                    </select>
+                </div>
+                <p class="admin-help-text" style="margin-top:-4px;">What a visitor sees the first time they load the site, before they've picked their own layout (rail/top-bar switch lives in Account Settings). Applies to customers, guests, and staff alike.</p>
+                <p id="nav-layout-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="nav-layout-save">SAVE NAVIGATION</button>
+
+                <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">HOME PAGE CONTENT</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                    <div class="control-group">
+                        <label>PICKS HEADING</label>
+                        <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
+                    </div>
+                    <div class="control-group">
+                        <label>ROAST HEADING</label>
+                        <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
+                    </div>
+                    <div class="control-group">
+                        <label>CONTACT HEADING</label>
+                        <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:16px;">
+                    <div style="flex:1 1 320px; min-width:260px;">
+                        <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
+                        <p class="admin-help-text">Pick up to 3 items to feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
+                        <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+                        <div id="home-picks-list" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                    </div>
+                    <div style="flex:1 1 240px; min-width:220px;">
+                        <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
+                        <p class="admin-help-text">Small badge shown on each picked item's home page card (e.g. "House favourite").</p>
+                        <div id="home-picks-tags" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                    </div>
+                </div>
+
+                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
+                <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
+                <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+                <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
+                <br />
+                <p id="content-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="home-content-save">SAVE HOME PAGE CONTENT</button>
+
+                <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">STORE DETAILS (HOME PAGE FOOTER)</h3>
+                <div class="control-group">
+                    <label>TAGLINE</label>
+                    <input type="text" id="brand-footer-tagline" maxlength="120" value="${escapeHtmlAttr((c.footer && c.footer.tagline) || "")}" placeholder="e.g. Hand-brewed since 2024" />
+                </div>
+                <div class="control-group">
+                    <label>ADDRESS</label>
+                    <input type="text" id="brand-footer-address" maxlength="200" value="${escapeHtmlAttr((c.footer && c.footer.address) || "")}" placeholder="Street, City, State, PIN" />
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div class="control-group">
+                        <label>PHONE</label>
+                        <input type="text" id="brand-footer-phone" maxlength="20" value="${escapeHtmlAttr((c.footer && c.footer.phone) || "")}" placeholder="+91 ..." />
+                    </div>
+                    <div class="control-group">
+                        <label>EMAIL</label>
+                        <input type="text" id="brand-footer-email" maxlength="80" value="${escapeHtmlAttr((c.footer && c.footer.email) || "")}" placeholder="hello@..." />
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>HOURS</label>
+                    <input type="text" id="brand-footer-hours" maxlength="60" value="${escapeHtmlAttr((c.footer && c.footer.hours) || "")}" placeholder="Mon-Sat: 8am - 8pm" />
+                </div>
+
+                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:6px;">Custom fields</label>
+                <p class="admin-help-text">Anything else to show on "Find us" - Instagram, WhatsApp, GST number, whatever this shop needs. Add up to 6.</p>
+                <div id="footer-custom-fields-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+                <button type="button" class="admin-btn-secondary" id="footer-custom-field-add" style="margin-bottom:14px;">+ ADD FIELD</button>
+                <br />
+                <p id="footer-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="footer-save">SAVE STORE DETAILS</button>
+            </div>
+        `;
+
+        document.getElementById("identity-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("identity-error");
+            errorEl.textContent = "";
+            const shopName = document.getElementById("cfg-shop-name").value.trim();
+            if (!shopName) {
+                errorEl.textContent = "Shop name can't be empty.";
+                return;
+            }
+            try {
+                const updated = await AdminConfig.saveSettings({
+                    shopName,
+                    heroBadgeText: document.getElementById("cfg-hero-badge").value,
+                    heroTagline: document.getElementById("cfg-hero-tagline").value,
+                    receiptFooterText: document.getElementById("cfg-receipt-footer").value,
+                    heroCaptionLabel: document.getElementById("cfg-hero-caption-label").value
+                });
+                if (window.applyBranding) window.applyBranding(updated);
+                ok("Shop identity saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
+
+        document.getElementById("nav-layout-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("nav-layout-error");
+            errorEl.textContent = "";
+            try {
+                await AdminConfig.saveSettings({ defaultNavLayout: document.getElementById("cfg-default-nav-layout").value });
+                ok("Navigation default saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
+
+        // ---- This week's picks: section-grouped list + smart suggestions ----
+        const homePicksById = Object.fromEntries((c.homePicks || []).map((p) => [p.itemId, p.tag]));
+        const pickableItems = this.menu.items.filter((i) => !i.deleted && i.available !== false);
+        const sectionTitleById = Object.fromEntries(this.menu.sections.map((s) => [s.id, s.title]));
+
+        const pickRowHtml = (item) => {
+            const checked = homePicksById[item.id] !== undefined;
+            return `
+                <label style="display:flex; align-items:center; gap:8px; font-size:8.5pt; padding:3px 0;">
+                    <input type="checkbox" class="home-pick-check" data-item-id="${item.id}" ${checked ? "checked" : ""} />
+                    <span style="flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item.name)}</span>
+                </label>
+            `;
+        };
+
+        // Renders one tag input per currently-CHECKED item, in the separate
+        // right-hand column - keeps the checklist itself from stretching
+        // wide enough to leave a dead gap next to it, and existing tag text
+        // typed in this render survives a re-render (read from the DOM
+        // first, falling back to the saved value only the first time).
+        const renderTagsPanel = () => {
+            const tagsPanel = document.getElementById("home-picks-tags");
+            const checkedIds = Array.from(document.querySelectorAll(".home-pick-check:checked")).map((cb) => Number(cb.dataset.itemId));
+            if (checkedIds.length === 0) {
+                tagsPanel.innerHTML = `<p class="admin-help-text">Check an item on the left to give it a tag.</p>`;
+                return;
+            }
+            tagsPanel.innerHTML = checkedIds
+                .map((id) => {
+                    const item = pickableItems.find((i) => i.id === id);
+                    const existingInput = tagsPanel.querySelector(`.home-pick-tag[data-item-id="${id}"]`);
+                    const tag = existingInput ? existingInput.value : homePicksById[id] || "";
+                    return `
+                    <div style="margin-bottom:6px;">
+                        <label style="display:block; font-size:7.5pt; color:var(--color-text-muted); margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item ? item.name : "")}</label>
+                        <input type="text" class="home-pick-tag" data-item-id="${id}" maxlength="40" placeholder="e.g. House favourite" value="${escapeHtmlAttr(tag)}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px 7px; font-family:inherit; font-size:8pt;" />
+                    </div>
+                `;
+                })
+                .join("");
+        };
+
+        document.getElementById("home-picks-list").innerHTML =
+            pickableItems.length === 0
+                ? `<p style="color:var(--color-text-muted); font-size:9pt;">No menu items yet.</p>`
+                : this.menu.sections
+                      .map((section) => {
+                          const items = pickableItems.filter((i) => i.section === section.id);
+                          if (items.length === 0) return "";
+                          return `
+                        <div style="margin-bottom:10px;">
+                            <div style="font-size:7.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:2px;">${escapeHtmlAttr(section.title)}</div>
+                            ${items.map(pickRowHtml).join("")}
+                        </div>
+                    `;
+                      })
+                      .join("");
+
+        const MAX_HOME_PICKS = 3;
+        // Once 3 are checked, every unchecked box is disabled rather than
+        // silently un-checking a click - a disabled box reads as "pick's
+        // full" at a glance instead of looking like a bug when clicking a
+        // 4th item does nothing.
+        const enforcePickLimit = () => {
+            const checkedCount = document.querySelectorAll(".home-pick-check:checked").length;
+            document.querySelectorAll(".home-pick-check").forEach((cb) => {
+                cb.disabled = !cb.checked && checkedCount >= MAX_HOME_PICKS;
+            });
+        };
+        const wirePickRows = () => {
+            document.querySelectorAll(".home-pick-check").forEach((cb) => {
+                cb.addEventListener("change", () => {
+                    renderTagsPanel();
+                    enforcePickLimit();
+                });
+            });
+        };
+        wirePickRows();
+        renderTagsPanel();
+        enforcePickLimit();
+
+        // Suggestion chips - each one CHECKS matching items (doesn't save by
+        // itself) so the admin can still review/adjust tags before hitting
+        // Save. Top sellers reuses the same 30-day KPI data the Dashboard
+        // shows; promoted/rarely-ordered are derived from data already
+        // loaded here, no extra endpoint needed.
+        const suggestionsEl = document.getElementById("home-picks-suggestions");
+        const checkItems = (items, defaultTag) => {
+            let changed = false;
+            let remaining = MAX_HOME_PICKS - document.querySelectorAll(".home-pick-check:checked").length;
+            const actuallyChecked = [];
+            items.forEach((item) => {
+                if (remaining <= 0) return;
+                const cb = document.querySelector(`.home-pick-check[data-item-id="${item.id}"]`);
+                if (!cb || cb.checked) return;
+                cb.checked = true;
+                changed = true;
+                remaining--;
+                actuallyChecked.push(item);
+            });
+            if (changed) renderTagsPanel();
+            enforcePickLimit();
+            if (remaining <= 0 && actuallyChecked.length < items.length) {
+                fail(`Only picked ${actuallyChecked.length} - up to ${MAX_HOME_PICKS} items can feature on the home page.`);
+            }
+            // Fill in the default tag for whichever of these items don't
+            // already have one typed (existing tags, including ones just
+            // restored by renderTagsPanel above, are left alone).
+            actuallyChecked.forEach((item) => {
+                const tagInput = document.querySelector(`.home-pick-tag[data-item-id="${item.id}"]`);
+                if (tagInput && !tagInput.value) tagInput.value = defaultTag;
+            });
+        };
+        const promoted = pickableItems.filter((i) => i.promoDiscount);
+        suggestionsEl.innerHTML = `
+            <button type="button" class="admin-btn-secondary" id="suggest-top-sellers" style="padding:4px 8px; font-size:7pt;">+ TOP SELLERS</button>
+            <button type="button" class="admin-btn-secondary" id="suggest-promoted" style="padding:4px 8px; font-size:7pt;" ${promoted.length === 0 ? "disabled" : ""}>+ ON PROMOTION${promoted.length ? ` (${promoted.length})` : ""}</button>
+            <button type="button" class="admin-btn-secondary" id="suggest-rarely-ordered" style="padding:4px 8px; font-size:7pt;">+ RARELY ORDERED</button>
+        `;
+        document.getElementById("suggest-promoted").addEventListener("click", () => checkItems(promoted, "On offer"));
+        document.getElementById("suggest-top-sellers").addEventListener("click", async () => {
+            try {
+                const kpi = await PayrollSystem.fetchKpi("1m");
+                const topNames = new Set((kpi.bestSellers || []).map((s) => s.name));
+                checkItems(
+                    pickableItems.filter((i) => topNames.has(i.name)),
+                    "House favourite"
+                );
+            } catch (e) {
+                fail("Could not load top sellers");
+            }
+        });
+        document.getElementById("suggest-rarely-ordered").addEventListener("click", async () => {
+            try {
+                const kpi = await PayrollSystem.fetchKpi("1m");
+                const orderedNames = new Set((kpi.bestSellers || []).map((s) => s.name));
+                // "Rarely ordered" = not in the last 30 days' top-5 sellers -
+                // an approximation (the KPI endpoint only exposes a top-5
+                // list, not full per-item counts), good enough to surface
+                // candidates worth a second look rather than a precise stat.
+                checkItems(
+                    pickableItems.filter((i) => !orderedNames.has(i.name)).slice(0, 5),
+                    "Underrated pick"
+                );
+            } catch (e) {
+                fail("Could not check order history");
+            }
+        });
+
+        // ---- Roast steps editor ----
+        const DEFAULT_ROAST_STEPS = [
+            { name: "Sourced", detail: "Small-batch beans, bought direct, one sack at a time." },
+            { name: "Drum roast", detail: "Twelve-minute profile, logged to the second." },
+            { name: "Rested", detail: "A few days off-gas before the first pour." },
+            { name: "Poured", detail: "Ground to order, never before you walk in." }
+        ];
+        const MAX_ROAST_STEPS = 6;
+        const roastEditor = document.getElementById("home-roast-editor");
+
+        function renderRoastEditor(steps) {
+            roastEditor.innerHTML = steps
+                .map(
+                    (step, i) => `
+                <div class="roast-step-row" style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" class="roast-step-name" placeholder="Step name" maxlength="40" value="${escapeHtmlAttr(step.name || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="roast-step-detail" placeholder="Detail line" maxlength="160" value="${escapeHtmlAttr(step.detail || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <button type="button" class="roast-step-remove admin-btn-secondary" data-index="${i}" style="flex:none; padding:4px 8px;">&times;</button>
+                </div>
+            `
+                )
+                .join("");
+            roastEditor.querySelectorAll(".roast-step-remove").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    steps.splice(Number(btn.dataset.index), 1);
+                    renderRoastEditor(steps);
+                });
+            });
+        }
+
+        const roastSteps = (c.roastSteps && c.roastSteps.length ? c.roastSteps : DEFAULT_ROAST_STEPS).map((s) => ({ ...s }));
+        renderRoastEditor(roastSteps);
+
+        document.getElementById("home-roast-add").addEventListener("click", () => {
+            if (roastSteps.length >= MAX_ROAST_STEPS) return fail(`Up to ${MAX_ROAST_STEPS} steps`);
+            roastSteps.push({ name: "", detail: "" });
+            renderRoastEditor(roastSteps);
+        });
+
+        document.getElementById("home-content-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("content-error");
+            errorEl.textContent = "";
+            const homePicks = Array.from(document.querySelectorAll(".home-pick-check"))
+                .filter((cb) => cb.checked)
+                .map((cb) => ({
+                    itemId: Number(cb.dataset.itemId),
+                    tag: document.querySelector(`.home-pick-tag[data-item-id="${cb.dataset.itemId}"]`).value.trim()
+                }));
+            const finalRoastSteps = Array.from(roastEditor.querySelectorAll(".roast-step-row"))
+                .map((row) => ({
+                    name: row.querySelector(".roast-step-name").value.trim(),
+                    detail: row.querySelector(".roast-step-detail").value.trim()
+                }))
+                .filter((s) => s.name || s.detail);
+            try {
+                await AdminConfig.saveSettings({
+                    homePicks,
+                    roastSteps: finalRoastSteps,
+                    homeHeadings: {
+                        picks: document.getElementById("cfg-home-heading-picks").value.trim(),
+                        roast: document.getElementById("cfg-home-heading-roast").value.trim(),
+                        findUs: document.getElementById("cfg-home-heading-findus").value.trim()
+                    }
+                });
+                ok("Home page content saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
+
+        // ---- Custom footer fields editor (Instagram, GST no, WhatsApp, etc.) ----
+        const MAX_CUSTOM_FOOTER_FIELDS = 6;
+        const footerFieldsEditor = document.getElementById("footer-custom-fields-editor");
+
+        function renderFooterFieldsEditor(fields) {
+            footerFieldsEditor.innerHTML = fields
+                .map(
+                    (f, i) => `
+                <div class="footer-field-row" style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" class="footer-field-label" placeholder="Field name (e.g. Instagram)" maxlength="30" value="${escapeHtmlAttr(f.label || "")}" style="flex:0 0 180px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="footer-field-value" placeholder="Value" maxlength="100" value="${escapeHtmlAttr(f.value || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <button type="button" class="footer-field-remove admin-btn-secondary" data-index="${i}" style="flex:none; padding:4px 8px;">&times;</button>
+                </div>
+            `
+                )
+                .join("");
+            footerFieldsEditor.querySelectorAll(".footer-field-remove").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    fields.splice(Number(btn.dataset.index), 1);
+                    renderFooterFieldsEditor(fields);
+                });
+            });
+        }
+
+        const customFooterFields = (c.customFooterFields || []).map((f) => ({ ...f }));
+        renderFooterFieldsEditor(customFooterFields);
+
+        document.getElementById("footer-custom-field-add").addEventListener("click", () => {
+            if (customFooterFields.length >= MAX_CUSTOM_FOOTER_FIELDS) return fail(`Up to ${MAX_CUSTOM_FOOTER_FIELDS} custom fields`);
+            customFooterFields.push({ label: "", value: "" });
+            renderFooterFieldsEditor(customFooterFields);
+        });
+
+        document.getElementById("footer-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("footer-error");
+            errorEl.textContent = "";
+            const finalCustomFields = Array.from(footerFieldsEditor.querySelectorAll(".footer-field-row"))
+                .map((row) => ({
+                    label: row.querySelector(".footer-field-label").value.trim(),
+                    value: row.querySelector(".footer-field-value").value.trim()
+                }))
+                .filter((f) => f.label || f.value);
+            try {
+                const updated = await AdminConfig.saveSettings({
+                    footer: {
+                        tagline: document.getElementById("brand-footer-tagline").value.trim(),
+                        address: document.getElementById("brand-footer-address").value.trim(),
+                        phone: document.getElementById("brand-footer-phone").value.trim(),
+                        email: document.getElementById("brand-footer-email").value.trim(),
+                        hours: document.getElementById("brand-footer-hours").value.trim()
+                    },
+                    customFooterFields: finalCustomFields
+                });
+                if (window.applyBranding) window.applyBranding(updated);
+                if (window.renderFooter) window.renderFooter(updated);
+                ok("Store details saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
     }
 };
-
-// Ensure the portal is accessible globally for the HTML "LOGOUT" button
-window.AdminPortal = AdminPortal;

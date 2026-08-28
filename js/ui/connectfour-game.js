@@ -81,7 +81,7 @@ function pickBotColumn(board, botSymbol, humanSymbol) {
 
 function gridHtml(board) {
     return `
-        <div style="display:grid; grid-template-columns:repeat(${COLS},1fr); gap:4px; max-width:280px; margin:0 auto; background:var(--color-border); padding:6px; border-radius:4px;">
+        <div class="arcade-board" style="display:grid; grid-template-columns:repeat(${COLS},1fr); gap:4px; background:var(--color-border); padding:6px; border-radius:4px;">
             ${board
                 .map((cell, i) => {
                     const col = i % COLS;

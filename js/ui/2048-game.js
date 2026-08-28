@@ -148,7 +148,7 @@ export const Game2048 = {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">2048</h3>
             <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="g2048-score" style="color:var(--color-accent);">${this.score}</strong></p>
-            <div style="display:grid; grid-template-columns:repeat(${SIZE},1fr); gap:6px; max-width:280px; margin:0 auto; background:var(--color-border); padding:6px; border-radius:4px;">
+            <div class="arcade-board" style="display:grid; grid-template-columns:repeat(${SIZE},1fr); gap:6px; background:var(--color-border); padding:6px; border-radius:4px;">
                 ${this.grid
                     .flat()
                     .map(

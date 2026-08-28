@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720">
+  <rect width="960" height="720" fill="#141414"/>
+  <rect x="6" y="6" width="948" height="708" fill="none" stroke="#d97706" stroke-width="3" stroke-dasharray="10 6"/>
+  <text x="50%" y="46%" text-anchor="middle" font-family="Courier New, monospace" font-weight="bold" font-size="65" fill="#d97706">SEVEN BITS COFFEE</text>
+  <text x="50%" y="60%" text-anchor="middle" font-family="Courier New, monospace" font-size="26" fill="#888" letter-spacing="2">SAMPLE STOREFRONT PHOTO</text>
+</svg>

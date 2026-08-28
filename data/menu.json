@@ -33,7 +33,8 @@
       "name": "G-Bit Latte",
       "price": 240,
       "icon": "ice-latte",
-      "story": "Our signature ginger-honey latte. The crowd favorite.."
+      "story": "Our signature ginger-honey latte. The crowd favorite..",
+      "imageUrl": "/uploads/ae71a903102d73ae.svg"
     },
     {
       "id": 102,
@@ -41,7 +42,8 @@
       "name": "1024 Cold Brew",
       "price": 260,
       "icon": "cold-brew",
-      "story": "Steeped 1024 mins for maximum clarity."
+      "story": "Steeped 1024 mins for maximum clarity.",
+      "imageUrl": "/uploads/467c88d52cc74e5c.svg"
     },
     {
       "id": 103,
@@ -49,7 +51,8 @@
       "name": "Binary Black",
       "price": 180,
       "icon": "espresso",
-      "story": "0 or 1. Just pure specialty espresso."
+      "story": "0 or 1. Just pure specialty espresso.",
+      "imageUrl": "/uploads/bf358e575c3a8896.svg"
     },
     {
       "id": 104,
