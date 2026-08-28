@@ -40,7 +40,7 @@ export async function renderAddStaffModal(currentRole, onCreated) {
             <p id="staff-modal-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">NAME</label>
-            <input id="sm-name" type="text" placeholder="Full name" style="${fieldStyle}" />
+            <input id="sm-name" type="text" maxlength="60" placeholder="Full name" style="${fieldStyle}" />
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">ROLE</label>
             <select id="sm-role" style="${fieldStyle}">
@@ -58,7 +58,7 @@ export async function renderAddStaffModal(currentRole, onCreated) {
             }
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG (optional - e.g. Barista, Cashier)</label>
-            <input id="sm-tag" type="text" placeholder="e.g. Barista" style="${fieldStyle}" />
+            <input id="sm-tag" type="text" maxlength="40" placeholder="e.g. Barista" style="${fieldStyle}" />
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE (optional)</label>
             <div style="display:flex; gap:8px; margin: 4px 0 10px;">
@@ -72,12 +72,12 @@ export async function renderAddStaffModal(currentRole, onCreated) {
             </div>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">USERNAME</label>
-            <input id="sm-username" type="text" placeholder="Login username" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 2px;" />
+            <input id="sm-username" type="text" maxlength="30" placeholder="Login username" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 2px;" />
             <div id="sm-username-status" style="font-size: 7pt; min-height: 11px; margin-bottom: 8px;"></div>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">TEMPORARY PASSWORD</label>
             <div style="display:flex; gap:6px; margin: 4px 0 2px;">
-                <input id="sm-password" type="text" placeholder="Temporary password" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
+                <input id="sm-password" type="text" maxlength="60" placeholder="Temporary password" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
                 <button id="sm-generate" type="button" style="background:var(--color-border); color:var(--color-accent); border:1px solid var(--color-accent); padding:0 12px; cursor:pointer; font-size:8pt;">GENERATE</button>
             </div>
             <div id="sm-password-meter"></div>
@@ -187,7 +187,7 @@ export function renderEditStaffModal(user, onSaved) {
             <p id="esm-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG</label>
-            <input id="esm-tag" type="text" value="${user.tag || ""}" placeholder="e.g. Barista" style="${fieldStyle}" />
+            <input id="esm-tag" type="text" maxlength="40" value="${user.tag || ""}" placeholder="e.g. Barista" style="${fieldStyle}" />
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE</label>
             <div style="display:flex; gap:8px; margin: 4px 0 10px;">

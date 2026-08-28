@@ -28,7 +28,7 @@ let cart = [];
 let serviceChargeActive = true;
 let tipApplied = false;
 let currentKitchenStation = "MASTER"; // matches the "ALL" tab that's marked active by default in index.html
-let viewMode = "list";
+let viewMode = "grid";
 let menuData = { sections: [], items: [] };
 let siteConfig = {}; // last-loaded config (colors/customIcons/etc.) for icon rendering + branding
 let pendingOrder = null; // order returned by the server, waiting to be printed
@@ -74,27 +74,24 @@ async function refreshSession() {
  * ANY real session - staff, customer, or guest alike, each getting its own
  * role-appropriate tab list (see StaffShell.tabsForRole()) - since the
  * rail/top-bar layout choice was never meant to be staff-exclusive, only its
- * tab CONTENTS differ by role. Only a fully anonymous visitor with no
- * session at all (never logged in, registered, or started a guest checkout)
- * falls back to the untouched customer top nav. This is the one place that
- * decision gets made, on every session refresh (login, logout, and initial
- * page load).
+ * tab CONTENTS differ by role. Even a fully anonymous visitor (never logged
+ * in, registered, or started a guest checkout) now gets the same shell -
+ * its identity button just becomes a LOGIN prompt instead of an account
+ * dropdown (see StaffShell.identityHtml()/wireButtons()) - so the shop's
+ * chosen default layout (Content tab -> Site Navigation) is what a brand
+ * new visitor sees, not the old plain top nav.
  */
 function updateStaffShellForSession() {
     const currentPageId = document.querySelector(".page.active")?.id.replace("page-", "") || null;
-    if (session.role) {
-        StaffShell.show(session, currentPageId);
-        // Populates the Orders nav badge right away rather than leaving it
-        // at 0 until the first live-update event arrives (see
-        // ensureOrdersStream(), which keeps it current after this).
-        if (KITCHEN_ROLES.includes(session.role)) {
-            KitchenSystem.fetchOrders().then(() => {
-                const awaitingFire = KitchenSystem.orders.filter((o) => !o.items.every((i) => i.isDone)).length;
-                StaffShell.setBadge("orders", awaitingFire);
-            });
-        }
-    } else {
-        StaffShell.hide();
+    StaffShell.show(session, currentPageId);
+    // Populates the Orders nav badge right away rather than leaving it
+    // at 0 until the first live-update event arrives (see
+    // ensureOrdersStream(), which keeps it current after this).
+    if (KITCHEN_ROLES.includes(session.role)) {
+        KitchenSystem.fetchOrders().then(() => {
+            const awaitingFire = KitchenSystem.orders.filter((o) => !o.items.every((i) => i.isDone)).length;
+            StaffShell.setBadge("orders", awaitingFire);
+        });
     }
 }
 
@@ -929,14 +926,18 @@ window.printKOT = (order) => {
  *    screen with their order number, amount, and an approximate wait time.
  */
 window.startCheckout = async (method) => {
-    const btn = document.getElementById(method === "ONLINE" ? "btn-pay-online" : "btn-pay-cash");
+    const isStaffCheckout = KITCHEN_ROLES.includes(session.role);
+    const btn = document.getElementById("btn-checkout-staff") || document.getElementById(method === "ONLINE" ? "btn-pay-online" : "btn-pay-cash");
     const errorBox = document.getElementById("checkout-error");
     if (errorBox) errorBox.textContent = "";
 
-    const guestOrder = document.getElementById("checkout-guest-order")?.checked || false;
-    const phone = document.getElementById("checkout-phone")?.value || "";
-    if (!guestOrder && !phone.trim()) {
-        if (errorBox) errorBox.textContent = "Enter a phone number so this order can be tracked.";
+    // Only staff placing an order on someone's behalf have the guest/phone
+    // fields at all - a customer/guest checking themselves out already has
+    // an identity from their own session, so their phone is never re-asked.
+    const guestOrder = isStaffCheckout ? document.getElementById("checkout-guest-order")?.checked || false : false;
+    const phone = isStaffCheckout ? document.getElementById("checkout-phone")?.value || "" : session.phone || "";
+    if (isStaffCheckout && !guestOrder && !phone.trim()) {
+        if (errorBox) errorBox.textContent = "Enter a phone number, or check GUEST.";
         return;
     }
 
@@ -946,27 +947,43 @@ window.startCheckout = async (method) => {
     }
 
     try {
-        const markPaidNow = document.getElementById("checkout-mark-paid-now")?.checked || false;
         const tableSessionId = document.getElementById("checkout-table-session")?.value || null;
         const discount = window.__checkoutDiscount || {};
         const order = await KitchenSystem.pushOrder(cart, method, {
             serviceChargeActive,
             tipApplied,
             phone,
-            markPaidNow,
+            markPaidNow: false,
             tableSessionId,
             couponCode: discount.couponCode || null,
             redeemPoints: discount.redeemPoints || 0,
             guestOrder
         });
         pendingOrder = order;
+
+        cart = [];
+        serviceChargeActive = true;
+        tipApplied = false;
+        updateCartUI();
+        window.closeModal();
+
+        // Staff hand off to Billing to actually settle the payment (cash,
+        // UPI, card, wallet) rather than choosing a method here - the order
+        // itself is always created the same way (unpaid, COUNTER) regardless
+        // of which checkout button was clicked.
+        if (isStaffCheckout) {
+            const { selectBillForOrder } = await import("./ui/billing-page.js");
+            selectBillForOrder(order.id);
+            window.showPage("billing");
+            return;
+        }
+
         renderPaymentConfirmation(order, method, { isCustomerFacing: TRACKING_ROLES.includes(session.role) });
     } catch (e) {
         if (errorBox) errorBox.textContent = e.message;
-    } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = method === "ONLINE" ? "PAY ONLINE (UPI)" : "PAY CASH";
+            btn.textContent = btn.id === "btn-checkout-staff" ? "[ CHECKOUT ]" : method === "ONLINE" ? "PAY ONLINE (UPI)" : "PAY CASH";
         }
     }
 };
@@ -2217,10 +2234,15 @@ window.pickFromHome = (itemId) => {
     await loadMenu();
     await loadCombos();
     await CustomizationSystem.loadOptions();
-    await refreshSession();
+    // Config/branding loads BEFORE refreshSession() - the shell now renders
+    // for every visitor including anonymous ones (see updateStaffShellForSession()),
+    // and it reads AdminConfig.settings (shop name, default nav layout) the
+    // moment it renders - loading config after would flash the "YOUR SHOP"
+    // fallback wordmark first.
     const config = await AdminConfig.loadSettings();
     window.applyBranding(config);
     window.renderFooter(config);
+    await refreshSession();
     window.initSearchBar();
     window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home");
 })();

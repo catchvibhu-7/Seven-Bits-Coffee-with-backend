@@ -159,20 +159,19 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
 
             <div id="checkout-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin-bottom: 10px;"></div>
 
-            <div style="margin-bottom: 15px;">
-                <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">ORDER TRACKING PHONE:</label>
-                <input id="checkout-phone" type="tel" value="${session.phone || ""}" ${session.role === "customer" ? "readonly" : ""}
-                    placeholder="PHONE NUMBER" style="width: 100%; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:${session.role === "customer" ? "var(--color-text-muted)" : "var(--color-text)"}; padding: 10px; font-family: inherit;" />
-                <p style="font-size: 7pt; color: var(--color-text-muted); margin: 4px 0 0;">If this matches an existing customer account, the order is credited to it (loyalty points, order history).</p>
-            </div>
-
             ${
                 STAFF_ROLES.includes(session.role)
                     ? `
-            <label style="display:flex; align-items:center; gap:6px; font-size: 8pt; color: var(--color-text-muted); margin: -8px 0 15px; cursor:pointer;">
-                <input type="checkbox" id="checkout-guest-order" style="width:auto;" />
-                Guest order (customer declined to give a phone number - can't be tracked afterward)
-            </label>`
+            <div style="margin-bottom: 15px;">
+                <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">ORDER TRACKING PHONE:</label>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <label style="display:flex; align-items:center; gap:6px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; white-space:nowrap;">
+                        <input type="checkbox" id="checkout-guest-order" />
+                        GUEST
+                    </label>
+                    <input id="checkout-phone" type="tel" maxlength="15" placeholder="PHONE NUMBER" style="flex:1; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding: 10px; font-family: inherit;" />
+                </div>
+            </div>`
                     : ""
             }
 
@@ -208,10 +207,6 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             ${
                 isStaff
                     ? `
-            <label style="display:flex; align-items:center; gap:8px; font-size: 8pt; color: var(--color-text-muted); margin-bottom: 12px; cursor:pointer;">
-                <input type="checkbox" id="checkout-mark-paid-now" style="width:auto;" />
-                COLLECTED PAYMENT NOW (mark this order as paid immediately)
-            </label>
             ${
                 openTables.length > 0
                     ? `
@@ -227,10 +222,18 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                     : ""
             }
 
+            ${
+                isStaff
+                    ? `
+            <div class="payment-options" style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                <button id="btn-checkout-staff" class="btn-pay" onclick="window.startCheckout('COUNTER')" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 0.85rem; font-weight: bold; cursor: pointer; text-transform: uppercase;">[ CHECKOUT ]</button>
+            </div>`
+                    : `
             <div class="payment-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <button id="btn-pay-cash" class="btn-pay" onclick="window.startCheckout('COUNTER')" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 0.85rem; font-weight: bold; cursor: pointer; text-transform: uppercase;">PAY CASH</button>
                 <button id="btn-pay-online" class="btn-pay" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 0.85rem; font-weight: bold; cursor: pointer; text-transform: uppercase;" onclick="window.startCheckout('ONLINE')">PAY ONLINE (UPI)</button>
-            </div>
+            </div>`
+            }
 
             <button class="btn-close" onclick="window.closeModal()" style="margin-top: 15px; width: 100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">BACK</button>
 
@@ -282,7 +285,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
 
     document.getElementById("checkout-guest-order")?.addEventListener("change", (e) => {
         const phoneInput = document.getElementById("checkout-phone");
-        phoneInput.disabled = e.target.checked;
+        phoneInput.style.display = e.target.checked ? "none" : "";
         if (e.target.checked) phoneInput.value = "";
     });
 

@@ -54,11 +54,12 @@ function shopShortForm() {
 }
 
 function loadLayout() {
+    const configDefault = AdminConfig.settings.defaultNavLayout === "topbar" ? "topbar" : "rail";
     try {
         const v = localStorage.getItem(LAYOUT_KEY);
-        return v === "topbar" ? "topbar" : "rail";
+        return v === "topbar" || v === "rail" ? v : configDefault;
     } catch (e) {
-        return "rail";
+        return configDefault;
     }
 }
 
@@ -304,11 +305,18 @@ export const StaffShell = {
     /** The one account button - name + role level, opens the shared
      *  account dropdown (Account Settings incl. Site Layout, Log out) via
      *  window.renderAccountMenu(), same pattern as the customer nav's
-     *  account button. */
+     *  account button. A fully anonymous visitor (no session at all) has
+     *  nothing to show/manage yet, so this becomes a plain LOGIN button
+     *  instead - window.handleAccountClick() already branches on
+     *  session.authenticated the same way the classic customer nav's own
+     *  account button does. */
     identityHtml() {
         const s = this.session || {};
-        const name = s.name || (s.role ? s.role.toUpperCase() : "STAFF");
-        const role = s.role ? s.role.toUpperCase() : "";
+        if (!s.role) {
+            return `<button type="button" id="staff-account-btn" class="staff-auth-identity"><span class="staff-auth-name">LOGIN</span></button>`;
+        }
+        const name = s.name || s.role.toUpperCase();
+        const role = s.role.toUpperCase();
         return `
             <button type="button" id="staff-account-btn" class="staff-auth-identity">
                 <span class="staff-auth-name">${escapeHtml(name)}</span>
@@ -377,7 +385,13 @@ export const StaffShell = {
             });
         });
         root.querySelector("#staff-account-btn")?.addEventListener("click", () => {
-            window.renderAccountMenu?.("staff-account-btn");
+            // Anonymous visitor (no session at all) - open login/guest
+            // instead of an account dropdown they don't have yet.
+            if (!this.session?.role) {
+                window.handleAccountClick?.();
+            } else {
+                window.renderAccountMenu?.("staff-account-btn");
+            }
         });
     },
 

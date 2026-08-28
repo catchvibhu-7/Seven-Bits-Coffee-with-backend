@@ -214,6 +214,10 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // for "Online / Counter" (no physical table), never an openable tab -
     // real tabs are numbered 1..tableCount. See /api/table-sessions.
     tableCount: 10,
+    // "rail" or "topbar" - which staff-shell layout a browser sees the
+    // first time it visits with nobody logged in yet, before it has its own
+    // saved localStorage preference (see StaffShell in staff-shell.js).
+    defaultNavLayout: "rail",
     // Industry-standard "earn on spend, redeem for a discount" loyalty
     // program - both rates admin-editable from Discounts & Loyalty.
     loyalty: {
@@ -687,12 +691,16 @@ function round2(n) {
 // SB26082402. Safe without locking: server.js handles one request at a time
 // and this runs synchronously between the readJson/writeJson in the order
 // creation route, so two orders can never see the same existing count.
-function generateOrderNumber(existingOrders) {
+// storeId/multiStore only change the format once a second store actually
+// exists - a single-store deployment keeps the plain "SB..." numbers it
+// always had, so this is invisible unless someone actually expands.
+function generateOrderNumber(existingOrders, storeId, multiStore) {
   const now = new Date();
   const yy = String(now.getFullYear()).slice(-2);
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const dd = String(now.getDate()).padStart(2, "0");
-  const datePrefix = `SB${yy}${mm}${dd}`;
+  const storePrefix = multiStore && storeId != null ? `SB${storeId}_` : "SB";
+  const datePrefix = `${storePrefix}${yy}${mm}${dd}`;
   const todayCount = existingOrders.filter((o) => o.orderNumber && o.orderNumber.startsWith(datePrefix)).length;
   return `${datePrefix}${String(todayCount + 1).padStart(2, "0")}`;
 }
@@ -2274,7 +2282,8 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "logoUrl",
     "upiVpa",
     "upiPayeeName",
-    "tableCount"
+    "tableCount",
+    "defaultNavLayout"
   ];
   for (const key of allowed) {
     if (body[key] !== undefined) config[key] = body[key];
@@ -2290,6 +2299,9 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   if (config.tableCount !== undefined) {
     const n = parseInt(config.tableCount, 10);
     config.tableCount = Number.isFinite(n) && n >= 0 ? Math.min(n, 200) : 10;
+  }
+  if (config.defaultNavLayout !== undefined && config.defaultNavLayout !== "rail" && config.defaultNavLayout !== "topbar") {
+    config.defaultNavLayout = "rail";
   }
   // shopName/heroTagline are rendered directly into the home page - cap
   // length and strip control chars so a bad paste can't break layout.
@@ -2715,13 +2727,15 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   }
 
   const orders = readJson(ORDERS_FILE, []);
+  const multiStore = readJson(STORES_FILE, []).length > 1;
   // Staff placing an order at the counter on a customer's behalf can mark it
   // paid immediately (cash already collected) instead of having to find it
   // in Order History afterwards - customers/guests can never self-mark paid.
   const staffMarkedPaid = KITCHEN_ROLES.includes(session.role) && body.markPaidNow === true;
   const order = {
     id: `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
-    orderNumber: generateOrderNumber(orders),
+    orderNumber: generateOrderNumber(orders, session.storeId, multiStore),
+    storeId: session.storeId != null ? session.storeId : null,
     createdAt: new Date().toISOString(),
     method,
     isPaid: method === "ONLINE" || staffMarkedPaid, // still trust-based until a real payment webhook is wired up - see README

@@ -1435,6 +1435,49 @@ header {
     cursor: pointer;
 }
 
+/* Themed checkbox - applies everywhere (checkout, admin, item modals) so no
+   page shows the browser's stock checkbox against this dark/monospace UI.
+   appearance:none + a hand-drawn checkmark, sized to sit inline with an
+   8-8.5pt label without throwing off line-height. */
+input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 15px;
+    height: 15px;
+    min-width: 15px;
+    flex-shrink: 0;
+    margin: 0;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    border-radius: 2px;
+    cursor: pointer;
+    position: relative;
+    vertical-align: middle;
+}
+input[type="checkbox"]:checked {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+}
+input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--color-accent-contrast);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+input[type="checkbox"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* Admin panel sub-tabs (Global Settings / Menu Items / Staff / Branding) */
 .admin-tabs {
     display: flex;
@@ -1463,34 +1506,33 @@ header {
     border-bottom-color: var(--color-accent);
 }
 
-/* Grouped admin sub-tab nav (Overview / Menu / Sales / Staff / Store Setup)
-   - scoped to #admin-tabs only, so the flat kitchen station tabs
-   (.kitchen-tabs.admin-tabs, plain buttons, no groups) are unaffected. */
+/* Two-level admin nav - a single top row of section names (Dashboard, Menu,
+   Sales, Staff, Branding & Content, Payments, Operations, Store Setup); a
+   section with only one page acts as that page directly (no separate
+   sub-row), a section with multiple pages reveals a second row of them
+   below, first one preselected. Scoped to #admin-tabs only, so the flat
+   kitchen station tabs (.kitchen-tabs.admin-tabs, plain buttons, no
+   sub-row) are unaffected. */
 #admin-tabs.admin-tabs {
-    align-items: flex-start;
-}
-#admin-tabs .admin-tab-group {
-    display: flex;
     flex-direction: column;
-    padding: 0 16px 8px 0;
-    margin-right: 16px;
-    border-right: 1px solid var(--color-border);
+    align-items: stretch;
+    border-bottom: none;
+    gap: 0;
 }
-#admin-tabs .admin-tab-group:last-child {
-    border-right: none;
-    margin-right: 0;
-    padding-right: 0;
-}
-#admin-tabs .admin-tab-group-label {
-    font-size: 6.5pt;
-    letter-spacing: 1.5px;
-    color: var(--admin-help-color, var(--color-text-muted));
-    text-transform: uppercase;
-    padding: 6px 16px 4px;
-}
-#admin-tabs .admin-tab-group-btns {
+#admin-tabs .admin-top-tabs {
     display: flex;
     flex-wrap: wrap;
+    border-bottom: 1px solid var(--color-border);
+}
+#admin-tabs .admin-sub-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--color-border);
+    margin-top: 2px;
+}
+#admin-tabs .admin-sub-tabs .admin-tab-btn {
+    font-size: calc(var(--admin-tab-font-size, 9pt) - 1pt);
+    padding: 7px 14px;
 }
 
 /* Admin panel helper/description text - the small muted paragraphs that

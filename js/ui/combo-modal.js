@@ -60,10 +60,10 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
             <p id="cb-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 8px;"></p>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">NAME</label>
-            <input id="cb-name" type="text" value="${combo ? escapeHtml(combo.name) : ""}" style="${fieldStyle}" />
+            <input id="cb-name" type="text" maxlength="60" value="${combo ? escapeHtml(combo.name) : ""}" style="${fieldStyle}" />
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">DESCRIPTION (OPTIONAL)</label>
-            <input id="cb-description" type="text" value="${combo ? escapeHtml(combo.description || "") : ""}" style="${fieldStyle}" />
+            <input id="cb-description" type="text" maxlength="160" value="${combo ? escapeHtml(combo.description || "") : ""}" style="${fieldStyle}" />
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">ITEMS IN THIS COMBO</label>
             <div id="cb-rows">${rowsHtml()}</div>

@@ -62,6 +62,15 @@ function billToPrintableOrder(bill, kind) {
     };
 }
 
+/** Pre-selects a bill (e.g. right after staff creates a new order at
+ *  checkout) so the Billing page opens straight to it instead of whatever
+ *  the highest-total open bill happens to be. */
+export function selectBillForOrder(orderId) {
+    selectedBill = { kind: "order", id: orderId };
+    selectedMethod = "Cash";
+    billingPage = 1;
+}
+
 export async function renderBillingPage() {
     const root = document.getElementById("billing-root");
     if (!root) return;

@@ -144,17 +144,40 @@ export const AdminPortal = {
         const root = document.getElementById("admin-tabs");
         if (!root) return;
         const groups = tabGroupsForRole(this.session.role);
-        root.innerHTML = groups.map((g) => `
-            <div class="admin-tab-group">
-                <div class="admin-tab-group-label">${g.label}</div>
-                <div class="admin-tab-group-btns">
-                    ${g.tabs.map(
-                        (t) => `<button class="admin-tab-btn ${t.id === this.activeTab ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`
-                    ).join("")}
-                </div>
+        // A single-tab section (Dashboard, Payments, Operations) IS its page -
+        // the top row shows its one tab's own label, and clicking it goes
+        // straight there. A multi-tab section shows the group name on top,
+        // and clicking it reveals its tabs below with the first preselected.
+        const activeGroup = groups.find((g) => g.tabs.some((t) => t.id === this.activeTab)) || groups[0];
+        root.innerHTML = `
+            <div class="admin-top-tabs">
+                ${groups
+                    .map(
+                        (g) =>
+                            `<button class="admin-tab-btn ${g === activeGroup ? "active" : ""}" data-group="${escapeHtmlAttr(g.label)}">${g.tabs.length === 1 ? g.tabs[0].label : g.label}</button>`
+                    )
+                    .join("")}
             </div>
-        `).join("");
-        root.querySelectorAll(".admin-tab-btn").forEach((btn) => {
+            ${
+                activeGroup.tabs.length > 1
+                    ? `<div class="admin-sub-tabs">
+                    ${activeGroup.tabs
+                        .map((t) => `<button class="admin-tab-btn ${t.id === this.activeTab ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`)
+                        .join("")}
+                </div>`
+                    : ""
+            }
+        `;
+        root.querySelectorAll("[data-group]").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+                const group = groups.find((g) => g.label === btn.dataset.group);
+                if (!group) return;
+                this.activeTab = group.tabs[0].id;
+                this.renderTabs();
+                await this.renderActiveTab();
+            });
+        });
+        root.querySelectorAll("[data-tab]").forEach((btn) => {
             btn.addEventListener("click", async () => {
                 this.activeTab = btn.dataset.tab;
                 this.renderTabs();
@@ -195,42 +218,42 @@ export const AdminPortal = {
         root.innerHTML = `
             <div class="config-controls">
                 <h3 style="margin-top:0;">TAX &amp; GST (INDIAN SUBCONTINENT)</h3>
-                <div class="control-group">
+                <div class="control-group" style="max-width:280px;">
                     <label>GST NUMBER (GSTIN) - printed on bills when set. Leave blank if not GST-registered.</label>
                     <input type="text" id="cfg-gst-number" maxlength="20" value="${escapeHtmlAttr(c.gstNumber || "")}" placeholder="22AAAAA0000A1Z5" />
                 </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="control-group">
+                <div style="display:flex; gap: 15px; flex-wrap:wrap;">
+                    <div class="control-group" style="flex:0 0 130px;">
                         <label>CGST RATE (%)</label>
-                        <input type="text" id="cfg-cgst" value="${(c.cgstRate * 100).toFixed(2)}" />
+                        <input type="text" id="cfg-cgst" maxlength="6" value="${(c.cgstRate * 100).toFixed(2)}" />
                     </div>
-                    <div class="control-group">
+                    <div class="control-group" style="flex:0 0 130px;">
                         <label>SGST RATE (%)</label>
-                        <input type="text" id="cfg-sgst" value="${(c.sgstRate * 100).toFixed(2)}" />
+                        <input type="text" id="cfg-sgst" maxlength="6" value="${(c.sgstRate * 100).toFixed(2)}" />
                     </div>
-                </div>
-                <div class="control-group">
-                    <label>SERVICE CHARGE RATE (%)</label>
-                    <input type="text" id="cfg-service-charge" value="${(c.serviceChargeRate * 100).toFixed(2)}" />
+                    <div class="control-group" style="flex:0 0 160px;">
+                        <label>SERVICE CHARGE RATE (%)</label>
+                        <input type="text" id="cfg-service-charge" maxlength="6" value="${(c.serviceChargeRate * 100).toFixed(2)}" />
+                    </div>
+                    <div class="control-group" style="flex:0 0 130px;">
+                        <label>TIP AMOUNT (\u20b9)</label>
+                        <input type="text" id="cfg-tip-amount" maxlength="6" value="${c.tipAmount ?? 0}" />
+                    </div>
                 </div>
                 <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="cfg-tip-enabled" ${c.tipEnabled ? "checked" : ""} style="width:auto;" />
+                    <input type="checkbox" id="cfg-tip-enabled" ${c.tipEnabled ? "checked" : ""} />
                     <label style="margin:0;" for="cfg-tip-enabled">ENABLE GINGER TIP</label>
-                </div>
-                <div class="control-group">
-                    <label>TIP AMOUNT (\u20b9)</label>
-                    <input type="text" id="cfg-tip-amount" value="${c.tipAmount ?? 0}" />
                 </div>
                 <p class="admin-help-text">Tax, service charge, and tip are calculated and shown at checkout, on the Billing page, and on the printed bill - not while someone's still browsing/adding to their cart.</p>
 
                 <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">UPI PAYMENT</h3>
-                <div class="control-group">
+                <div class="control-group" style="max-width:320px;">
                     <label>UPI ID (VPA) - shown as a QR code for "Pay Online" orders. Leave blank to disable online payment and show "pay at counter" instead.</label>
-                    <input type="text" id="cfg-upi-vpa" value="${c.upiVpa || ""}" placeholder="yourshop@upi" />
+                    <input type="text" id="cfg-upi-vpa" maxlength="80" value="${c.upiVpa || ""}" placeholder="yourshop@upi" />
                 </div>
-                <div class="control-group">
+                <div class="control-group" style="max-width:320px;">
                     <label>PAYEE NAME (shown to the customer in their UPI app)</label>
-                    <input type="text" id="cfg-upi-payee-name" value="${c.upiPayeeName || ""}" placeholder="${c.shopName || "Your Shop"}" />
+                    <input type="text" id="cfg-upi-payee-name" maxlength="60" value="${c.upiPayeeName || ""}" placeholder="${c.shopName || "Your Shop"}" />
                 </div>
 
                 <p id="payments-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
@@ -278,21 +301,21 @@ export const AdminPortal = {
         root.innerHTML = `
             <div class="config-controls">
                 <h3 style="margin-top:0;">TABLES</h3>
-                <div class="control-group">
-                    <label>NUMBER OF TABLES (0 = only Online/Counter, no physical tabs)</label>
-                    <input type="text" id="cfg-table-count" value="${c.tableCount ?? 10}" />
-                    <p class="admin-help-text" style="margin-top:4px;">Staff can open a tab for tables numbered 1 through this count. Table "0" always means Online/Counter (no tab).</p>
+                <div class="control-group" style="max-width:130px;">
+                    <label>NUMBER OF TABLES</label>
+                    <input type="text" id="cfg-table-count" maxlength="4" value="${c.tableCount ?? 10}" />
                 </div>
+                <p class="admin-help-text" style="margin-top:-4px;">0 = only Online/Counter, no physical tabs. Staff can open a tab for tables numbered 1 through this count.</p>
 
                 <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ARCADE (GAMES TAB)</h3>
                 <p class="admin-help-text" style="margin-bottom:10px;">In-store only: a customer/guest unlocks the arcade for the session length below, starting from their most recent order.</p>
                 <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="cfg-arcade-enabled" ${(c.arcade?.enabled ?? true) ? "checked" : ""} style="width:auto;" />
+                    <input type="checkbox" id="cfg-arcade-enabled" ${(c.arcade?.enabled ?? true) ? "checked" : ""} />
                     <label style="margin:0;" for="cfg-arcade-enabled">ENABLE ARCADE</label>
                 </div>
-                <div class="control-group">
+                <div class="control-group" style="max-width:130px;">
                     <label>SESSION LENGTH (hours)</label>
-                    <input type="text" id="cfg-arcade-hours" value="${c.arcade?.sessionHours ?? 2}" />
+                    <input type="text" id="cfg-arcade-hours" maxlength="4" value="${c.arcade?.sessionHours ?? 2}" />
                 </div>
 
                 <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">NOTIFICATIONS</h3>
@@ -1105,7 +1128,7 @@ export const AdminPortal = {
                                 .map(
                                     (s) => `
                                 <label style="display:flex; align-items:center; gap:5px; font-size:8pt; cursor:pointer;">
-                                    <input type="checkbox" data-item-store="${item.id}" value="${s.id}" ${disabledStores.includes(s.id) ? "" : "checked"} style="width:auto;" />
+                                    <input type="checkbox" data-item-store="${item.id}" value="${s.id}" ${disabledStores.includes(s.id) ? "" : "checked"} />
                                     ${escapeHtmlAttr(s.name)}
                                 </label>
                             `
@@ -1215,7 +1238,7 @@ export const AdminPortal = {
                 <button class="admin-btn" id="menu-expand-all">EXPAND ALL</button>
                 <button class="admin-btn" id="menu-collapse-all">COLLAPSE ALL</button>
                 <label style="display:flex; align-items:center; gap:5px; font-size: var(--admin-help-font-size, 7.5pt); color: var(--admin-help-color, var(--color-text-muted)); cursor:pointer; font-family: 'Courier New', monospace; margin-left:auto;">
-                    <input type="checkbox" id="menu-show-deleted" ${this.showDeletedMenuItems ? "checked" : ""} style="width:auto;" />
+                    <input type="checkbox" id="menu-show-deleted" ${this.showDeletedMenuItems ? "checked" : ""} />
                     SHOW INACTIVE
                 </label>
             </div>
@@ -1512,8 +1535,8 @@ export const AdminPortal = {
             .map(
                 (opt, idx) => `
                 <tr data-idx="${idx}">
-                    <td><input class="cp-label" type="text" value="${escapeHtmlAttr(opt.label)}" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
-                    <td><input class="cp-key" type="text" value="${escapeHtmlAttr(opt.key)}" placeholder="auto from label" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text-muted); padding:5px; font-family:inherit; font-size:8pt;" /></td>
+                    <td><input class="cp-label" type="text" maxlength="30" value="${escapeHtmlAttr(opt.label)}" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
+                    <td><input class="cp-key" type="text" maxlength="30" value="${escapeHtmlAttr(opt.key)}" placeholder="auto from label" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text-muted); padding:5px; font-family:inherit; font-size:8pt;" /></td>
                     <td><input class="cp-price" type="number" min="0" step="1" value="${opt.priceDelta}" style="width:90px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
                     <td><button class="admin-btn admin-btn-danger cp-remove-row">REMOVE</button></td>
                 </tr>
@@ -1570,7 +1593,7 @@ export const AdminPortal = {
         root.innerHTML = `
             <div class="control-group" style="max-width:320px;">
                 <label>SEARCH BY NAME, USERNAME, OR PHONE</label>
-                <input type="text" id="customer-search" value="${escapeHtmlAttr(this.customerSearchQuery)}" placeholder="Start typing..." />
+                <input type="text" id="customer-search" maxlength="60" value="${escapeHtmlAttr(this.customerSearchQuery)}" placeholder="Start typing..." />
             </div>
             <div id="customers-results"></div>
         `;
@@ -1699,18 +1722,18 @@ export const AdminPortal = {
             </p>
             <div class="config-controls" style="margin-bottom:30px;">
                 <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="loyalty-enabled" ${loyalty.enabled ? "checked" : ""} style="width:auto;" />
+                    <input type="checkbox" id="loyalty-enabled" ${loyalty.enabled ? "checked" : ""} />
                     <label style="margin:0;" for="loyalty-enabled">ENABLE LOYALTY PROGRAM</label>
                 </div>
-                <div class="control-group">
-                    <label>POINTS EARNED PER \u20b91 SPENT</label>
-                    <input type="text" id="loyalty-earn-rate" value="${loyalty.pointsPerRupeeSpent}" />
-                    <p class="admin-help-text" style="margin-top:4px;">e.g. 0.1 = 1 point per \u20b910 spent (industry-typical "1 point per \u20b910" rate)</p>
+                <div class="control-group" style="max-width:130px;">
+                    <label>POINTS PER \u20b91 SPENT</label>
+                    <input type="text" id="loyalty-earn-rate" maxlength="8" value="${loyalty.pointsPerRupeeSpent}" />
+                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.1 = 1 point per \u20b910 spent (industry-typical "1 point per \u20b910" rate)</p>
                 </div>
-                <div class="control-group">
-                    <label>\u20b9 VALUE PER POINT REDEEMED</label>
-                    <input type="text" id="loyalty-redeem-rate" value="${loyalty.rupeeValuePerPoint}" />
-                    <p class="admin-help-text" style="margin-top:4px;">e.g. 0.5 = each point is worth \u20b90.50 off when redeemed</p>
+                <div class="control-group" style="max-width:130px;">
+                    <label>\u20b9 PER POINT REDEEMED</label>
+                    <input type="text" id="loyalty-redeem-rate" maxlength="8" value="${loyalty.rupeeValuePerPoint}" />
+                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.5 = each point is worth \u20b90.50 off when redeemed</p>
                 </div>
                 <p id="loyalty-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="loyalty-save">SAVE LOYALTY SETTINGS</button>
@@ -1720,7 +1743,7 @@ export const AdminPortal = {
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; background:var(--color-bg); padding:12px; border:1px solid var(--color-border);">
                 <div>
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">CODE</label>
-                    <input type="text" id="coupon-code" placeholder="WELCOME10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:130px;" />
+                    <input type="text" id="coupon-code" maxlength="24" placeholder="WELCOME10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:130px;" />
                 </div>
                 <div>
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">TYPE</label>
@@ -1731,14 +1754,14 @@ export const AdminPortal = {
                 </div>
                 <div>
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">VALUE</label>
-                    <input type="text" id="coupon-value" placeholder="10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:80px;" />
+                    <input type="text" id="coupon-value" maxlength="8" placeholder="10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:80px;" />
                 </div>
                 <div>
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
-                    <input type="text" id="coupon-limit" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
+                    <input type="text" id="coupon-limit" maxlength="8" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
                 </div>
                 <label style="display:flex; align-items:center; gap:5px; font-size: 8pt; cursor:pointer;">
-                    <input type="checkbox" id="coupon-private" style="width:auto;" />
+                    <input type="checkbox" id="coupon-private" />
                     PRIVATE
                 </label>
                 <button class="admin-btn-primary" id="coupon-add">+ ADD COUPON</button>
@@ -2352,115 +2375,125 @@ export const AdminPortal = {
 
         root.innerHTML = `
             <div class="config-controls">
-                <h3 style="margin-top:0;">THEME</h3>
-                <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
-                    <div class="control-group" style="flex:0 0 160px;">
-                        <label>PRESET</label>
-                        <select id="brand-theme">
-                            <option value="dark" ${c.theme !== "light" && c.theme !== "custom" ? "selected" : ""}>DARK</option>
-                            <option value="light" ${c.theme === "light" ? "selected" : ""}>LIGHT</option>
-                            <option value="custom" ${c.theme === "custom" ? "selected" : ""}>CUSTOM</option>
-                        </select>
+                <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+                    <div style="flex:1 1 380px; min-width:300px;">
+                        <h3 style="margin-top:0;">THEME</h3>
+                        <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+                            <div class="control-group" style="flex:0 0 130px;">
+                                <label>PRESET</label>
+                                <select id="brand-theme">
+                                    <option value="dark" ${c.theme !== "light" && c.theme !== "custom" ? "selected" : ""}>DARK</option>
+                                    <option value="light" ${c.theme === "light" ? "selected" : ""}>LIGHT</option>
+                                    <option value="custom" ${c.theme === "custom" ? "selected" : ""}>CUSTOM</option>
+                                </select>
+                            </div>
+                            ${colorField("brand-accent", "ACCENT", colors.accent || "#d97706")}
+                            ${colorField("brand-background", "BACKGROUND", colors.background || "#0a0a0a")}
+                            ${colorField("brand-surface", "SURFACE", colors.surface || "#111111")}
+                            ${colorField("brand-text", "TEXT", colors.text || "#f9fafb")}
+                            ${colorField("brand-secondary", "SECONDARY", colors.secondary || "#22d3ee")}
+                        </div>
+                        <p class="admin-help-text">Preset fills in its standard colors below - tweak after, or pick CUSTOM to leave your own alone. Secondary is used for "preparing" status, station tabs, etc.</p>
                     </div>
-                    ${colorField("brand-accent", "ACCENT", colors.accent || "#d97706")}
-                    ${colorField("brand-background", "BACKGROUND", colors.background || "#0a0a0a")}
-                    ${colorField("brand-surface", "SURFACE", colors.surface || "#111111")}
-                    ${colorField("brand-text", "TEXT", colors.text || "#f9fafb")}
-                    ${colorField("brand-secondary", "SECONDARY", colors.secondary || "#22d3ee")}
-                </div>
-                <p class="admin-help-text">Preset fills in its standard colors below - tweak after, or pick CUSTOM to leave your own alone. Secondary is used for "preparing" status, station tabs, etc.</p>
-
-                <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">IMAGES</h3>
-                <div class="control-group">
-                    <label>HERO / STOREFRONT IMAGE (home page - blank keeps the default icon)</label>
-                    <div style="display:flex; gap:8px;">
-                        <input type="text" id="brand-hero" maxlength="500" value="${escapeHtmlAttr(c.heroImageUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
-                        <button type="button" id="brand-hero-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+                    <div style="flex:1 1 280px; min-width:240px;">
+                        <h3 style="margin-top:0;">SAVED THEMES (e.g. HOLIDAY PROFILES)</h3>
+                        <p class="admin-help-text">Save the branding on this page as a named profile (Diwali, Christmas, etc.) to switch back to instantly later.</p>
+                        <div id="branding-profiles-list" style="margin-bottom:10px;">
+                            ${
+                                Object.keys(profiles).length === 0
+                                    ? `<p class="admin-help-text">No saved profiles yet.</p>`
+                                    : Object.keys(profiles)
+                                          .map(
+                                              (name) => `
+                                        <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
+                                            <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(name)}</span>
+                                            <button class="admin-btn" data-activate-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">ACTIVATE</button>
+                                            <button class="admin-btn admin-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">DELETE</button>
+                                        </div>
+                                    `
+                                          )
+                                          .join("")
+                            }
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="new-profile-name" maxlength="40" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                            <button class="admin-btn" id="save-profile">SAVE AS PROFILE</button>
+                        </div>
                     </div>
-                </div>
-                <div class="control-group">
-                    <label>LOGO IMAGE (top nav - blank hides it)</label>
-                    <div style="display:flex; gap:8px;">
-                        <input type="text" id="brand-logo" maxlength="500" value="${escapeHtmlAttr(c.logoUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
-                        <button type="button" id="brand-logo-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
-                    </div>
-                </div>
-                <p class="admin-help-text">Paste a URL, or BROWSE to upload/pick from the bucket (shared with menu item photos).</p>
-
-                <p id="branding-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <button class="admin-btn-primary" id="branding-save">SAVE BRANDING</button>
-                    <button class="admin-btn-secondary" id="branding-reset">RESET TO DEFAULT</button>
-                </div>
-
-                <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">CUSTOM ICONS</h3>
-                <p class="admin-help-text">Upload or link your own icon to make it available in the menu item editor, alongside the built-in set.</p>
-                <div id="custom-icons-list" style="margin-bottom:10px;">
-                    ${
-                        Object.keys(customIcons).length === 0
-                            ? `<p class="admin-help-text">No custom icons added yet.</p>`
-                            : Object.entries(customIcons)
-                                  .map(
-                                      ([key, url]) => `
-                                <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
-                                    <img src="${escapeHtmlAttr(url)}" style="width:22px; height:22px; object-fit:contain;" />
-                                    <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(key)}</span>
-                                    <button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>
-                                </div>
-                            `
-                                  )
-                                  .join("")
-                    }
-                </div>
-                <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-icon-key" maxlength="40" placeholder="icon name (e.g. pumpkin-spice)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" id="new-icon-url" maxlength="500" placeholder="image URL" style="flex:2; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
-                    <button type="button" class="admin-btn-secondary" id="new-icon-pick" style="white-space:nowrap;">BROWSE</button>
-                    <button class="admin-btn" id="add-custom-icon">ADD</button>
-                </div>
-
-                <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">SAVED THEMES (e.g. HOLIDAY PROFILES)</h3>
-                <p class="admin-help-text">Save the branding above as a named profile (Diwali, Christmas, etc.) to switch back to instantly later.</p>
-                <div id="branding-profiles-list" style="margin-bottom:10px;">
-                    ${
-                        Object.keys(profiles).length === 0
-                            ? `<p class="admin-help-text">No saved profiles yet.</p>`
-                            : Object.keys(profiles)
-                                  .map(
-                                      (name) => `
-                                <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
-                                    <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(name)}</span>
-                                    <button class="admin-btn" data-activate-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">ACTIVATE</button>
-                                    <button class="admin-btn admin-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">DELETE</button>
-                                </div>
-                            `
-                                  )
-                                  .join("")
-                    }
-                </div>
-                <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-profile-name" maxlength="40" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
-                    <button class="admin-btn" id="save-profile">SAVE AS PROFILE</button>
                 </div>
 
                 <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">ADMIN PANEL TEXT</h3>
                 <p class="admin-help-text">Font size/color for the admin panel's own sub-tab row, muted helper text, and field labels - staff-facing only, not shown to customers.</p>
                 <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end;">
-                    <div class="control-group" style="flex:0 0 110px;">
+                    <div class="control-group" style="flex:0 0 100px;">
                         <label>TABS SIZE</label>
                         <input type="number" id="brand-admintabs-size" min="5" max="24" step="0.5" value="${(textStyles.adminTabs && textStyles.adminTabs.fontSize) || 9}" />
                     </div>
                     ${colorField("brand-admintabs-color", "TABS COLOR", (textStyles.adminTabs && textStyles.adminTabs.color) || "#888888")}
-                    <div class="control-group" style="flex:0 0 110px;">
+                    <div class="control-group" style="flex:0 0 100px;">
                         <label>HELPER TEXT SIZE</label>
                         <input type="number" id="brand-adminhelp-size" min="5" max="24" step="0.5" value="${(textStyles.adminHelp && textStyles.adminHelp.fontSize) || 7.5}" />
                     </div>
                     ${colorField("brand-adminhelp-color", "HELPER COLOR", (textStyles.adminHelp && textStyles.adminHelp.color) || "#888888")}
-                    <div class="control-group" style="flex:0 0 110px;">
+                    <div class="control-group" style="flex:0 0 100px;">
                         <label>LABELS SIZE</label>
                         <input type="number" id="brand-adminlabels-size" min="5" max="24" step="0.5" value="${(textStyles.adminLabels && textStyles.adminLabels.fontSize) || 8}" />
                     </div>
                     ${colorField("brand-adminlabels-color", "LABELS COLOR", (textStyles.adminLabels && textStyles.adminLabels.color) || "#888888")}
+                </div>
+
+                <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">
+                    <div style="flex:1 1 320px; min-width:280px;">
+                        <h3 style="margin-top:0;">IMAGES</h3>
+                        <div class="control-group">
+                            <label>HERO / STOREFRONT IMAGE (home page - blank keeps the default icon)</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="brand-hero" maxlength="500" value="${escapeHtmlAttr(c.heroImageUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
+                                <button type="button" id="brand-hero-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label>LOGO IMAGE (top nav - blank hides it)</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="brand-logo" maxlength="500" value="${escapeHtmlAttr(c.logoUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
+                                <button type="button" id="brand-logo-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+                            </div>
+                        </div>
+                        <p class="admin-help-text">Paste a URL, or BROWSE to upload/pick from the bucket (shared with menu item photos).</p>
+                    </div>
+                    <div style="flex:1 1 280px; min-width:240px;">
+                        <h3 style="margin-top:0;">CUSTOM ICONS</h3>
+                        <p class="admin-help-text">Upload or link your own icon to make it available in the menu item editor, alongside the built-in set.</p>
+                        <div id="custom-icons-list" style="margin-bottom:10px;">
+                            ${
+                                Object.keys(customIcons).length === 0
+                                    ? `<p class="admin-help-text">No custom icons added yet.</p>`
+                                    : Object.entries(customIcons)
+                                          .map(
+                                              ([key, url]) => `
+                                        <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
+                                            <img src="${escapeHtmlAttr(url)}" style="width:22px; height:22px; object-fit:contain;" />
+                                            <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(key)}</span>
+                                            <button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>
+                                        </div>
+                                    `
+                                          )
+                                          .join("")
+                            }
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <input type="text" id="new-icon-key" maxlength="40" placeholder="icon name" style="flex:1 1 120px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                            <input type="text" id="new-icon-url" maxlength="500" placeholder="image URL" style="flex:1 1 140px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                            <button type="button" class="admin-btn-secondary" id="new-icon-pick" style="white-space:nowrap;">BROWSE</button>
+                            <button class="admin-btn" id="add-custom-icon">ADD</button>
+                        </div>
+                    </div>
+                </div>
+
+                <p id="branding-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:16px;"></p>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; border-top:1px solid var(--color-border); padding-top:16px;">
+                    <button class="admin-btn-primary" id="branding-save">SAVE BRANDING</button>
+                    <button class="admin-btn-secondary" id="branding-reset">RESET TO DEFAULT</button>
                 </div>
             </div>
         `;
@@ -2650,6 +2683,18 @@ export const AdminPortal = {
                 <p id="identity-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="identity-save">SAVE SHOP IDENTITY</button>
 
+                <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">SITE NAVIGATION</h3>
+                <div class="control-group" style="max-width:180px;">
+                    <label>DEFAULT LAYOUT</label>
+                    <select id="cfg-default-nav-layout">
+                        <option value="rail" ${c.defaultNavLayout !== "topbar" ? "selected" : ""}>LEFT RAIL</option>
+                        <option value="topbar" ${c.defaultNavLayout === "topbar" ? "selected" : ""}>TOP BAR</option>
+                    </select>
+                </div>
+                <p class="admin-help-text" style="margin-top:-4px;">What a visitor sees the first time they load the site, before they've picked their own layout (rail/top-bar switch lives in Account Settings). Applies to customers, guests, and staff alike.</p>
+                <p id="nav-layout-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="nav-layout-save">SAVE NAVIGATION</button>
+
                 <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">HOME PAGE CONTENT</h3>
                 <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                     <div class="control-group">
@@ -2666,10 +2711,19 @@ export const AdminPortal = {
                     </div>
                 </div>
 
-                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">This week's picks</label>
-                <p class="admin-help-text">Pick which items feature on the home page and the tag shown on each. Leave nothing checked to fall back to the first few items in your top menu section.</p>
-                <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
-                <div id="home-picks-list" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:16px;">
+                    <div style="flex:1 1 320px; min-width:260px;">
+                        <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
+                        <p class="admin-help-text">Pick which items feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
+                        <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+                        <div id="home-picks-list" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                    </div>
+                    <div style="flex:1 1 240px; min-width:220px;">
+                        <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
+                        <p class="admin-help-text">Small badge shown on each picked item's home page card (e.g. "House favourite").</p>
+                        <div id="home-picks-tags" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                    </div>
+                </div>
 
                 <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
                 <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
@@ -2730,6 +2784,18 @@ export const AdminPortal = {
             }
         });
 
+        document.getElementById("nav-layout-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("nav-layout-error");
+            errorEl.textContent = "";
+            try {
+                await AdminConfig.saveSettings({ defaultNavLayout: document.getElementById("cfg-default-nav-layout").value });
+                ok("Navigation default saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
+
         // ---- This week's picks: section-grouped list + smart suggestions ----
         const homePicksById = Object.fromEntries((c.homePicks || []).map((p) => [p.itemId, p.tag]));
         const pickableItems = this.menu.items.filter((i) => !i.deleted && i.available !== false);
@@ -2737,14 +2803,39 @@ export const AdminPortal = {
 
         const pickRowHtml = (item) => {
             const checked = homePicksById[item.id] !== undefined;
-            const tag = homePicksById[item.id] || "";
             return `
                 <label style="display:flex; align-items:center; gap:8px; font-size:8.5pt; padding:3px 0;">
                     <input type="checkbox" class="home-pick-check" data-item-id="${item.id}" ${checked ? "checked" : ""} />
                     <span style="flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item.name)}</span>
-                    <input type="text" class="home-pick-tag" data-item-id="${item.id}" maxlength="40" placeholder="Tag (e.g. House favourite)" value="${escapeHtmlAttr(tag)}" style="flex:0 0 200px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px 7px; font-family:inherit; font-size:8pt;" ${checked ? "" : "disabled"} />
                 </label>
             `;
+        };
+
+        // Renders one tag input per currently-CHECKED item, in the separate
+        // right-hand column - keeps the checklist itself from stretching
+        // wide enough to leave a dead gap next to it, and existing tag text
+        // typed in this render survives a re-render (read from the DOM
+        // first, falling back to the saved value only the first time).
+        const renderTagsPanel = () => {
+            const tagsPanel = document.getElementById("home-picks-tags");
+            const checkedIds = Array.from(document.querySelectorAll(".home-pick-check:checked")).map((cb) => Number(cb.dataset.itemId));
+            if (checkedIds.length === 0) {
+                tagsPanel.innerHTML = `<p class="admin-help-text">Check an item on the left to give it a tag.</p>`;
+                return;
+            }
+            tagsPanel.innerHTML = checkedIds
+                .map((id) => {
+                    const item = pickableItems.find((i) => i.id === id);
+                    const existingInput = tagsPanel.querySelector(`.home-pick-tag[data-item-id="${id}"]`);
+                    const tag = existingInput ? existingInput.value : homePicksById[id] || "";
+                    return `
+                    <div style="margin-bottom:6px;">
+                        <label style="display:block; font-size:7.5pt; color:var(--color-text-muted); margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item ? item.name : "")}</label>
+                        <input type="text" class="home-pick-tag" data-item-id="${id}" maxlength="40" placeholder="e.g. House favourite" value="${escapeHtmlAttr(tag)}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px 7px; font-family:inherit; font-size:8pt;" />
+                    </div>
+                `;
+                })
+                .join("");
         };
 
         document.getElementById("home-picks-list").innerHTML =
@@ -2765,14 +2856,11 @@ export const AdminPortal = {
 
         const wirePickRows = () => {
             document.querySelectorAll(".home-pick-check").forEach((cb) => {
-                cb.addEventListener("change", () => {
-                    const tagInput = document.querySelector(`.home-pick-tag[data-item-id="${cb.dataset.itemId}"]`);
-                    tagInput.disabled = !cb.checked;
-                    if (cb.checked && !tagInput.value) tagInput.focus();
-                });
+                cb.addEventListener("change", () => renderTagsPanel());
             });
         };
         wirePickRows();
+        renderTagsPanel();
 
         // Suggestion chips - each one CHECKS matching items (doesn't save by
         // itself) so the admin can still review/adjust tags before hitting
@@ -2781,13 +2869,20 @@ export const AdminPortal = {
         // loaded here, no extra endpoint needed.
         const suggestionsEl = document.getElementById("home-picks-suggestions");
         const checkItems = (items, defaultTag) => {
+            let changed = false;
             items.forEach((item) => {
                 const cb = document.querySelector(`.home-pick-check[data-item-id="${item.id}"]`);
                 if (!cb || cb.checked) return;
                 cb.checked = true;
+                changed = true;
+            });
+            if (changed) renderTagsPanel();
+            // Fill in the default tag for whichever of these items don't
+            // already have one typed (existing tags, including ones just
+            // restored by renderTagsPanel above, are left alone).
+            items.forEach((item) => {
                 const tagInput = document.querySelector(`.home-pick-tag[data-item-id="${item.id}"]`);
-                tagInput.disabled = false;
-                if (!tagInput.value) tagInput.value = defaultTag;
+                if (tagInput && !tagInput.value) tagInput.value = defaultTag;
             });
         };
         const promoted = pickableItems.filter((i) => i.promoDiscount);

@@ -41,12 +41,16 @@ export function renderLoginModal(onSuccess, options = {}) {
             fields = `
                 <input id="lf-username" type="text" placeholder="USERNAME OR PHONE" autocomplete="username" style="${fieldStyle()}" />
                 <input id="lf-password" type="password" placeholder="PASSWORD" autocomplete="current-password" style="${fieldStyle("margin-bottom:8px;")}" />
-                <button id="lf-forgot-link" type="button" style="background:none; border:none; color:var(--color-text-muted); font-size:7pt; text-decoration:underline; cursor:pointer; padding:0; margin-bottom:10px; font-family:inherit;">Forgot password?</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px;">
+                    <button id="lf-forgot-link" type="button" style="background:none; border:none; color:var(--color-text-muted); font-size:7pt; text-decoration:underline; cursor:pointer; padding:0; font-family:inherit; white-space:nowrap;">Forgot password?</button>
+                    <span id="login-error" style="color:var(--color-danger); font-size:7pt; text-align:right;"></span>
+                </div>
             `;
         } else if (mode === "guest") {
             fields = `
                 <p style="font-size: 8pt; color: var(--color-text-muted); margin-top:0;">No account needed - we'll use this number to show your order status. You'll only ever see orders placed under this number.</p>
                 <input id="lf-phone" type="tel" placeholder="PHONE NUMBER" autocomplete="tel" style="${fieldStyle()}" />
+                <p id="login-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 6px 0 0;"></p>
             `;
         } else if (mode === "register") {
             fields = `
@@ -56,6 +60,7 @@ export function renderLoginModal(onSuccess, options = {}) {
                 <div id="lf-username-status" style="font-size: 7pt; min-height: 11px; margin-bottom: 6px;"></div>
                 <input id="lf-password" type="password" placeholder="CHOOSE A PASSWORD" autocomplete="new-password" style="${fieldStyle()}" />
                 <div id="lf-password-meter"></div>
+                <p id="login-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 6px 0 0;"></p>
             `;
         } else if (mode === "forgot") {
             fields = `
@@ -65,6 +70,8 @@ export function renderLoginModal(onSuccess, options = {}) {
                 <input id="lf-password" type="password" placeholder="NEW PASSWORD" autocomplete="new-password" style="${fieldStyle()}" />
                 <div id="lf-password-meter"></div>
                 <p style="font-size: 7pt; color: var(--color-text-muted); margin: 10px 0 0;">Staff account? Ask an owner or admin to reset it for you instead.</p>
+                <p id="login-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 6px 0 0;"></p>
+                <p id="login-success" style="color:var(--color-success); font-size: 8pt; min-height: 12px; margin: 0;"></p>
             `;
         }
 
@@ -79,9 +86,6 @@ export function renderLoginModal(onSuccess, options = {}) {
                         ? `<div id="login-tabs" style="display:flex; gap:6px; margin-bottom:15px;">${tabs.join("")}</div>`
                         : ""
                 }
-
-                <p id="login-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
-                <p id="login-success" style="color:var(--color-success); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
 
                 <div id="login-fields">${fields}</div>
 
@@ -165,8 +169,8 @@ export function renderLoginModal(onSuccess, options = {}) {
     async function submit() {
         const errorEl = document.getElementById("login-error");
         const successEl = document.getElementById("login-success");
-        errorEl.textContent = "";
-        successEl.textContent = "";
+        if (errorEl) errorEl.textContent = "";
+        if (successEl) successEl.textContent = "";
         try {
             if (mode === "login") {
                 const username = document.getElementById("lf-username").value;
@@ -199,7 +203,7 @@ export function renderLoginModal(onSuccess, options = {}) {
                 }, 1200);
             }
         } catch (e) {
-            errorEl.textContent = e.message || "Something went wrong";
+            if (errorEl) errorEl.textContent = e.message || "Something went wrong";
         }
     }
 

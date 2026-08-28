@@ -40,7 +40,7 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
             <p id="item-modal-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 8px;"></p>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">NAME</label>
-            <input id="im-name" type="text" value="${item ? item.name : ""}" style="${fieldStyle}" />
+            <input id="im-name" type="text" maxlength="60" value="${item ? item.name : ""}" style="${fieldStyle}" />
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">PRICE (\u20b9)</label>
             <input id="im-price" type="number" min="1" step="1" value="${item ? item.price : ""}" style="${fieldStyle}" />
@@ -58,13 +58,13 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">PHOTO (optional - shown instead of the icon when set)</label>
             <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                <input id="im-image-url" type="text" placeholder="https://... or pick from the bucket" value="${item?.imageUrl || ""}" style="${fieldStyle} margin:0; flex:1;" />
+                <input id="im-image-url" type="text" maxlength="500" placeholder="https://... or pick from the bucket" value="${item?.imageUrl || ""}" style="${fieldStyle} margin:0; flex:1;" />
                 <button type="button" id="im-image-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
             </div>
             <div id="im-image-preview" style="margin: -2px 0 12px;"></div>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">DESCRIPTION</label>
-            <textarea id="im-story" rows="2" style="${fieldStyle} resize: vertical;">${item ? item.story || "" : ""}</textarea>
+            <textarea id="im-story" rows="2" maxlength="240" style="${fieldStyle} resize: vertical;">${item ? item.story || "" : ""}</textarea>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">PROMOTION</label>
             <select id="im-promo-type" style="${fieldStyle}">
