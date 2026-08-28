@@ -5,7 +5,7 @@
 import { KitchenSystem } from "./features/kitchen-logic.js";
 import { CartSystem, discountedBasePrice } from "./features/cart-logic.js";
 import { AuthSystem } from "./features/auth-logic.js";
-import { AdminConfig } from "./features/config-logic.js";
+import { AdminConfig, currencySymbol } from "./features/config-logic.js";
 import { PayrollSystem } from "./features/payroll-logic.js";
 import { renderCheckoutModal, renderPaymentConfirmation } from "./ui/checkout-modal.js";
 import { renderLoginModal, renderForceChangePasswordModal } from "./ui/login-modal.js";
@@ -627,7 +627,7 @@ window.openOrderStatusPopup = () => {
                 </span>
             </div>
             <div style="font-size:10pt; color:var(--color-text-muted); margin-bottom:10px;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
-            <div style="font-size:10pt; margin-bottom:18px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 \u20b9${order.total.toFixed(2)}</div>
+            <div style="font-size:10pt; margin-bottom:18px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 ${currencySymbol()}${order.total.toFixed(2)}</div>
             <button type="button" style="width:100%; padding:11px; background:var(--color-border); color:var(--color-text); border:none; cursor:pointer; text-transform:uppercase; font-family:inherit;" onclick="document.getElementById('order-status-popup').remove()">Close</button>
         </div>
     `;
@@ -877,7 +877,7 @@ window.printBill = (order) => {
                 <div class="row" style="align-items: flex-start; flex-direction: column;">
                     <div style="display:flex; justify-content:space-between; width:100%;">
                         <span>${item.quantity}x ${escapeHtml(item.name)}</span>
-                        <span>\u20b9${(item.price * item.quantity).toFixed(2)}</span>
+                        <span>${currencySymbol()}${(item.price * item.quantity).toFixed(2)}</span>
                     </div>
                     ${tags ? `<div style="font-size:7pt; color:#555; padding-left:10px;">${tags}</div>` : ""}
                     ${item.notes ? `<div style="font-size:7pt; color:#555; font-style:italic; padding-left:10px;">"${escapeHtml(item.notes)}"</div>` : ""}
@@ -886,13 +886,13 @@ window.printBill = (order) => {
                 })
                 .join("")}
             <div class="hr"></div>
-            <div class="row">SUBTOTAL: <span>\u20b9${order.subtotal.toFixed(2)}</span></div>
-            ${order.promoDiscountTotal > 0 ? `<div class="row">PROMO SAVINGS: <span>-\u20b9${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
-            ${order.discountAmount > 0 ? `<div class="row">DISCOUNT${order.couponCode ? ` (${escapeHtml(order.couponCode)})` : ""}: <span>-\u20b9${order.discountAmount.toFixed(2)}</span></div>` : ""}
-            <div class="row">TAX (CGST+SGST): <span>\u20b9${(order.cgst + order.sgst).toFixed(2)}</span></div>
-            ${order.serviceChargeActive ? `<div class="row">SVC CHG: <span>\u20b9${order.serviceCharge.toFixed(2)}</span></div>` : ""}
-            ${order.tipApplied ? `<div class="row">GINGER TIP: <span>\u20b9${order.tipAmount.toFixed(2)}</span></div>` : ""}
-            <div class="row total">TOTAL: <span>\u20b9${order.total.toFixed(2)}</span></div>
+            <div class="row">SUBTOTAL: <span>${currencySymbol()}${order.subtotal.toFixed(2)}</span></div>
+            ${order.promoDiscountTotal > 0 ? `<div class="row">PROMO SAVINGS: <span>-${currencySymbol()}${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
+            ${order.discountAmount > 0 ? `<div class="row">DISCOUNT${order.couponCode ? ` (${escapeHtml(order.couponCode)})` : ""}: <span>-${currencySymbol()}${order.discountAmount.toFixed(2)}</span></div>` : ""}
+            <div class="row">TAX (CGST+SGST): <span>${currencySymbol()}${(order.cgst + order.sgst).toFixed(2)}</span></div>
+            ${order.serviceChargeActive ? `<div class="row">SVC CHG: <span>${currencySymbol()}${order.serviceCharge.toFixed(2)}</span></div>` : ""}
+            ${order.tipApplied ? `<div class="row">GINGER TIP: <span>${currencySymbol()}${order.tipAmount.toFixed(2)}</span></div>` : ""}
+            <div class="row total">TOTAL: <span>${currencySymbol()}${order.total.toFixed(2)}</span></div>
             <div class="hr"></div>
             <p class="center" style="font-size: 8pt;">${escapeHtml(siteConfig.receiptFooterText || "Thank you for visiting!")}</p>
         </body>
@@ -1307,7 +1307,7 @@ function renderMenu(filterQuery = "") {
                     <div class="story">${itemList}${combo.description ? ` &middot; ${escapeHtml(combo.description)}` : ""}</div>
                 </div>
                 <div class="item-controls">
-                    <div class="price-fixed">\u20b9${combo.price}</div>
+                    <div class="price-fixed">${currencySymbol()}${combo.price}</div>
                     <div class="action-fixed">${buttonHTML}</div>
                 </div>
             `;
@@ -1430,8 +1430,8 @@ function renderMenu(filterQuery = "") {
             const promoPrice = discountedBasePrice(item);
             const onPromo = item.promoDiscount && promoPrice < item.price;
             const priceHTML = onPromo
-                ? `<span style="text-decoration:line-through; color:var(--color-text-muted); font-size:0.8em;">\u20b9${item.price}</span> \u20b9${promoPrice.toFixed(2)}`
-                : `\u20b9${item.price}`;
+                ? `<span style="text-decoration:line-through; color:var(--color-text-muted); font-size:0.8em;">${currencySymbol()}${item.price}</span> ${currencySymbol()}${promoPrice.toFixed(2)}`
+                : `${currencySymbol()}${item.price}`;
 
             const itemEl = document.createElement("div");
             itemEl.className = "menu-item";
@@ -1536,13 +1536,13 @@ function renderMenuCartPanel() {
                                   ? `
                         <div style="margin-top:4px;">
                             <span onclick="const el=document.getElementById('${breakdownId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" style="font-size:9px; font-weight:bold; letter-spacing:.08em; color:var(--color-accent); text-transform:uppercase; cursor:pointer; text-decoration:underline;">Customized</span>
-                            <span style="font-size:9px; color:var(--color-text-muted); margin-left:4px;">₹${extraTotal.toFixed(2)}</span>
+                            <span style="font-size:9px; color:var(--color-text-muted); margin-left:4px;">${currencySymbol()}${extraTotal.toFixed(2)}</span>
                             <div id="${breakdownId}" style="display:none; margin-top:3px;">
                                 ${detailLines
                                     .map(
                                         (d) => `
                                 <div style="display:flex; justify-content:space-between; gap:8px; font-size:9.5px; color:var(--color-text-muted); padding:1px 0 1px 8px;">
-                                    <span>${escapeHtml(d.label)}</span><span>₹${d.amount.toFixed(2)}</span>
+                                    <span>${escapeHtml(d.label)}</span><span>${currencySymbol()}${d.amount.toFixed(2)}</span>
                                 </div>`
                                     )
                                     .join("")}
@@ -1553,7 +1553,7 @@ function renderMenuCartPanel() {
                 <div style="display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px dashed var(--color-border);">
                     <div style="flex:1; min-width:0;">
                         <div style="font-size:11.5px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(line.name)}</div>
-                        <div style="font-size:9.5px; color:var(--color-text-muted); margin-top:3px;">₹${line.price.toFixed(2)} each</div>
+                        <div style="font-size:9.5px; color:var(--color-text-muted); margin-top:3px;">${currencySymbol()}${line.price.toFixed(2)} each</div>
                         ${detailsHtml}
                         ${line.notes ? `<div style="font-size:9.5px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(line.notes)}"</div>` : ""}
                     </div>
@@ -1562,7 +1562,7 @@ function renderMenuCartPanel() {
                         <span>${line.quantity}</span>
                         <button onclick="window.adjustCartLine('${line.cartKey}', 1)">+</button>
                     </div>
-                    <span style="width:56px; flex:none; text-align:right; font-size:11px; font-weight:bold;">₹${(line.price * line.quantity).toFixed(2)}</span>
+                    <span style="width:56px; flex:none; text-align:right; font-size:11px; font-weight:bold;">${currencySymbol()}${(line.price * line.quantity).toFixed(2)}</span>
                 </div>
             `;
                           })
@@ -1584,7 +1584,7 @@ function renderMenuCartPanel() {
                  Billing page and the printed bill, not before. -->
             <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:10px 0 14px;">
                 <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">SUBTOTAL</span>
-                <span style="font-size:22px; font-weight:bold; color:var(--color-accent);">₹${breakdown.subtotal.toFixed(2)}</span>
+                <span style="font-size:22px; font-weight:bold; color:var(--color-accent);">${currencySymbol()}${breakdown.subtotal.toFixed(2)}</span>
             </div>
             <button id="staff-cart-checkout-btn" ${cart.length === 0 ? "disabled" : ""} style="width:100%; padding:12px; background:${cart.length ? "var(--color-accent)" : "var(--color-border)"}; color:${cart.length ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:none; font-size:11.5px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:${cart.length ? "pointer" : "not-allowed"}; min-height:44px;">[ Checkout ]</button>
             <div style="font-size:9px; color:var(--color-text-muted); text-align:center; margin-top:8px; line-height:1.5;">Tax, service charge & tip shown at checkout.</div>
@@ -1764,7 +1764,7 @@ async function renderTablesPanel() {
                         <div>
                             <strong>TABLE ${escapeHtml(t.tableNumber)}</strong>
                             ${t.customerName || t.customerPhone ? `<span style="color:var(--color-accent); font-size:7pt;"> &middot; ${escapeHtml(t.customerName || "")} ${t.customerPhone ? `(${escapeHtml(t.customerPhone)})` : ""}</span>` : ""}
-                            <span style="color:var(--color-text-muted); font-size:7pt;"> &middot; ${t.orderCount} order${t.orderCount === 1 ? "" : "s"} &middot; \u20b9${t.total.toFixed(2)} &middot; opened by ${escapeHtml(t.openedBy)}</span>
+                            <span style="color:var(--color-text-muted); font-size:7pt;"> &middot; ${t.orderCount} order${t.orderCount === 1 ? "" : "s"} &middot; ${currencySymbol()}${t.total.toFixed(2)} &middot; opened by ${escapeHtml(t.openedBy)}</span>
                         </div>
                         <div>
                             <button class="admin-btn" data-edit-table="${t.id}">EDIT</button>
@@ -2165,7 +2165,7 @@ function renderPopularPicks() {
                 <span class="home-pick-name">${escapeHtml(item.name)}</span>
                 <span class="home-pick-note">${escapeHtml(item.story || "")}</span>
                 <div class="home-pick-footer">
-                    <span class="home-pick-price">\u20b9${item.price}</span>
+                    <span class="home-pick-price">${currencySymbol()}${item.price}</span>
                     <span class="home-pick-add">+ Add</span>
                 </div>
             </div>

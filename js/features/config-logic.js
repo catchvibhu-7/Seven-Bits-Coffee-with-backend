@@ -36,3 +36,10 @@ export const AdminConfig = {
         return this.settings;
     }
 };
+
+/** Every price display in the app calls this instead of hardcoding "₹" -
+ *  admin-configurable (Admin > Payments & Tax), defaults to what the app
+ *  always showed so nothing changes until an admin edits it. */
+export function currencySymbol() {
+    return AdminConfig.settings.currencySymbol || "₹";
+}

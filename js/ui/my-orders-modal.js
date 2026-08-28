@@ -9,6 +9,8 @@
  * order: the cart re-adds by item id, so checkout always recomputes fresh
  * from the current menu/config.
  */
+import { currencySymbol } from "../features/config-logic.js";
+
 function starsHtml(order) {
     if (order.rating) {
         return `
@@ -46,7 +48,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
             <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 10px 0; font-size: 9pt;">
                 <div style="display:flex; justify-content: space-between;">
                     <span>#${order.orderNumber || order.id} <span style="color:var(--color-text-muted); font-size:7pt;">${new Date(order.createdAt).toLocaleDateString()}</span></span>
-                    <span style="font-weight:bold;">\u20b9${order.total.toFixed(2)}</span>
+                    <span style="font-weight:bold;">${currencySymbol()}${order.total.toFixed(2)}</span>
                 </div>
                 <div style="font-size:8pt; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
                 <button class="mo-reorder-btn" data-order-id="${order.id}" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 6px 12px; font-size: 7pt; cursor: pointer; text-transform: uppercase; font-family: inherit;">REORDER</button>

@@ -16,6 +16,7 @@
  */
 import { KitchenSystem } from "../features/kitchen-logic.js";
 import { PayrollSystem } from "../features/payroll-logic.js";
+import { currencySymbol } from "../features/config-logic.js";
 
 const LOW_STOCK_THRESHOLD = 5; // matches admin-portal.js's Menu Items low-stock highlight
 
@@ -24,7 +25,7 @@ function escapeHtml(str) {
 }
 
 function money(n) {
-    return "₹" + Number(n || 0).toLocaleString("en-IN");
+    return currencySymbol() + Number(n || 0).toLocaleString("en-IN");
 }
 
 const orderStatus = (order) => KitchenSystem.statusOf(order);

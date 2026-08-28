@@ -6,6 +6,8 @@
  * bundle price. The server validates every item id and price again on
  * save - this only builds the payload.
  */
+import { currencySymbol } from "../features/config-logic.js";
+
 const fieldStyle =
     "width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 12px;";
 
@@ -28,7 +30,7 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
     const rows = combo ? combo.items.map((i) => ({ ...i })) : [{ id: menuItems[0]?.id ?? "", quantity: 1 }, { id: menuItems[1]?.id ?? "", quantity: 1 }];
 
     function itemOptionsHtml(selectedId) {
-        return menuItems.map((m) => `<option value="${m.id}" ${m.id === selectedId ? "selected" : ""}>${escapeHtml(m.name)} (\u20b9${m.price})</option>`).join("");
+        return menuItems.map((m) => `<option value="${m.id}" ${m.id === selectedId ? "selected" : ""}>${escapeHtml(m.name)} (${currencySymbol()}${m.price})</option>`).join("");
     }
 
     function rowsHtml() {
@@ -69,9 +71,9 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
             <div id="cb-rows">${rowsHtml()}</div>
             <button id="cb-add-row" type="button" style="background:none; border:1px dashed var(--color-border); color: var(--color-text-muted); padding:6px 10px; font-size:7pt; cursor:pointer; margin-bottom:12px; font-family:inherit;">+ ADD ITEM</button>
 
-            <div style="font-size: 8pt; color: var(--color-text-muted); margin-bottom:8px;">Regular total: <span id="cb-base-total">\u20b9${baseTotal()}</span></div>
+            <div style="font-size: 8pt; color: var(--color-text-muted); margin-bottom:8px;">Regular total: <span id="cb-base-total">${currencySymbol()}${baseTotal()}</span></div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">COMBO PRICE (\u20b9)</label>
+            <label style="font-size: 7pt; color: var(--color-text-muted);">COMBO PRICE (${currencySymbol()})</label>
             <input id="cb-price" type="number" min="1" step="1" value="${combo ? combo.price : ""}" style="${fieldStyle}" />
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">
@@ -84,7 +86,7 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
 
     function rerenderRows() {
         document.getElementById("cb-rows").innerHTML = rowsHtml();
-        document.getElementById("cb-base-total").textContent = `\u20b9${baseTotal()}`;
+        document.getElementById("cb-base-total").textContent = `${currencySymbol()}${baseTotal()}`;
         wireRowEvents();
     }
 
@@ -92,13 +94,13 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
         overlay.querySelectorAll(".combo-row-item").forEach((sel) => {
             sel.addEventListener("change", (e) => {
                 rows[Number(e.target.dataset.idx)].id = Number(e.target.value);
-                document.getElementById("cb-base-total").textContent = `\u20b9${baseTotal()}`;
+                document.getElementById("cb-base-total").textContent = `${currencySymbol()}${baseTotal()}`;
             });
         });
         overlay.querySelectorAll(".combo-row-qty").forEach((inp) => {
             inp.addEventListener("input", (e) => {
                 rows[Number(e.target.dataset.idx)].quantity = Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1));
-                document.getElementById("cb-base-total").textContent = `\u20b9${baseTotal()}`;
+                document.getElementById("cb-base-total").textContent = `${currencySymbol()}${baseTotal()}`;
             });
         });
         overlay.querySelectorAll(".combo-row-remove").forEach((btn) => {

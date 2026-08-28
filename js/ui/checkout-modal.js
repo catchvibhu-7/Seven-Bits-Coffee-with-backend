@@ -10,7 +10,7 @@
  * from, never this preview.
  */
 import { CartSystem } from "../features/cart-logic.js";
-import { AdminConfig } from "../features/config-logic.js";
+import { AdminConfig, currencySymbol } from "../features/config-logic.js";
 import { AuthSystem } from "../features/auth-logic.js";
 import { CustomizationSystem } from "../features/customization-logic.js";
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
@@ -60,7 +60,7 @@ function cartRowHtml(item, index) {
             ${detailLines
                 .map(
                     (d) =>
-                        `<div style="display:flex; justify-content:space-between; max-width:240px;"><span>${escapeHtml(d.label)}</span><span>${d.amount > 0 ? "+" : ""}\u20b9${d.amount.toFixed(2)}</span></div>`
+                        `<div style="display:flex; justify-content:space-between; max-width:240px;"><span>${escapeHtml(d.label)}</span><span>${d.amount > 0 ? "+" : ""}${currencySymbol()}${d.amount.toFixed(2)}</span></div>`
                 )
                 .join("")}
             ${hasNotes ? `<div style="margin-top:2px; font-style:italic;">"${escapeHtml(item.notes)}"</div>` : ""}
@@ -68,15 +68,15 @@ function cartRowHtml(item, index) {
         : "";
 
     const unitPriceHtml = onPromo
-        ? `<span style="color: var(--color-text-muted); text-decoration:line-through;">\u20b9${item.originalPrice.toFixed(2)}</span> <span style="color: var(--color-accent);">\u20b9${item.price.toFixed(2)}</span>`
-        : `<span style="color: var(--color-text-muted);">@\u20b9${item.price.toFixed(2)}</span>`;
+        ? `<span style="color: var(--color-text-muted); text-decoration:line-through;">${currencySymbol()}${item.originalPrice.toFixed(2)}</span> <span style="color: var(--color-accent);">${currencySymbol()}${item.price.toFixed(2)}</span>`
+        : `<span style="color: var(--color-text-muted);">@${currencySymbol()}${item.price.toFixed(2)}</span>`;
 
     return `
         <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 7px 0; font-size: 9pt;">
             <div>${escapeHtml(item.name)} ${unitPriceHtml}</div>
             <div style="display:flex; justify-content: space-between; align-items:center; margin-top:5px;">
                 <div style="display:flex; align-items:center; gap:6px;">
-                    <strong>\u20b9${lineTotal}</strong>
+                    <strong>${currencySymbol()}${lineTotal}</strong>
                     ${tagHtml}
                 </div>
                 <div class="btn-qty-container">
@@ -118,19 +118,19 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             </div>
 
             <div class="breakdown-window" style="background: var(--color-bg); padding: 10px; border: 1px solid var(--color-border); margin-bottom: 20px;">
-                <div class="calc-row" style="display: flex; justify-content: space-between; margin-bottom: 5px;">SUBTOTAL: <span>\u20b9${breakdown.subtotal.toFixed(2)}</span></div>
+                <div class="calc-row" style="display: flex; justify-content: space-between; margin-bottom: 5px;">SUBTOTAL: <span>${currencySymbol()}${breakdown.subtotal.toFixed(2)}</span></div>
                 ${
                     breakdown.promoDiscountTotal > 0
-                        ? `<div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-accent);">PROMO SAVINGS: <span>-\u20b9${breakdown.promoDiscountTotal.toFixed(2)}</span></div>`
+                        ? `<div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-accent);">PROMO SAVINGS: <span>-${currencySymbol()}${breakdown.promoDiscountTotal.toFixed(2)}</span></div>`
                         : ""
                 }
-                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">CGST (${(config.cgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.cgst.toFixed(2)}</span></div>
-                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">SGST (${(config.sgstRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.sgst.toFixed(2)}</span></div>
+                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">CGST (${(config.cgstRate * 100).toFixed(1)}%): <span>${currencySymbol()}${breakdown.cgst.toFixed(2)}</span></div>
+                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">SGST (${(config.sgstRate * 100).toFixed(1)}%): <span>${currencySymbol()}${breakdown.sgst.toFixed(2)}</span></div>
 
                 ${
                     serviceChargeActive
                         ? `
-                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">SERVICE CHARGE (${(config.serviceChargeRate * 100).toFixed(1)}%): <span>\u20b9${breakdown.serviceCharge.toFixed(2)}</span></div>`
+                <div class="calc-row" style="display: flex; justify-content: space-between; font-size: 8pt; color: var(--color-text-muted);">SERVICE CHARGE (${(config.serviceChargeRate * 100).toFixed(1)}%): <span>${currencySymbol()}${breakdown.serviceCharge.toFixed(2)}</span></div>`
                         : ""
                 }
 
@@ -138,7 +138,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                     config.tipEnabled
                         ? `
                 <div class="calc-row tip-row" style="color: var(--color-accent); border: 1px dashed var(--color-accent); padding: 5px; margin: 10px 0; display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 9pt;">GINGER_TIP (\u20b9${config.tipAmount}):</span>
+                    <span style="font-size: 9pt;">GINGER_TIP (${currencySymbol()}${config.tipAmount}):</span>
                     <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
                         <input type="checkbox" ${tipApplied ? "checked" : ""} onchange="window.toggleTip(this.checked)">
                         ADD
@@ -148,7 +148,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                 }
 
                 <div class="calc-row total-row" id="checkout-total-row" style="display: flex; justify-content: space-between; border-top: 1px solid var(--color-accent); padding-top: 10px; margin-top: 5px; font-weight:bold; font-size: 1.2rem; color: var(--color-accent);">
-                    TOTAL CACHE: <span id="checkout-total-value">\u20b9${finalTotal.toFixed(2)}</span>
+                    TOTAL CACHE: <span id="checkout-total-value">${currencySymbol()}${finalTotal.toFixed(2)}</span>
                 </div>
                 <div id="checkout-discount-line" style="display:none; font-size: 8pt; color: var(--color-success); justify-content: space-between; margin-top: 6px;"></div>
                 <div id="checkout-final-total-line" style="display:none; justify-content: space-between; align-items:center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--color-success);">
@@ -195,7 +195,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                 canUseLoyalty
                     ? `
             <div style="margin-bottom: 15px;">
-                <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">REDEEM LOYALTY POINTS (you have ${session.loyaltyPoints} pts &middot; \u20b9${(session.loyaltyPoints * loyalty.rupeeValuePerPoint).toFixed(2)} value)</label>
+                <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">REDEEM LOYALTY POINTS (you have ${session.loyaltyPoints} pts &middot; ${currencySymbol()}${(session.loyaltyPoints * loyalty.rupeeValuePerPoint).toFixed(2)} value)</label>
                 <div style="display:flex; gap:8px;">
                     <input id="checkout-redeem-points" type="number" min="0" max="${session.loyaltyPoints}" placeholder="0" style="flex:1; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding: 10px; font-family: inherit;" />
                     <button id="checkout-apply-points" class="admin-btn" style="padding:11px 14px;">REDEEM</button>
@@ -274,9 +274,9 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             const parts = [];
             if (state.couponCode) parts.push(state.couponCode);
             if (state.redeemPoints > 0) parts.push(`${state.redeemPoints} pts`);
-            discountLine.innerHTML = `<span>DISCOUNT (${parts.map(escapeHtml).join(" + ")})</span><span>-\u20b9${totalDiscount.toFixed(2)}</span>`;
+            discountLine.innerHTML = `<span>DISCOUNT (${parts.map(escapeHtml).join(" + ")})</span><span>-${currencySymbol()}${totalDiscount.toFixed(2)}</span>`;
             finalLine.style.display = "flex";
-            document.getElementById("checkout-final-total-value").textContent = `\u20b9${discountedTotal.toFixed(2)}`;
+            document.getElementById("checkout-final-total-value").textContent = `${currencySymbol()}${discountedTotal.toFixed(2)}`;
         } else {
             discountLine.style.display = "none";
             finalLine.style.display = "none";
@@ -305,7 +305,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             window.__checkoutDiscount.couponCode = data.code;
             window.__checkoutDiscount.couponAmount = data.discountAmount;
             msgEl.style.color = "var(--color-success)";
-            msgEl.textContent = `Applied: -\u20b9${data.discountAmount.toFixed(2)}`;
+            msgEl.textContent = `Applied: -${currencySymbol()}${data.discountAmount.toFixed(2)}`;
         } catch (e) {
             window.__checkoutDiscount.couponCode = null;
             window.__checkoutDiscount.couponAmount = 0;
@@ -330,7 +330,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             ? coupons
                   .map(
                       (c) =>
-                          `<div style="cursor:pointer; padding:3px 0; text-decoration:underline;" onclick="document.getElementById('checkout-coupon-code').value='${c.code}'">${c.code} - ${c.type === "percent" ? `${c.value}% off` : `₹${c.value} off`}</div>`
+                          `<div style="cursor:pointer; padding:3px 0; text-decoration:underline;" onclick="document.getElementById('checkout-coupon-code').value='${c.code}'">${c.code} - ${c.type === "percent" ? `${c.value}% off` : `${currencySymbol()}${c.value} off`}</div>`
                   )
                   .join("")
             : "No public codes available right now.";
@@ -393,7 +393,7 @@ async function openRazorpayCheckout(order) {
     const resetBtn = () => {
         if (!payBtn) return;
         payBtn.disabled = false;
-        payBtn.textContent = `PAY \u20b9${order.total.toFixed(2)}`;
+        payBtn.textContent = `PAY ${currencySymbol()}${order.total.toFixed(2)}`;
     };
     if (payBtn) {
         payBtn.disabled = true;
@@ -412,7 +412,7 @@ async function openRazorpayCheckout(order) {
     const rzp = new window.Razorpay({
         key: order.razorpayKeyId,
         amount: Math.round(order.total * 100),
-        currency: "INR",
+        currency: order.razorpayCurrency || "INR",
         name: document.title || "Seven Bits Coffee",
         description: `Order #${order.orderNumber || order.id}`,
         order_id: order.razorpayOrderId,
@@ -475,7 +475,7 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
                 <h2 style="color: var(--color-accent); font-size: 1.2rem; font-family: 'Courier New', monospace;">${needsRazorpayPayment ? "COMPLETE PAYMENT" : "ORDER CONFIRMED"}</h2>
                 <p style="font-family: 'Courier New', monospace; color: var(--color-text); font-size: 11pt; margin: 16px 0 4px;">ORDER #${order.orderNumber || order.id}</p>
                 <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt; margin: 0 0 20px;">
-                    ${order.isPaid ? "AMOUNT PAID" : "AMOUNT DUE"}: \u20b9${order.total.toFixed(2)}
+                    ${order.isPaid ? "AMOUNT PAID" : "AMOUNT DUE"}: ${currencySymbol()}${order.total.toFixed(2)}
                 </p>
                 ${
                     needsRazorpayPayment
@@ -490,7 +490,7 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
                 <div style="display: grid; gap: 15px; margin-top: 10px;">
                     ${
                         needsRazorpayPayment
-                            ? `<button id="btn-razorpay-pay" class="btn-primary" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: 2px solid black; padding: 15px; font-weight: bold; cursor: pointer; font-family: 'Courier New', monospace; box-shadow: 4px 4px 0px var(--color-bg);">PAY \u20b9${order.total.toFixed(2)}</button>
+                            ? `<button id="btn-razorpay-pay" class="btn-primary" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: 2px solid black; padding: 15px; font-weight: bold; cursor: pointer; font-family: 'Courier New', monospace; box-shadow: 4px 4px 0px var(--color-bg);">PAY ${currencySymbol()}${order.total.toFixed(2)}</button>
                        <button class="btn-close" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase; font-family: 'Courier New', monospace;" onclick="window.finalizeOrder(false)">PAY AT COUNTER INSTEAD</button>`
                             : `<button class="btn-primary" style="background: var(--color-accent); color: var(--color-accent-contrast); border: 2px solid black; padding: 15px; font-weight: bold; cursor: pointer; font-family: 'Courier New', monospace; box-shadow: 4px 4px 0px var(--color-bg);" onclick="window.finalizeOrder(false)">CLOSE</button>`
                     }
@@ -507,7 +507,7 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
     overlay.innerHTML = `
         <div class="modal-content" style="text-align: center; background: var(--color-surface); padding: 30px; border: 2px solid var(--color-accent);">
             <h2 style="color: var(--color-accent); font-size: 1.2rem; font-family: 'Courier New', monospace;">${isOnline ? "UPI GATEWAY" : "COUNTER READY"}</h2>
-            <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt;">ORDER #${order.orderNumber || order.id} &middot; TOTAL: \u20b9${order.total.toFixed(2)}</p>
+            <p style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 9pt;">ORDER #${order.orderNumber || order.id} &middot; TOTAL: ${currencySymbol()}${order.total.toFixed(2)}</p>
 
             ${
                 isOnline

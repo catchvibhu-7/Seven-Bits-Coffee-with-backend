@@ -9,6 +9,7 @@
  * resolveCustomization).
  */
 import { CustomizationSystem } from "../features/customization-logic.js";
+import { currencySymbol } from "../features/config-logic.js";
 
 const fieldStyle =
     "width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 12px;";
@@ -44,7 +45,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
                 ${opts.sizeOptions
                     .map(
                         (o) => `
-                    <button type="button" class="cm-pill" data-group="size" data-key="${o.key}" data-delta="${o.priceDelta}">${escapeHtml(o.label)}${o.priceDelta ? ` (+\u20b9${o.priceDelta})` : ""}</button>
+                    <button type="button" class="cm-pill" data-group="size" data-key="${o.key}" data-delta="${o.priceDelta}">${escapeHtml(o.label)}${o.priceDelta ? ` (+${currencySymbol()}${o.priceDelta})` : ""}</button>
                 `
                     )
                     .join("")}
@@ -55,7 +56,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
                 ${opts.milkOptions
                     .map(
                         (o) => `
-                    <button type="button" class="cm-pill" data-group="milk" data-key="${o.key}" data-delta="${o.priceDelta}">${escapeHtml(o.label)}${o.priceDelta ? ` (+\u20b9${o.priceDelta})` : ""}</button>
+                    <button type="button" class="cm-pill" data-group="milk" data-key="${o.key}" data-delta="${o.priceDelta}">${escapeHtml(o.label)}${o.priceDelta ? ` (+${currencySymbol()}${o.priceDelta})` : ""}</button>
                 `
                     )
                     .join("")}
@@ -68,7 +69,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
                 ${opts.extraOptions
                     .map(
                         (o) => `
-                    <button type="button" class="cm-pill" data-group="extras" data-key="${o.key}" data-delta="${o.priceDelta}">${escapeHtml(o.label)} (+\u20b9${o.priceDelta})</button>
+                    <button type="button" class="cm-pill" data-group="extras" data-key="${o.key}" data-delta="${o.priceDelta}">${escapeHtml(o.label)} (+${currencySymbol()}${o.priceDelta})</button>
                 `
                     )
                     .join("")}
@@ -87,7 +88,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
             </div>
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">
-                <button id="cm-add" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">ADD TO CART &middot; <span id="cm-total-price">\u20b9${item.price}</span></button>
+                <button id="cm-add" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">ADD TO CART &middot; <span id="cm-total-price">${currencySymbol()}${item.price}</span></button>
                 <button id="cm-cancel" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CANCEL</button>
             </div>
         </div>
@@ -107,7 +108,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
 
     function updateTotal() {
         const unit = CustomizationSystem.estimateUnitPrice(item.price, state);
-        document.getElementById("cm-total-price").textContent = `\u20b9${(unit * state.quantity).toFixed(2)}`;
+        document.getElementById("cm-total-price").textContent = `${currencySymbol()}${(unit * state.quantity).toFixed(2)}`;
     }
 
     overlay.querySelectorAll(".cm-pill").forEach((btn) => {

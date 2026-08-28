@@ -14,7 +14,7 @@
  */
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
 import { KitchenSystem } from "../features/kitchen-logic.js";
-import { AdminConfig } from "../features/config-logic.js";
+import { AdminConfig, currencySymbol } from "../features/config-logic.js";
 
 const PAYMENT_METHODS = [
     { key: "UPI", note: "Scan / VPA" },
@@ -28,7 +28,7 @@ function escapeHtml(str) {
 }
 
 function money(n) {
-    return "₹" + Number(n || 0).toFixed(2);
+    return currencySymbol() + Number(n || 0).toFixed(2);
 }
 
 let selectedBill = null; // { kind: "table"|"order", id }

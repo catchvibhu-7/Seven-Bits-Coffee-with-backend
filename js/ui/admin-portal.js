@@ -7,7 +7,7 @@
  * so even if someone bypasses these buttons and calls fetch() by hand, they
  * still need a valid login with the right role.
  */
-import { AdminConfig } from "../features/config-logic.js";
+import { AdminConfig, currencySymbol } from "../features/config-logic.js";
 import { AuthSystem } from "../features/auth-logic.js";
 import { PayrollSystem } from "../features/payroll-logic.js";
 import { KitchenSystem } from "../features/kitchen-logic.js";
@@ -217,7 +217,20 @@ export const AdminPortal = {
 
         root.innerHTML = `
             <div class="config-controls">
-                <h3 style="margin-top:0;">TAX &amp; GST (INDIAN SUBCONTINENT)</h3>
+                <h3 style="margin-top:0;">CURRENCY</h3>
+                <div style="display:flex; gap: 15px; flex-wrap:wrap;">
+                    <div class="control-group" style="flex:0 0 110px;">
+                        <label>SYMBOL</label>
+                        <input type="text" id="cfg-currency-symbol" maxlength="3" value="${escapeHtmlAttr(c.currencySymbol || "₹")}" />
+                    </div>
+                    <div class="control-group" style="flex:0 0 140px;">
+                        <label>ISO CODE (for Razorpay)</label>
+                        <input type="text" id="cfg-currency-code" maxlength="3" value="${escapeHtmlAttr(c.currencyCode || "INR")}" placeholder="INR" style="text-transform:uppercase;" />
+                    </div>
+                </div>
+                <p class="admin-help-text" style="margin-top:-4px;">The symbol shows on every price throughout the app (menu, cart, checkout, billing, receipts). The ISO code is only sent to Razorpay - check Razorpay supports it for your account before changing it.</p>
+
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">TAX &amp; GST (INDIAN SUBCONTINENT)</h3>
                 <div class="control-group" style="max-width:280px;">
                     <label>GST NUMBER (GSTIN) - printed on bills when set. Leave blank if not GST-registered.</label>
                     <input type="text" id="cfg-gst-number" maxlength="20" value="${escapeHtmlAttr(c.gstNumber || "")}" placeholder="22AAAAA0000A1Z5" />
@@ -236,7 +249,7 @@ export const AdminPortal = {
                         <input type="text" id="cfg-service-charge" maxlength="6" value="${(c.serviceChargeRate * 100).toFixed(2)}" />
                     </div>
                     <div class="control-group" style="flex:0 0 130px;">
-                        <label>TIP AMOUNT (\u20b9)</label>
+                        <label>TIP AMOUNT (${currencySymbol()})</label>
                         <input type="text" id="cfg-tip-amount" maxlength="6" value="${c.tipAmount ?? 0}" />
                     </div>
                 </div>
@@ -293,6 +306,8 @@ export const AdminPortal = {
             const razorpayKeySecret = document.getElementById("cfg-razorpay-key-secret").value.trim();
             try {
                 await AdminConfig.saveSettings({
+                    currencySymbol: document.getElementById("cfg-currency-symbol").value.trim(),
+                    currencyCode: document.getElementById("cfg-currency-code").value.trim(),
                     gstNumber: document.getElementById("cfg-gst-number").value,
                     tipEnabled: document.getElementById("cfg-tip-enabled").checked,
                     tipAmount,
@@ -732,10 +747,10 @@ export const AdminPortal = {
                     : ""
             }
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
-                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">\u20b9${kpi.today.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">\u20b9${kpi.week.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">\u20b9${kpi.month.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.month.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">\u20b9${kpi.allTime.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.allTime.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.month.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.allTime.orders} orders</div></div>
             </div>
 
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
@@ -753,8 +768,8 @@ export const AdminPortal = {
                         ${kpi.chart
                             .map(
                                 (d) => `
-                            <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;" title="${d.label}: \u20b9${d.revenue.toFixed(2)} (${d.count} orders)">
-                                ${kpi.chart.length <= 14 ? `<div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:4px;">\u20b9${d.revenue.toFixed(0)}</div>` : ""}
+                            <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;" title="${d.label}: ${currencySymbol()}${d.revenue.toFixed(2)} (${d.count} orders)">
+                                ${kpi.chart.length <= 14 ? `<div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:4px;">${currencySymbol()}${d.revenue.toFixed(0)}</div>` : ""}
                                 <div style="width:100%; background:var(--color-accent); height:${Math.max(2, (d.revenue / maxDaily) * 100)}%; min-height:2px;"></div>
                             </div>
                         `
@@ -886,7 +901,7 @@ export const AdminPortal = {
                         <tr>
                             <td>${s.name}</td>
                             <td style="font-size:8pt; color:var(--color-text-muted);">${s.tag || "\u2014"}</td>
-                            <td style="font-size:8pt;">\u20b9${s.payRate}/${s.payRateType === "hourly" ? "hr" : s.payRateType === "weekly" ? "wk" : "mo"}</td>
+                            <td style="font-size:8pt;">${currencySymbol()}${s.payRate}/${s.payRateType === "hourly" ? "hr" : s.payRateType === "weekly" ? "wk" : "mo"}</td>
                             <td>
                                 ${s.hoursWorked !== null ? s.hoursWorked : "\u2014"}
                                 ${
@@ -895,7 +910,7 @@ export const AdminPortal = {
                                         : ""
                                 }
                             </td>
-                            <td>\u20b9${s.amount.toFixed(2)}</td>
+                            <td>${currencySymbol()}${s.amount.toFixed(2)}</td>
                             <td>${s.isPaid ? `<span style="color:var(--color-success);">\u2713 PAID</span>` : `<span style="color:var(--color-cyan);">PENDING</span>`}</td>
                             <td style="text-align:right;">
                                 ${s.hasUnapprovedOvertime ? `<button class="admin-btn" data-approve-ot="${s.userId}" data-name="${s.name}">APPROVE OT</button>` : ""}
@@ -974,7 +989,7 @@ export const AdminPortal = {
                             <td>${h.name}</td>
                             <td style="font-size:8pt;">${h.periodStart.slice(0, 10)} \u2192 ${h.periodEnd.slice(0, 10)}</td>
                             <td>${h.hoursWorked !== null ? h.hoursWorked : "\u2014"}</td>
-                            <td>\u20b9${h.amountPaid.toFixed(2)}</td>
+                            <td>${currencySymbol()}${h.amountPaid.toFixed(2)}</td>
                             <td style="font-size:8pt; color:var(--color-text-muted);">${new Date(h.paidAt).toLocaleString()} by ${h.paidBy}</td>
                         </tr>
                     `
@@ -989,7 +1004,7 @@ export const AdminPortal = {
             btn.addEventListener("click", () => {
                 renderInfoModal({
                     title: "MARK AS PAID",
-                    message: `Confirm ${btn.dataset.name} has been paid \u20b9${btn.dataset.amount} for this period? This can't be undone.`,
+                    message: `Confirm ${btn.dataset.name} has been paid ${currencySymbol()}${btn.dataset.amount} for this period? This can't be undone.`,
                     confirmText: "CONFIRM PAID",
                     cancelText: "CANCEL",
                     onConfirm: async () => {
@@ -1104,7 +1119,7 @@ export const AdminPortal = {
             <tr style="opacity:0.5;">
                 <td>${iconHtml(item)}</td>
                 <td>${escapeHtmlAttr(item.name)} <span style="color:var(--color-danger); font-size:7pt;">DELETED</span></td>
-                <td>\u20b9${item.price}</td>
+                <td>${currencySymbol()}${item.price}</td>
                 <td></td>
                 <td style="text-align:right;">
                     <button class="admin-btn" data-restore="${item.id}" style="padding:4px 8px; font-size:7pt;">RESTORE</button>
@@ -1124,9 +1139,9 @@ export const AdminPortal = {
             <tr style="${item.available === false ? "opacity:0.5;" : ""}">
                 <td>${iconHtml(item)}</td>
                 <td>${escapeHtmlAttr(item.name)}${item.available === false ? ' <span style="color:var(--color-danger); font-size:7pt;">UNAVAILABLE</span>' : ""}${disabledStores.length ? ` <span style="color:var(--color-text-muted); font-size:7pt;">OUT AT ${disabledStores.length} STORE${disabledStores.length > 1 ? "S" : ""}</span>` : ""}</td>
-                <td>\u20b9${item.price}${
+                <td>${currencySymbol()}${item.price}${
                     item.promoDiscount
-                        ? `<br><span style="color: var(--color-accent); font-size: 7pt;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `\u20b9${item.promoDiscount.value} OFF`}</span>`
+                        ? `<br><span style="color: var(--color-accent); font-size: 7pt;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `${currencySymbol()}${item.promoDiscount.value} OFF`}</span>`
                         : ""
                 }</td>
                 <td>${stockCell}</td>
@@ -1523,7 +1538,7 @@ export const AdminPortal = {
                     <h3 style="font-size: 10pt; letter-spacing: 1px; color: var(--color-accent); margin-bottom: 4px;">${g.title}</h3>
                     <p class="admin-help-text" style="margin-bottom: 10px;">${g.note}</p>
                     <table class="admin-table">
-                        <thead><tr><th>LABEL</th><th>KEY</th><th>PRICE ADD-ON (\u20b9)</th><th></th></tr></thead>
+                        <thead><tr><th>LABEL</th><th>KEY</th><th>PRICE ADD-ON (${currencySymbol()})</th><th></th></tr></thead>
                         <tbody class="cp-rows"></tbody>
                     </table>
                     <button class="admin-btn cp-add-row" style="margin-top:8px;">+ ADD OPTION</button>
@@ -1693,7 +1708,7 @@ export const AdminPortal = {
                 <div class="stat-card"><div class="stat-label">NAME</div><div class="stat-value" style="font-size:14pt;">${escapeHtmlAttr(profile.name || "—")}</div></div>
                 <div class="stat-card"><div class="stat-label">LOYALTY POINTS</div><div class="stat-value">${profile.loyaltyPoints || 0}</div></div>
                 <div class="stat-card"><div class="stat-label">ORDERS</div><div class="stat-value">${orders.length}</div></div>
-                <div class="stat-card"><div class="stat-label">TOTAL SPENT (PAID)</div><div class="stat-value">₹${totalSpent.toFixed(0)}</div></div>
+                <div class="stat-card"><div class="stat-label">TOTAL SPENT (PAID)</div><div class="stat-value">${currencySymbol()}${totalSpent.toFixed(0)}</div></div>
             </div>
             <p style="font-size:8pt; color:var(--color-text-muted); margin-bottom:14px;">USERNAME: ${escapeHtmlAttr(profile.username || "—")} &middot; PHONE: ${escapeHtmlAttr(profile.phone || "—")}</p>
             <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:8px;">ORDER HISTORY</h3>
@@ -1711,7 +1726,7 @@ export const AdminPortal = {
                                 <td>${escapeHtmlAttr(o.orderNumber || o.id)}</td>
                                 <td style="font-size:8pt;">${new Date(o.createdAt).toLocaleString()}</td>
                                 <td style="font-size:8pt;">${escapeHtmlAttr(o.items.map((i) => `${i.quantity}x ${i.name}`).join(", "))}</td>
-                                <td>₹${o.total.toFixed(2)}</td>
+                                <td>${currencySymbol()}${o.total.toFixed(2)}</td>
                                 <td style="font-size:8pt; color:${o.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${o.isPaid ? "PAID" : "UNPAID"}</td>
                             </tr>
                         `
@@ -1747,14 +1762,14 @@ export const AdminPortal = {
                     <label style="margin:0;" for="loyalty-enabled">ENABLE LOYALTY PROGRAM</label>
                 </div>
                 <div class="control-group" style="max-width:130px;">
-                    <label>POINTS PER \u20b91 SPENT</label>
+                    <label>POINTS PER ${currencySymbol()}1 SPENT</label>
                     <input type="text" id="loyalty-earn-rate" maxlength="8" value="${loyalty.pointsPerRupeeSpent}" />
-                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.1 = 1 point per \u20b910 spent (industry-typical "1 point per \u20b910" rate)</p>
+                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.1 = 1 point per ${currencySymbol()}10 spent (industry-typical "1 point per ${currencySymbol()}10" rate)</p>
                 </div>
                 <div class="control-group" style="max-width:130px;">
-                    <label>\u20b9 PER POINT REDEEMED</label>
+                    <label>${currencySymbol()} PER POINT REDEEMED</label>
                     <input type="text" id="loyalty-redeem-rate" maxlength="8" value="${loyalty.rupeeValuePerPoint}" />
-                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.5 = each point is worth \u20b90.50 off when redeemed</p>
+                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.5 = each point is worth ${currencySymbol()}0.50 off when redeemed</p>
                 </div>
                 <p id="loyalty-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="loyalty-save">SAVE LOYALTY SETTINGS</button>
@@ -1770,7 +1785,7 @@ export const AdminPortal = {
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">TYPE</label>
                     <select id="coupon-type" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit;">
                         <option value="percent">% OFF</option>
-                        <option value="flat">\u20b9 FLAT OFF</option>
+                        <option value="flat">${currencySymbol()} FLAT OFF</option>
                     </select>
                 </div>
                 <div>
@@ -1798,7 +1813,7 @@ export const AdminPortal = {
                                       (c) => `
                         <tr>
                             <td><strong>${escapeHtmlAttr(c.code)}</strong></td>
-                            <td>${c.type === "percent" ? `${c.value}% off` : `\u20b9${c.value} off`}</td>
+                            <td>${c.type === "percent" ? `${c.value}% off` : `${currencySymbol()}${c.value} off`}</td>
                             <td style="font-size:8pt; color:var(--color-text-muted);">${c.private ? "PRIVATE" : "PUBLIC"}</td>
                             <td>${c.usedCount} / ${c.usageLimit === null ? "\u221e (until stopped)" : c.usageLimit}</td>
                             <td style="color:${c.active ? "var(--color-success)" : "var(--color-text-muted)"};">${c.active ? "ACTIVE" : "STOPPED"}</td>
@@ -1928,7 +1943,7 @@ export const AdminPortal = {
                                 <tr>
                                     <td>${combo.name}</td>
                                     <td style="color: var(--color-text-muted); font-size: 8pt;">${lines}</td>
-                                    <td>\u20b9${combo.price} ${savings > 0 ? `<span style="color: var(--color-accent); font-size: 7pt;">(save \u20b9${savings.toFixed(0)})</span>` : ""}</td>
+                                    <td>${currencySymbol()}${combo.price} ${savings > 0 ? `<span style="color: var(--color-accent); font-size: 7pt;">(save ${currencySymbol()}${savings.toFixed(0)})</span>` : ""}</td>
                                     <td style="font-size: 8pt; color: ${combo.active !== false ? "var(--color-accent)" : "var(--color-text-muted)"};">${combo.active !== false ? "ACTIVE" : "HIDDEN"}</td>
                                     <td style="text-align:right;">
                                         <button class="admin-btn" data-combo-edit="${combo.id}">EDIT</button>
@@ -2079,7 +2094,7 @@ export const AdminPortal = {
                             <td>#${o.orderNumber || o.id}</td>
                             <td style="font-size:8pt;">${new Date(o.createdAt).toLocaleString()}</td>
                             <td style="font-size:8pt;">${customerLabel}</td>
-                            <td>\u20b9${o.total.toFixed(2)}</td>
+                            <td>${currencySymbol()}${o.total.toFixed(2)}</td>
                             <td style="font-size:8pt;">
                                 <span style="color:${o.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${o.isPaid ? "PAID" : "UNPAID"}</span>
                                 &middot; <span style="color:${complete ? "var(--color-success)" : "var(--color-cyan)"};">${complete ? "DONE" : "ACTIVE"}</span>
@@ -2147,7 +2162,7 @@ export const AdminPortal = {
                             return `
                             <div style="display:flex; justify-content:space-between; font-size:9pt; margin-bottom:4px;">
                                 <span>${i.quantity}x ${escapeHtmlAttr(i.name)}${i.comboName ? ` <span style="color:var(--color-text-muted); font-size:7pt;">(${escapeHtmlAttr(i.comboName)})</span>` : ""}</span>
-                                <span>\u20b9${(i.price * i.quantity).toFixed(2)}</span>
+                                <span>${currencySymbol()}${(i.price * i.quantity).toFixed(2)}</span>
                             </div>
                             ${tags.length ? `<div style="font-size:7pt; color:var(--color-accent); margin-bottom:4px;">${tags.map(escapeHtmlAttr).join(" &middot; ")}</div>` : ""}
                             ${i.notes ? `<div style="font-size:7pt; color:var(--color-text-muted); font-style:italic; margin-bottom:4px;">"${escapeHtmlAttr(i.notes)}"</div>` : ""}
@@ -2155,13 +2170,13 @@ export const AdminPortal = {
                         })
                         .join("")}
                 </div>
-                <div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Subtotal</span><span>\u20b9${order.subtotal.toFixed(2)}</span></div>
-                ${order.promoDiscountTotal ? `<div style="font-size:8pt; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Promo Savings</span><span>-\u20b9${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
-                ${order.discountAmount ? `<div style="font-size:8pt; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Discount${order.couponCode ? ` (${escapeHtmlAttr(order.couponCode)})` : ""}</span><span>-\u20b9${order.discountAmount.toFixed(2)}</span></div>` : ""}
-                <div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>CGST + SGST</span><span>\u20b9${(order.cgst + order.sgst).toFixed(2)}</span></div>
-                ${order.serviceCharge ? `<div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Service Charge</span><span>\u20b9${order.serviceCharge.toFixed(2)}</span></div>` : ""}
-                ${order.tipAmount ? `<div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Tip</span><span>\u20b9${order.tipAmount.toFixed(2)}</span></div>` : ""}
-                <div style="font-size:11pt; font-weight:bold; display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:8px; margin-top:6px;"><span>TOTAL</span><span>\u20b9${order.total.toFixed(2)}</span></div>
+                <div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Subtotal</span><span>${currencySymbol()}${order.subtotal.toFixed(2)}</span></div>
+                ${order.promoDiscountTotal ? `<div style="font-size:8pt; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Promo Savings</span><span>-${currencySymbol()}${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
+                ${order.discountAmount ? `<div style="font-size:8pt; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Discount${order.couponCode ? ` (${escapeHtmlAttr(order.couponCode)})` : ""}</span><span>-${currencySymbol()}${order.discountAmount.toFixed(2)}</span></div>` : ""}
+                <div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>CGST + SGST</span><span>${currencySymbol()}${(order.cgst + order.sgst).toFixed(2)}</span></div>
+                ${order.serviceCharge ? `<div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Service Charge</span><span>${currencySymbol()}${order.serviceCharge.toFixed(2)}</span></div>` : ""}
+                ${order.tipAmount ? `<div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Tip</span><span>${currencySymbol()}${order.tipAmount.toFixed(2)}</span></div>` : ""}
+                <div style="font-size:11pt; font-weight:bold; display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:8px; margin-top:6px;"><span>TOTAL</span><span>${currencySymbol()}${order.total.toFixed(2)}</span></div>
                 <div style="margin-top:16px; display:flex; gap:8px; align-items:center;">
                     <span style="font-size:8pt;">Payment: <strong style="color:${order.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${order.isPaid ? "PAID" : "UNPAID"}</strong></span>
                     ${!order.isPaid ? `<button class="admin-btn admin-btn-primary" id="oh-mark-paid">MARK PAID</button>` : ""}
@@ -2279,7 +2294,7 @@ export const AdminPortal = {
                             <td>${u.name}</td>
                             <td style="color: var(--color-accent);">${u.role.toUpperCase()}</td>
                             <td style="font-size:8pt; color:var(--color-text-muted);">${u.tag || "\u2014"}</td>
-                            <td style="font-size:8pt;">${u.payRateType ? `\u20b9${u.payRate}/${u.payRateType === "hourly" ? "hr" : u.payRateType === "weekly" ? "wk" : "mo"}` : "\u2014"}</td>
+                            <td style="font-size:8pt;">${u.payRateType ? `${currencySymbol()}${u.payRate}/${u.payRateType === "hourly" ? "hr" : u.payRateType === "weekly" ? "wk" : "mo"}` : "\u2014"}</td>
                             <td style="text-align:right;">
                                 ${
                                     canManage

@@ -153,6 +153,13 @@ if (!fs.existsSync(MENU_FILE)) {
 if (!fs.existsSync(CONFIG_FILE)) {
   writeJson(CONFIG_FILE, {
     shopName: "SEVEN BITS COFFEE",
+    // Multi-currency - currencySymbol is what every price display in the
+    // app uses (menu, cart, checkout, billing, receipts); currencyCode is
+    // only used where Razorpay's API actually requires an ISO 4217 code.
+    // Both default to what the app always hardcoded (Indian Rupee), so
+    // nothing changes until an admin edits these.
+    currencySymbol: "₹",
+    currencyCode: "INR",
     // GST registration number (India) - printed on bills when set (see
     // window.printBill in app.js); blank means "not GST-registered", not an
     // error, so it's simply omitted from the printout.
@@ -755,11 +762,11 @@ async function createRazorpayOrder(amountRupees, receipt, config) {
   try {
     const order = await razorpayApiRequest(
       "/v1/orders",
-      { amount: Math.round(amountRupees * 100), currency: "INR", receipt: String(receipt).slice(0, 40) },
+      { amount: Math.round(amountRupees * 100), currency: config.currencyCode || "INR", receipt: String(receipt).slice(0, 40) },
       config.razorpayKeyId,
       config.razorpayKeySecret
     );
-    return { razorpayOrderId: order.id, razorpayKeyId: config.razorpayKeyId };
+    return { razorpayOrderId: order.id, razorpayKeyId: config.razorpayKeyId, razorpayCurrency: config.currencyCode || "INR" };
   } catch (e) {
     console.error("Razorpay order creation failed:", e.message);
     return null;
@@ -2372,6 +2379,8 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   const config = readJson(CONFIG_FILE, {});
   const allowed = [
     "shopName",
+    "currencySymbol",
+    "currencyCode",
     "gstNumber",
     "heroTagline",
     "heroBadgeText",
@@ -2422,6 +2431,14 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   // shopName/heroTagline are rendered directly into the home page - cap
   // length and strip control chars so a bad paste can't break layout.
   if (typeof config.shopName === "string") config.shopName = config.shopName.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 60);
+  if (typeof config.currencySymbol === "string") {
+    const trimmed = Array.from(config.currencySymbol).filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; }).join("").trim().slice(0, 3);
+    config.currencySymbol = trimmed || "₹";
+  }
+  if (typeof config.currencyCode === "string") {
+    const code = config.currencyCode.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 3);
+    config.currencyCode = code.length === 3 ? code : "INR";
+  }
   if (typeof config.gstNumber === "string") config.gstNumber = Array.from(config.gstNumber).filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; }).join("").trim().toUpperCase().slice(0, 20);
   if (typeof config.receiptFooterText === "string") config.receiptFooterText = config.receiptFooterText.trim().slice(0, 120);
   if (typeof config.heroCaptionLabel === "string") {
@@ -2895,6 +2912,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     paymentMethod: razorpay ? null : method === "ONLINE" ? "UPI" : staffMarkedPaid ? "Cash" : null,
     razorpayOrderId: razorpay ? razorpay.razorpayOrderId : null,
     razorpayKeyId: razorpay ? razorpay.razorpayKeyId : null,
+    razorpayCurrency: razorpay ? razorpay.razorpayCurrency : null,
     tipApplied,
     serviceChargeActive,
     orderType,

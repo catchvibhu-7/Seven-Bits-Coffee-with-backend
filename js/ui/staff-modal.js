@@ -5,6 +5,7 @@
 import { AuthSystem } from "../features/auth-logic.js";
 import { PayrollSystem } from "../features/payroll-logic.js";
 import { renderPasswordStrengthMeter } from "../features/password-strength.js";
+import { currencySymbol } from "../features/config-logic.js";
 
 function randomTempPassword() {
     const part = () => Math.random().toString(36).slice(2, 6);
@@ -68,7 +69,7 @@ export async function renderAddStaffModal(currentRole, onCreated) {
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
                 </select>
-                <input id="sm-pay-rate" type="number" min="0" step="0.01" placeholder="\u20b9 amount" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" disabled />
+                <input id="sm-pay-rate" type="number" min="0" step="0.01" placeholder="${currencySymbol()} amount" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" disabled />
             </div>
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">USERNAME</label>
@@ -197,7 +198,7 @@ export function renderEditStaffModal(user, onSaved) {
                     <option value="weekly" ${user.payRateType === "weekly" ? "selected" : ""}>Weekly</option>
                     <option value="monthly" ${user.payRateType === "monthly" ? "selected" : ""}>Monthly</option>
                 </select>
-                <input id="esm-pay-rate" type="number" min="0" step="0.01" value="${user.payRate ?? ""}" placeholder="\u20b9 amount" ${!user.payRateType ? "disabled" : ""}
+                <input id="esm-pay-rate" type="number" min="0" step="0.01" value="${user.payRate ?? ""}" placeholder="${currencySymbol()} amount" ${!user.payRateType ? "disabled" : ""}
                     style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
             </div>
 
