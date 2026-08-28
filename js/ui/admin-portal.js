@@ -2680,6 +2680,10 @@ export const AdminPortal = {
                     <label>RECEIPT FOOTER MESSAGE (printed at the bottom of the bill, under the logo from Branding)</label>
                     <input type="text" id="cfg-receipt-footer" maxlength="120" value="${escapeHtmlAttr(c.receiptFooterText || "")}" />
                 </div>
+                <div class="control-group" style="max-width:260px;">
+                    <label>HERO IMAGE CAPTION (label under the storefront photo, before the address)</label>
+                    <input type="text" id="cfg-hero-caption-label" maxlength="40" placeholder="The counter" value="${escapeHtmlAttr(c.heroCaptionLabel || "")}" />
+                </div>
                 <p id="identity-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="identity-save">SAVE SHOP IDENTITY</button>
 
@@ -2714,7 +2718,7 @@ export const AdminPortal = {
                 <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:16px;">
                     <div style="flex:1 1 320px; min-width:260px;">
                         <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
-                        <p class="admin-help-text">Pick which items feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
+                        <p class="admin-help-text">Pick up to 3 items to feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
                         <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
                         <div id="home-picks-list" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
                     </div>
@@ -2756,6 +2760,12 @@ export const AdminPortal = {
                     <label>HOURS</label>
                     <input type="text" id="brand-footer-hours" maxlength="60" value="${escapeHtmlAttr((c.footer && c.footer.hours) || "")}" placeholder="Mon-Sat: 8am - 8pm" />
                 </div>
+
+                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:6px;">Custom fields</label>
+                <p class="admin-help-text">Anything else to show on "Find us" - Instagram, WhatsApp, GST number, whatever this shop needs. Add up to 6.</p>
+                <div id="footer-custom-fields-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+                <button type="button" class="admin-btn-secondary" id="footer-custom-field-add" style="margin-bottom:14px;">+ ADD FIELD</button>
+                <br />
                 <p id="footer-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="footer-save">SAVE STORE DETAILS</button>
             </div>
@@ -2774,7 +2784,8 @@ export const AdminPortal = {
                     shopName,
                     heroBadgeText: document.getElementById("cfg-hero-badge").value,
                     heroTagline: document.getElementById("cfg-hero-tagline").value,
-                    receiptFooterText: document.getElementById("cfg-receipt-footer").value
+                    receiptFooterText: document.getElementById("cfg-receipt-footer").value,
+                    heroCaptionLabel: document.getElementById("cfg-hero-caption-label").value
                 });
                 if (window.applyBranding) window.applyBranding(updated);
                 ok("Shop identity saved");
@@ -2854,13 +2865,28 @@ export const AdminPortal = {
                       })
                       .join("");
 
+        const MAX_HOME_PICKS = 3;
+        // Once 3 are checked, every unchecked box is disabled rather than
+        // silently un-checking a click - a disabled box reads as "pick's
+        // full" at a glance instead of looking like a bug when clicking a
+        // 4th item does nothing.
+        const enforcePickLimit = () => {
+            const checkedCount = document.querySelectorAll(".home-pick-check:checked").length;
+            document.querySelectorAll(".home-pick-check").forEach((cb) => {
+                cb.disabled = !cb.checked && checkedCount >= MAX_HOME_PICKS;
+            });
+        };
         const wirePickRows = () => {
             document.querySelectorAll(".home-pick-check").forEach((cb) => {
-                cb.addEventListener("change", () => renderTagsPanel());
+                cb.addEventListener("change", () => {
+                    renderTagsPanel();
+                    enforcePickLimit();
+                });
             });
         };
         wirePickRows();
         renderTagsPanel();
+        enforcePickLimit();
 
         // Suggestion chips - each one CHECKS matching items (doesn't save by
         // itself) so the admin can still review/adjust tags before hitting
@@ -2870,17 +2896,26 @@ export const AdminPortal = {
         const suggestionsEl = document.getElementById("home-picks-suggestions");
         const checkItems = (items, defaultTag) => {
             let changed = false;
+            let remaining = MAX_HOME_PICKS - document.querySelectorAll(".home-pick-check:checked").length;
+            const actuallyChecked = [];
             items.forEach((item) => {
+                if (remaining <= 0) return;
                 const cb = document.querySelector(`.home-pick-check[data-item-id="${item.id}"]`);
                 if (!cb || cb.checked) return;
                 cb.checked = true;
                 changed = true;
+                remaining--;
+                actuallyChecked.push(item);
             });
             if (changed) renderTagsPanel();
+            enforcePickLimit();
+            if (remaining <= 0 && actuallyChecked.length < items.length) {
+                fail(`Only picked ${actuallyChecked.length} - up to ${MAX_HOME_PICKS} items can feature on the home page.`);
+            }
             // Fill in the default tag for whichever of these items don't
             // already have one typed (existing tags, including ones just
             // restored by renderTagsPanel above, are left alone).
-            items.forEach((item) => {
+            actuallyChecked.forEach((item) => {
                 const tagInput = document.querySelector(`.home-pick-tag[data-item-id="${item.id}"]`);
                 if (tagInput && !tagInput.value) tagInput.value = defaultTag;
             });
@@ -2992,9 +3027,48 @@ export const AdminPortal = {
             }
         });
 
+        // ---- Custom footer fields editor (Instagram, GST no, WhatsApp, etc.) ----
+        const MAX_CUSTOM_FOOTER_FIELDS = 6;
+        const footerFieldsEditor = document.getElementById("footer-custom-fields-editor");
+
+        function renderFooterFieldsEditor(fields) {
+            footerFieldsEditor.innerHTML = fields
+                .map(
+                    (f, i) => `
+                <div class="footer-field-row" style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" class="footer-field-label" placeholder="Field name (e.g. Instagram)" maxlength="30" value="${escapeHtmlAttr(f.label || "")}" style="flex:0 0 180px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="footer-field-value" placeholder="Value" maxlength="100" value="${escapeHtmlAttr(f.value || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <button type="button" class="footer-field-remove admin-btn-secondary" data-index="${i}" style="flex:none; padding:4px 8px;">&times;</button>
+                </div>
+            `
+                )
+                .join("");
+            footerFieldsEditor.querySelectorAll(".footer-field-remove").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    fields.splice(Number(btn.dataset.index), 1);
+                    renderFooterFieldsEditor(fields);
+                });
+            });
+        }
+
+        const customFooterFields = (c.customFooterFields || []).map((f) => ({ ...f }));
+        renderFooterFieldsEditor(customFooterFields);
+
+        document.getElementById("footer-custom-field-add").addEventListener("click", () => {
+            if (customFooterFields.length >= MAX_CUSTOM_FOOTER_FIELDS) return fail(`Up to ${MAX_CUSTOM_FOOTER_FIELDS} custom fields`);
+            customFooterFields.push({ label: "", value: "" });
+            renderFooterFieldsEditor(customFooterFields);
+        });
+
         document.getElementById("footer-save").addEventListener("click", async () => {
             const errorEl = document.getElementById("footer-error");
             errorEl.textContent = "";
+            const finalCustomFields = Array.from(footerFieldsEditor.querySelectorAll(".footer-field-row"))
+                .map((row) => ({
+                    label: row.querySelector(".footer-field-label").value.trim(),
+                    value: row.querySelector(".footer-field-value").value.trim()
+                }))
+                .filter((f) => f.label || f.value);
             try {
                 const updated = await AdminConfig.saveSettings({
                     footer: {
@@ -3003,7 +3077,8 @@ export const AdminPortal = {
                         phone: document.getElementById("brand-footer-phone").value.trim(),
                         email: document.getElementById("brand-footer-email").value.trim(),
                         hours: document.getElementById("brand-footer-hours").value.trim()
-                    }
+                    },
+                    customFooterFields: finalCustomFields
                 });
                 if (window.applyBranding) window.applyBranding(updated);
                 if (window.renderFooter) window.renderFooter(updated);

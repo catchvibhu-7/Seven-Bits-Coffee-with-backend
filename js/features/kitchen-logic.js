@@ -26,7 +26,17 @@ export const KitchenSystem = {
     async pushOrder(
         cartItems,
         method,
-        { serviceChargeActive = true, tipApplied = false, phone = null, markPaidNow = false, tableSessionId = null, couponCode = null, redeemPoints = 0, guestOrder = false } = {}
+        {
+            serviceChargeActive = true,
+            tipApplied = false,
+            phone = null,
+            markPaidNow = false,
+            tableSessionId = null,
+            couponCode = null,
+            redeemPoints = 0,
+            guestOrder = false,
+            orderType = "takeaway"
+        } = {}
     ) {
         const res = await fetch("/api/orders", {
             method: "POST",
@@ -50,12 +60,29 @@ export const KitchenSystem = {
                 tableSessionId,
                 couponCode,
                 redeemPoints,
-                guestOrder
+                guestOrder,
+                orderType
             })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not place order");
         this.orders.push(data);
+        return data;
+    },
+
+    /** Staff tagging/correcting who a bill is for (phone/username, auto-
+     *  detected server-side) and, for a dine-in order, which table - from
+     *  the Billing page. */
+    async tagOrderInfo(orderId, { contact, tableNumber }) {
+        const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "tagInfo", contact, tableNumber })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not update order");
+        await this.fetchOrders();
         return data;
     },
 

@@ -20,13 +20,14 @@ import { SoundSystem } from "./features/sound-logic.js";
 import { NotificationSystem } from "./features/notification-logic.js";
 import { StaffShell } from "./ui/staff-shell.js";
 import { renderStaffHome } from "./ui/staff-home.js";
-import { renderBillingPage } from "./ui/billing-page.js";
+import { renderBillingPage, selectBillForOrder } from "./ui/billing-page.js";
 import { ArcadeSystem } from "./features/arcade-logic.js";
 
 // --- System State ---
 let cart = [];
 let serviceChargeActive = true;
 let tipApplied = false;
+let orderType = "takeaway"; // "takeaway" | "dine-in" - picked in the cart panel, sent with the order
 let currentKitchenStation = "MASTER"; // matches the "ALL" tab that's marked active by default in index.html
 let viewMode = "grid";
 let menuData = { sections: [], items: [] };
@@ -207,7 +208,7 @@ window.applyBranding = (config) => {
         heroEl.style.backgroundImage = config.heroImageUrl ? `url(${JSON.stringify(config.heroImageUrl).slice(1, -1)})` : "";
     }
     const captionEl = document.getElementById("home-hero-caption");
-    if (captionEl) captionEl.textContent = "The counter" + (config.footer?.address ? ` · ${config.footer.address}` : "");
+    if (captionEl) captionEl.textContent = (config.heroCaptionLabel || "The counter") + (config.footer?.address ? ` · ${config.footer.address}` : "");
 
     const logoEl = document.getElementById("site-logo");
     if (logoEl) {
@@ -957,24 +958,32 @@ window.startCheckout = async (method) => {
             tableSessionId,
             couponCode: discount.couponCode || null,
             redeemPoints: discount.redeemPoints || 0,
-            guestOrder
+            guestOrder,
+            orderType
         });
         pendingOrder = order;
 
         cart = [];
         serviceChargeActive = true;
         tipApplied = false;
+        orderType = "takeaway";
         updateCartUI();
         window.closeModal();
 
         // Staff hand off to Billing to actually settle the payment (cash,
         // UPI, card, wallet) rather than choosing a method here - the order
         // itself is always created the same way (unpaid, COUNTER) regardless
-        // of which checkout button was clicked.
+        // of which checkout button was clicked. Wrapped separately from the
+        // order-creation try/catch above: the checkout modal (and its error
+        // box) is already gone by this point, so a failure here has to reach
+        // the user through a toast instead or it disappears silently.
         if (isStaffCheckout) {
-            const { selectBillForOrder } = await import("./ui/billing-page.js");
-            selectBillForOrder(order.id);
-            window.showPage("billing");
+            try {
+                selectBillForOrder(order.id);
+                await window.showPage("billing");
+            } catch (navError) {
+                window.showToast?.(`Order #${order.orderNumber || order.id} was created, but opening Billing failed: ${navError.message}`, "error");
+            }
             return;
         }
 
@@ -1412,7 +1421,7 @@ function renderMenu(filterQuery = "") {
                 <div class="info">
                     <div class="name">${favButton}${item.name}${isSoldOut ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
-                    ${isUnavailable ? "" : `<button class="btn-customize-link" onclick="window.openCustomize(${item.id})" style="background:none; border:none; color:var(--color-accent); text-decoration:underline; font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;">+ CUSTOMIZE (SIZE/MILK/EXTRAS)</button>`}
+                    ${isUnavailable ? "" : `<button class="btn-customize-link" onclick="window.openCustomize(${item.id})" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE (SIZE/MILK/EXTRAS)</span></button>`}
                     ${staffRequestHtml}
                 </div>
                 <div class="item-controls">
@@ -1541,6 +1550,13 @@ function renderMenuCartPanel() {
             }
         </div>
         <div style="padding:14px 18px 18px; border-top:1px solid var(--color-border); flex:none;">
+            <div style="margin-bottom:12px;">
+                <div style="font-size:9.5px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); margin-bottom:6px;">ORDER TYPE</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <button type="button" class="cart-order-type-btn" data-order-type="takeaway" style="padding:9px 6px; background:${orderType === "takeaway" ? "var(--color-accent)" : "transparent"}; color:${orderType === "takeaway" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Takeaway</button>
+                    <button type="button" class="cart-order-type-btn" data-order-type="dine-in" style="padding:9px 6px; background:${orderType === "dine-in" ? "var(--color-accent)" : "transparent"}; color:${orderType === "dine-in" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Dine-in</button>
+                </div>
+            </div>
             <!-- Deliberately no tax/service-charge breakdown here - just the
                  items subtotal while still browsing/adding. Tax, service
                  charge, and tip are calculated (and shown) starting at
@@ -1555,6 +1571,12 @@ function renderMenuCartPanel() {
         </div>
     `;
     panel.querySelector("#staff-cart-checkout-btn")?.addEventListener("click", () => window.handleCartStatusClick());
+    panel.querySelectorAll(".cart-order-type-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            orderType = btn.dataset.orderType;
+            renderMenuCartPanel();
+        });
+    });
 }
 
 function paintFavoritesFilterStar() {
@@ -2045,7 +2067,8 @@ window.renderFooter = (config) => {
     const root = document.getElementById("site-footer");
     if (!root) return;
     const f = config.footer || {};
-    const hasAnyDetail = f.address || f.phone || f.email || f.hours;
+    const customFields = (config.customFooterFields || []).filter((c) => c.value);
+    const hasAnyDetail = f.address || f.phone || f.email || f.hours || customFields.length > 0;
 
     if (!hasAnyDetail && !f.tagline) {
         root.innerHTML = "";
@@ -2071,6 +2094,9 @@ window.renderFooter = (config) => {
                         ? `<div><div class="footer-col-title">Hours</div><div class="footer-line">${f.hours}</div></div>`
                         : ""
                 }
+                ${customFields
+                    .map((c) => `<div><div class="footer-col-title">${escapeHtml(c.label)}</div><div class="footer-line">${escapeHtml(c.value)}</div></div>`)
+                    .join("")}
             </div>
         </div>
     `;
@@ -2204,7 +2230,11 @@ function renderHomeVisitRows() {
         { label: "Address", value: f.address },
         { label: "Phone", value: f.phone },
         { label: "Email", value: f.email },
-        { label: "Hours", value: f.hours }
+        { label: "Hours", value: f.hours },
+        // Admin-added fields beyond the fixed set above (Instagram, GST no,
+        // WhatsApp, whatever a given shop wants) - see Content -> Store
+        // Details -> "+ ADD FIELD".
+        ...(siteConfig.customFooterFields || []).map((c) => ({ label: c.label, value: c.value }))
     ].filter((r) => r.value);
     root.innerHTML = rows.length
         ? rows

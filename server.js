@@ -198,6 +198,9 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // Printed at the bottom of the customer bill (window.printBill, app.js) -
     // was a hardcoded "- G=7 | Processed with precision -" signature.
     receiptFooterText: "Thank you for visiting!",
+    // Label under the home page's storefront photo, before the address
+    // (e.g. "The counter · 123 Main St") - was hardcoded as "The counter".
+    heroCaptionLabel: "The counter",
     // Admin-added icon options beyond the built-in set (see Branding tab).
     // Key -> image URL; menu items reference these by key just like the
     // built-in CSS icon names.
@@ -210,6 +213,9 @@ if (!fs.existsSync(CONFIG_FILE)) {
       email: "",
       hours: ""
     },
+    // Admin-added fields beyond the fixed set above (Instagram, GST no,
+    // WhatsApp, etc.) - see Content -> Store Details -> "+ ADD FIELD".
+    customFooterFields: [],
     // Number of physical tables the shop has. Table 0 is a reserved label
     // for "Online / Counter" (no physical table), never an openable tab -
     // real tabs are numbered 1..tableCount. See /api/table-sessions.
@@ -2283,7 +2289,8 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "upiVpa",
     "upiPayeeName",
     "tableCount",
-    "defaultNavLayout"
+    "defaultNavLayout",
+    "heroCaptionLabel"
   ];
   for (const key of allowed) {
     if (body[key] !== undefined) config[key] = body[key];
@@ -2308,6 +2315,13 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   if (typeof config.shopName === "string") config.shopName = config.shopName.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 60);
   if (typeof config.gstNumber === "string") config.gstNumber = Array.from(config.gstNumber).filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; }).join("").trim().toUpperCase().slice(0, 20);
   if (typeof config.receiptFooterText === "string") config.receiptFooterText = config.receiptFooterText.trim().slice(0, 120);
+  if (typeof config.heroCaptionLabel === "string") {
+    config.heroCaptionLabel = Array.from(config.heroCaptionLabel)
+      .filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; })
+      .join("")
+      .trim()
+      .slice(0, 40);
+  }
   if (typeof config.heroTagline === "string") config.heroTagline = config.heroTagline.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400);
   if (typeof config.heroBadgeText === "string") {
     config.heroBadgeText = Array.from(config.heroBadgeText)
@@ -2341,6 +2355,19 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   if (body.footer && typeof body.footer === "object") {
     config.footer = { ...config.footer, ...body.footer };
   }
+  // Admin-defined extra footer/"Find us" fields (Instagram, GST no,
+  // WhatsApp, whatever a given shop wants) beyond the fixed
+  // tagline/address/phone/email/hours set - replaced wholesale like
+  // homePicks/roastSteps, since it's an ordered custom list, not independent keys.
+  if (Array.isArray(body.customFooterFields)) {
+    config.customFooterFields = body.customFooterFields
+      .filter((f) => f && (f.label || f.value))
+      .slice(0, 6)
+      .map((f) => ({
+        label: String(f.label || "").trim().slice(0, 30),
+        value: String(f.value || "").trim().slice(0, 100)
+      }));
+  }
   if (body.customIcons && typeof body.customIcons === "object") {
     config.customIcons = { ...config.customIcons, ...body.customIcons };
   }
@@ -2362,7 +2389,7 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     const validItemIds = new Set(menu.items.map((i) => i.id));
     config.homePicks = body.homePicks
       .filter((p) => p && validItemIds.has(Number(p.itemId)))
-      .slice(0, 12)
+      .slice(0, 3)
       .map((p) => ({
         itemId: Number(p.itemId),
         tag: String(p.tag || "")
@@ -2700,6 +2727,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   const method = body.method === "ONLINE" ? "ONLINE" : "COUNTER";
   const serviceChargeActive = body.serviceChargeActive !== false;
   const tipApplied = !!body.tipApplied;
+  const orderType = body.orderType === "dine-in" ? "dine-in" : "takeaway";
 
   // Staff placing an order on someone's behalf: if the phone they typed
   // matches a registered customer account, attribute the order to that
@@ -2742,6 +2770,11 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     paymentMethod: method === "ONLINE" ? "UPI" : staffMarkedPaid ? "Cash" : null,
     tipApplied,
     serviceChargeActive,
+    orderType,
+    // Set later from Billing (see PATCH .../tagInfo below) - staff tag which
+    // physical table a dine-in order belongs to once seated, rather than
+    // asking for it at the moment of ordering.
+    tableNumber: null,
     // Was `session.name || null`, which for a staff-placed order recorded
     // the STAFF MEMBER's own name as the "customer" - placedByStaff already
     // covers who took the order; this should be who it's actually for.
@@ -2833,6 +2866,27 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
       return sendJson(res, 400, { error: "Order isn't ready yet" });
     }
     if (!order.servedAt) order.servedAt = new Date().toISOString();
+  } else if (body.action === "tagInfo") {
+    // Staff filling in/correcting who a bill is for and (for a dine-in
+    // order) which table, from the Billing page - a phone typed at order
+    // time may have been skipped (guest order) or wrong, and the table
+    // usually isn't known until the customer is actually seated. One
+    // combined field auto-detects phone vs. username, same as the login
+    // field - whichever it looks like gets updated, the other is left as-is.
+    if (typeof body.contact === "string") {
+      const trimmed = body.contact.trim();
+      if (!trimmed) {
+        order.customerPhone = null;
+        order.customerName = null;
+      } else if (/^[\d\s()+-]{7,20}$/.test(trimmed) && trimmed.replace(/\D/g, "").length >= 7) {
+        order.customerPhone = normalizePhone(trimmed) || trimmed.slice(0, 20);
+      } else {
+        order.customerName = trimmed.slice(0, 60);
+      }
+    }
+    if (typeof body.tableNumber === "string") {
+      order.tableNumber = body.tableNumber.trim().slice(0, 20) || null;
+    }
   } else {
     return sendJson(res, 400, { error: "Unknown action" });
   }

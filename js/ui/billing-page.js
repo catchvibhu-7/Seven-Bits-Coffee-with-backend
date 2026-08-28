@@ -186,6 +186,7 @@ async function renderBillDetail() {
     }
 
     let bill;
+    let order = null; // only set for a standalone order bill - see the tag-info section below
     if (selectedBill.kind === "table") {
         bill = await TableSessionsSystem.get(selectedBill.id);
         if (!bill) {
@@ -196,7 +197,7 @@ async function renderBillDetail() {
         }
         printableBill = billToPrintableOrder(bill, "table");
     } else {
-        const order = KitchenSystem.orders.find((o) => o.id === selectedBill.id);
+        order = KitchenSystem.orders.find((o) => o.id === selectedBill.id);
         if (!order) {
             printableBill = null;
             detail.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">That order was already settled elsewhere. Pick another bill.</p>`;
@@ -211,8 +212,33 @@ async function renderBillDetail() {
         printableBill = order;
     }
 
+    // Tag who a standalone order is for (phone/username - a guest order or a
+    // staff typo may have left this blank/wrong) and, for a dine-in order,
+    // which physical table - not shown for a table-session bill, which
+    // already has both from when the tab was opened.
+    const tagInfoHtml = order
+        ? `
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px; flex-wrap:wrap;">
+            <div style="flex:0 1 220px;">
+                <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Phone / Username</label>
+                <input id="billing-tag-phone" type="text" maxlength="60" value="${escapeHtml(order.customerPhone || order.customerName || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
+            </div>
+            ${
+                order.orderType === "dine-in"
+                    ? `
+            <div style="flex:0 1 100px;">
+                <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Table</label>
+                <input id="billing-tag-table" type="text" maxlength="20" value="${escapeHtml(order.tableNumber || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
+            </div>`
+                    : ""
+            }
+            <button type="button" id="billing-tag-save" style="align-self:flex-end; padding:7px 14px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-size:9px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Save</button>
+        </div>`
+        : "";
+
     detail.innerHTML = `
         <h1 style="font-size:22px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">BILL<span style="color:var(--color-accent);">#</span>${escapeHtml(String(bill.tableNumber != null ? "T" + bill.tableNumber : bill.orderNumber || bill.id))}</h1>
+        ${tagInfoHtml}
         <div style="background:var(--color-surface); border:1px solid var(--color-border); margin-top:14px;">
             <div style="display:flex; gap:12px; padding:9px 14px; background:var(--color-bg); border-bottom:1px solid var(--color-border); font-size:9px; letter-spacing:.12em; color:var(--color-text-muted); text-transform:uppercase;">
                 <span style="flex:1 1 100px; min-width:80px;">Item</span><span style="flex:none; width:32px; text-align:center;">Qty</span><span style="flex:none; width:64px; text-align:right;">Amount</span>
@@ -261,6 +287,21 @@ async function renderBillDetail() {
             selectedMethod = btn.dataset.method;
             renderBillDetail();
         });
+    });
+    detail.querySelector("#billing-tag-save")?.addEventListener("click", async () => {
+        const btn = detail.querySelector("#billing-tag-save");
+        btn.disabled = true;
+        try {
+            await KitchenSystem.tagOrderInfo(order.id, {
+                contact: detail.querySelector("#billing-tag-phone").value,
+                tableNumber: detail.querySelector("#billing-tag-table")?.value ?? undefined
+            });
+            window.showToast?.("Bill info updated");
+            await renderBillDetail();
+        } catch (e) {
+            window.showToast?.(e.message || "Could not update bill info", "error");
+            btn.disabled = false;
+        }
     });
     detail.querySelector("#billing-settle-btn")?.addEventListener("click", async () => {
         const btn = detail.querySelector("#billing-settle-btn");
