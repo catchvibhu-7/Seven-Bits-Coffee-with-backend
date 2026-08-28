@@ -14,7 +14,7 @@ const BUILT_IN_ICONS = [
  * @param {Array} options.sections - [{id, title}]
  * @param {object} [options.customIcons] - {key: imageUrl} from Branding settings
  * @param {object} [options.item] - existing item to edit, or omit to add new
- * @param {(payload: object) => Promise<void>} options.onSave - called with {name, price, section, icon, story, promoDiscount}
+ * @param {(payload: object) => Promise<void>} options.onSave - called with {name, price, section, icon, story, promoDiscount, imageUrl, stockCount}
  */
 export function renderItemModal({ sections, customIcons = {}, item = null, onSave }) {
     document.getElementById("item-modal-overlay")?.remove();
@@ -54,6 +54,10 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
             </select>
             <div id="im-icon-preview" style="display:flex; align-items:center; gap:8px; margin: -6px 0 12px; font-size:7pt; color:var(--color-text-muted);"></div>
 
+            <label style="font-size: 7pt; color: var(--color-text-muted);">PHOTO URL (optional - shown instead of the icon when set)</label>
+            <input id="im-image-url" type="text" placeholder="https://..." value="${item?.imageUrl || ""}" style="${fieldStyle}" />
+            <div id="im-image-preview" style="margin: -6px 0 12px;"></div>
+
             <label style="font-size: 7pt; color: var(--color-text-muted);">DESCRIPTION</label>
             <textarea id="im-story" rows="2" style="${fieldStyle} resize: vertical;">${item ? item.story || "" : ""}</textarea>
 
@@ -64,6 +68,9 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
                 <option value="flat" ${item?.promoDiscount?.type === "flat" ? "selected" : ""}>₹ OFF (FLAT)</option>
             </select>
             <input id="im-promo-value" type="number" min="0.01" step="0.01" placeholder="Discount value" value="${item?.promoDiscount?.value ?? ""}" style="${fieldStyle} ${item?.promoDiscount ? "" : "display:none;"}" />
+
+            <label style="font-size: 7pt; color: var(--color-text-muted);">STOCK COUNT (blank = unlimited, not tracked)</label>
+            <input id="im-stock-count" type="number" min="0" step="1" placeholder="Unlimited" value="${item?.stockCount ?? ""}" style="${fieldStyle}" />
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">
                 <button id="im-save" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">${isEdit ? "SAVE CHANGES" : "ADD ITEM"}</button>
@@ -85,6 +92,14 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
     document.getElementById("im-icon").addEventListener("change", updateIconPreview);
     updateIconPreview();
 
+    function updateImagePreview() {
+        const url = document.getElementById("im-image-url").value.trim();
+        const preview = document.getElementById("im-image-preview");
+        preview.innerHTML = url ? `<img src="${url}" style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--color-border);" onerror="this.style.display='none'" />` : "";
+    }
+    document.getElementById("im-image-url").addEventListener("input", updateImagePreview);
+    updateImagePreview();
+
     document.getElementById("im-promo-type").addEventListener("change", (e) => {
         document.getElementById("im-promo-value").style.display = e.target.value ? "" : "none";
     });
@@ -100,18 +115,24 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
         const section = document.getElementById("im-section").value;
         const icon = document.getElementById("im-icon").value;
         const story = document.getElementById("im-story").value.trim();
+        const imageUrl = document.getElementById("im-image-url").value.trim();
         const promoType = document.getElementById("im-promo-type").value;
         const promoValue = Number(document.getElementById("im-promo-value").value);
+        const stockCountRaw = document.getElementById("im-stock-count").value.trim();
 
         if (!name) return (errorEl.textContent = "Name is required.");
         if (!Number.isFinite(price) || price <= 0) return (errorEl.textContent = "Enter a valid price.");
         if (promoType && (!Number.isFinite(promoValue) || promoValue <= 0)) return (errorEl.textContent = "Enter a valid promo value.");
         if (promoType === "percent" && promoValue > 100) return (errorEl.textContent = "Percent discount can't exceed 100.");
+        if (stockCountRaw && (!Number.isInteger(Number(stockCountRaw)) || Number(stockCountRaw) < 0)) {
+            return (errorEl.textContent = "Stock count must be zero or a positive whole number.");
+        }
 
         const promoDiscount = promoType ? { type: promoType, value: promoValue } : null;
+        const stockCount = stockCountRaw ? Number(stockCountRaw) : null;
 
         try {
-            await onSave({ name, price, section, icon, story, promoDiscount });
+            await onSave({ name, price, section, icon, story, promoDiscount, imageUrl: imageUrl || null, stockCount });
             overlay.remove();
         } catch (e) {
             errorEl.textContent = e.message || "Could not save item";

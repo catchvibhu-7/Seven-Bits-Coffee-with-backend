@@ -38,6 +38,7 @@
             <img id="site-logo" src="" alt="" style="display:none; height: 28px; margin-right: 8px; align-self: center;" />
             <button onclick="showPage('home')">HOME</button>
             <button onclick="showPage('menu')">MENU</button>
+            <button onclick="showPage('arcade')">ARCADE</button>
             <button id="nav-kitchen" onclick="showPage('kitchen')" style="display:none;">ORDERS</button>
             <button id="nav-admin" onclick="showPage('admin')" style="display:none;">ADMIN</button>
             <button id="nav-timeclock" onclick="window.handleTimeclockClick()" style="display:none; margin-left:auto;"></button>
@@ -110,9 +111,8 @@
        <!-- PAGE: MENU -->
 <div id="page-menu" class="page">
     <div class="menu-controls" style="padding: 10px; display: flex; justify-content: flex-end; align-items:center; gap: 15px">
-    <label id="favorites-filter-label" style="display:none; align-items:center; gap:5px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace;">
-        <input type="checkbox" id="favorites-filter-toggle" onchange="window.toggleFavoritesFilter(this.checked)" />
-        &#9733; FAVORITES ONLY
+    <label id="favorites-filter-label" onclick="window.toggleFavoritesFilter()" style="display:none; align-items:center; gap:5px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace; user-select:none;">
+        <span id="favorites-filter-star" style="font-size:11pt; line-height:1; color: var(--color-text-muted);">&#9734;</span> FAVORITES ONLY
     </label>
     <!-- Search is wired via window.initSearchBar() in app.js (debounced), not an inline
          handler - the old oninput="renderMenu(...)" called a function that was never
@@ -159,6 +159,11 @@
 
     <div id="jump-menu" class="jump-overlay"></div>
 </div>
+
+        <!-- PAGE: ARCADE (in-store games, unlocked after placing an order) -->
+        <div id="page-arcade" class="page">
+            <div id="arcade-root" style="max-width: 1000px; margin: 0 auto; padding: 20px;"></div>
+        </div>
 
         <!-- PAGE: ORDERS (Kitchen Display System / KOT Management) -->
         <div id="page-kitchen" class="page">

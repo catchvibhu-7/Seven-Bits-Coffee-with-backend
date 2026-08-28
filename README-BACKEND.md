@@ -107,75 +107,13 @@ natural next step - happy to help with that once you've picked a provider.
 
 ## Good next steps (not done yet)
 
-- Real payment verification - on hold for now
-- Move to a real database (SQLite) instead of JSON files - to be discussed
-  before starting, since it's a bigger structural change
-- A full multi-store experience: per-store menus, a store switcher, KPIs
-  split by store (today, everything is shop-wide except staff assignment)
+- Real payment verification (see above)
 - Migrate the remaining `onclick=""` handlers to `addEventListener` so the
   Content-Security-Policy can drop `unsafe-inline` entirely
+- Order history (beyond "most recent") on the customer's home page
 - Low-stock alerts, CSV export of sales - from the original feature list
-- Order customization (size, milk type, extras), loyalty points, promo
-  codes, SMS/notification when an order is ready - from the ideas list
 
-## Roles, Manager Dashboard, and Payroll
-
-- **Manager** is a new role between Employee and Admin. A manager gets a
-  scoped version of the Admin page (the nav button reads "DASHBOARD"
-  instead of "ADMIN"): Dashboard (KPIs), Menu Items, Order History,
-  Payroll, and User Management (their own store's employees only) -
-  **not** Global Settings or Branding, and they can't create or manage
-  other managers/admins. All of this is enforced server-side, not just
-  hidden in the UI - a manager calling the API directly still gets a 403
-  on anything outside what they're allowed to do.
-- **Staff tags**: a free-text "responsibility" label (e.g. "Barista",
-  "Cashier") settable when creating or editing a staff account - shown in
-  the staff table, purely informational (doesn't affect permissions).
-- **Pay rate & payroll**: each employee/manager can have a pay rate
-  (hourly/weekly/monthly). Pay periods are fixed calendar cycles -
-  hourly/weekly staff are paid Monday-Sunday, monthly staff on the
-  calendar month - auto-calculated, not something an admin picks each
-  time. Hourly pay is computed from real clock-in/clock-out time (see
-  below); weekly/monthly is a flat rate per period. "Mark Paid" snapshots
-  that period's amount so it can't change after the fact and can't be
-  marked paid twice.
-- **Clock in/out**: employees and managers get a Clock In/Out button in
-  the nav bar. This is what makes hourly pay real rather than a guess -
-  worked hours are summed from actual shift timestamps.
-- **8-hour daily cap, with manual overtime approval**: no single calendar
-  day ever counts for more than 8 hours toward pay - whether the hours
-  came from self clock-in/out or a manager marking attendance directly -
-  unless a manager explicitly approves overtime for that specific person
-  and date. This is a deliberate two-step design: entering/marking hours
-  and approving overtime are always separate actions, so the cap can't be
-  bypassed just by how a number gets entered.
-- **Manager-marked attendance**: for staff who never log into the system
-  themselves (e.g. table-service staff with no real need for an account -
-  see below), a manager records their hours directly from the Payroll
-  tab, subject to the same 8-hour cap and overtime approval as everyone
-  else.
-- **Staff without their own login**: nothing requires a staff member to
-  actually use an account. A manager can create an `employee` account
-  purely as a payroll record (tag it, e.g., "Server"), never hand out the
-  username/password, and mark that person's attendance manually each pay
-  period. If that person ever needs their own access later, the account
-  is already there - just hand over the credentials.
-- **Multi-store groundwork**: a `stores` concept now exists (an owner can
-  add a new store from Branding), and staff accounts carry a `storeId`.
-  With one store this changes nothing day-to-day - it means adding a
-  real second location later is "create a store, assign people to it,"
-  not a data migration. The rest of the multi-store experience (a menu
-  per store, a store switcher, KPIs split by store) isn't built yet.
-
-## KPI Dashboard
-
-The Admin/Manager Dashboard tab shows: today/week/month/all-time revenue
-and order counts, a 7-day revenue bar chart, and a top-5 best-sellers list
-- all computed live from `data/orders.json`, no separate analytics store.
-Charts are plain CSS (no charting library), keeping the zero-dependency
-philosophy.
-
-
+## Admin panel tour (Global Settings / Menu Items / Order History / User Management / Branding)
 
 - **Menu Items**: add/edit items through a form (not a browser prompt) -
   section and icon are dropdowns, and edits cover every field, not just price.

@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "game": "breakout",
+    "name": "Abhinav",
+    "score": 10,
+    "achievedAt": "2026-08-27T18:21:43.451Z"
+  },
+  {
+    "id": 2,
+    "game": "breakout",
+    "name": "Abhinav",
+    "score": 20,
+    "achievedAt": "2026-08-27T18:21:57.121Z"
+  },
+  {
+    "id": 3,
+    "game": "simon",
+    "name": "Abhinav",
+    "score": 5,
+    "achievedAt": "2026-08-27T18:42:40.064Z"
+  },
+  {
+    "id": 4,
+    "game": "invaders",
+    "name": "Abhinav",
+    "score": 320,
+    "achievedAt": "2026-08-27T18:43:24.800Z"
+  },
+  {
+    "id": 5,
+    "game": "invaders",
+    "name": "Abhinav",
+    "score": 200,
+    "achievedAt": "2026-08-27T18:43:42.191Z"
+  }
+]

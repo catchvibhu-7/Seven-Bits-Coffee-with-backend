@@ -175,8 +175,8 @@ header {
     height: 44px; /* Matches search input height */
     width: 44px;  /* Square aspect ratio */
     flex-shrink: 0; /* Prevents buttons from squishing */
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -1393,4 +1393,156 @@ header {
     height: 40px;
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 12" shape-rendering="crispEdges"><path d="M2 2h1v1H2zM5 2h1v1H5zM2 3h4v4H2zM1 4h1v3H1zM6 4h1v3H6zM2 7h1v1H2zM5 7h1v1H5zM6 5h2v1H6zM8 4h1v1H8zM9 3h1v1H9zM10 2h1v1H10z" fill="%23d97706"/></svg>');
     background-size: contain;
+}
+
+/* ==========================================================================
+   ARCADE (in-store GAMES tab) - card grid echoes .menu-grid's visual
+   language (same card chrome, same icon-above-name layout) so it reads as
+   part of the same app instead of a bolted-on mini-site.
+   ========================================================================== */
+.arcade-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 16px;
+    padding: 10px 0 20px;
+}
+
+.arcade-card {
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 4px;
+    padding: 20px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.arcade-card:hover {
+    transform: scale(1.03);
+    background: #1a1a1a;
+}
+
+.arcade-card .arcade-thumb {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+}
+
+.arcade-card .arcade-card-name {
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+    color: var(--color-text);
+}
+
+/* Play layout: game switcher/tips + game area + leaderboard sidebar.
+   Stacked on narrow screens (a phone in someone's hand is the primary
+   in-store device) with just the game and leaderboard - the switcher panel
+   is a wide-screen convenience, not worth the vertical space it'd cost on a
+   phone, so the game stays the largest thing on screen there. At the wide
+   breakpoint this becomes a fixed-width 3-column grid rather than a flex
+   row that stretches the game column to fill the viewport - the actual
+   game content (a canvas or a small DOM grid) never gets wider than ~480px
+   regardless of screen width, so letting that column grow just left a sea
+   of empty padding on either side of it. Centering the fixed-width grid
+   instead means leftover width becomes page margin outside the component,
+   not dead space inside it. */
+.arcade-play-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+.arcade-switcher {
+    display: none;
+}
+
+.arcade-game-area {
+    width: 100%;
+    min-width: 0; /* lets canvas/grid children shrink instead of overflowing their column */
+}
+
+.arcade-sidebar {
+    width: 100%;
+}
+
+@media (min-width: 820px) {
+    .arcade-play-layout {
+        grid-template-columns: 190px minmax(0, 480px) 260px;
+        justify-content: center;
+        align-items: start;
+    }
+    .arcade-switcher {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        position: sticky;
+        top: 20px;
+    }
+    .arcade-game-area {
+        max-width: 480px;
+        margin: 0 auto;
+    }
+    .arcade-sidebar {
+        position: sticky;
+        top: 20px;
+    }
+}
+
+.arcade-switcher-games {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.arcade-switch-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    cursor: pointer;
+    text-align: left;
+    font-family: "Courier New", monospace;
+    font-size: 7.5pt;
+    color: var(--color-text);
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.arcade-switch-btn:hover {
+    border-color: var(--color-accent);
+    background: #1a1a1a;
+}
+
+.arcade-switch-btn .arcade-thumb {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.arcade-tip-box {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 12px;
+}
+
+.arcade-tip-label {
+    font-size: 7pt;
+    letter-spacing: 1px;
+    color: var(--color-accent);
+    margin-bottom: 6px;
+}
+
+.arcade-tip-text {
+    font-size: 8pt;
+    color: var(--color-text-muted);
+    line-height: 1.4;
 }

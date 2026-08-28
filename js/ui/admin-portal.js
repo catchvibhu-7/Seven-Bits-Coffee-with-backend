@@ -201,6 +201,17 @@ export const AdminPortal = {
                     <input type="text" id="cfg-upi-payee-name" value="${c.upiPayeeName || ""}" placeholder="${c.shopName || "Your Shop"}" />
                 </div>
 
+                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ARCADE (GAMES TAB)</h3>
+                <p class="admin-help-text" style="margin-bottom:10px;">In-store only: a customer/guest unlocks the arcade for the session length below, starting from their most recent order.</p>
+                <div class="control-group" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="cfg-arcade-enabled" ${(c.arcade?.enabled ?? true) ? "checked" : ""} style="width:auto;" />
+                    <label style="margin:0;" for="cfg-arcade-enabled">ENABLE ARCADE</label>
+                </div>
+                <div class="control-group">
+                    <label>SESSION LENGTH (hours)</label>
+                    <input type="text" id="cfg-arcade-hours" value="${c.arcade?.sessionHours ?? 2}" />
+                </div>
+
                 <p id="global-settings-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <button class="admin-btn-primary" id="cfg-save">SAVE SETTINGS</button>
             </div>
@@ -214,6 +225,7 @@ export const AdminPortal = {
             const serviceCharge = parseFloat(document.getElementById("cfg-service-charge").value) / 100;
             const tipAmount = parseFloat(document.getElementById("cfg-tip-amount").value);
             const tableCount = parseInt(document.getElementById("cfg-table-count").value, 10);
+            const arcadeHours = parseFloat(document.getElementById("cfg-arcade-hours").value);
 
             if ([cgst, sgst, serviceCharge, tipAmount].some((n) => !Number.isFinite(n) || n < 0)) {
                 errorEl.textContent = "Rates and amounts must be positive numbers.";
@@ -221,6 +233,10 @@ export const AdminPortal = {
             }
             if (!Number.isFinite(tableCount) || tableCount < 0) {
                 errorEl.textContent = "Number of tables must be zero or a positive whole number.";
+                return;
+            }
+            if (!Number.isFinite(arcadeHours) || arcadeHours <= 0) {
+                errorEl.textContent = "Arcade session length must be a positive number of hours.";
                 return;
             }
 
@@ -235,7 +251,8 @@ export const AdminPortal = {
                     serviceChargeRate: serviceCharge,
                     tableCount,
                     upiVpa: document.getElementById("cfg-upi-vpa").value.trim(),
-                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim()
+                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim(),
+                    arcade: { enabled: document.getElementById("cfg-arcade-enabled").checked, sessionHours: arcadeHours }
                 });
                 if (window.applyBranding) window.applyBranding(AdminConfig.settings);
                 ok("Settings saved");
@@ -557,9 +574,11 @@ export const AdminPortal = {
         const pendingRequestItems = this.menu.items.filter((i) => (i.disableRequests || []).length > 0);
 
         const iconHtml = (item) =>
-            customIcons[item.icon]
-                ? `<img src="${customIcons[item.icon]}" style="width:22px; height:22px; object-fit:contain;" />`
-                : `<span class="icon icon-${item.icon}" style="display:inline-block; width:22px; height:22px;"></span>`;
+            item.imageUrl
+                ? `<img src="${item.imageUrl}" style="width:22px; height:22px; object-fit:cover; border-radius:4px;" />`
+                : customIcons[item.icon]
+                  ? `<img src="${customIcons[item.icon]}" style="width:22px; height:22px; object-fit:contain;" />`
+                  : `<span class="icon icon-${item.icon}" style="display:inline-block; width:22px; height:22px;"></span>`;
 
         const rowHtml = (item) => {
             if (item.deleted) {
@@ -568,12 +587,19 @@ export const AdminPortal = {
                 <td>${iconHtml(item)}</td>
                 <td>${escapeHtmlAttr(item.name)} <span style="color:var(--color-danger); font-size:7pt;">DELETED</span></td>
                 <td>\u20b9${item.price}</td>
+                <td></td>
                 <td style="text-align:right;">
                     <button class="admin-btn" data-restore="${item.id}">RESTORE</button>
                 </td>
             </tr>
         `;
             }
+            const stockCell =
+                item.stockCount == null
+                    ? `<span style="color:var(--color-text-muted); font-size:8pt;">\u221e</span>`
+                    : item.stockCount === 0
+                      ? `<span style="color:var(--color-danger); font-size:8pt;">OUT OF STOCK</span>`
+                      : `<span style="${item.stockCount <= 5 ? "color:var(--color-danger);" : ""} font-size:8pt;">${item.stockCount}</span>`;
             return `
             <tr style="${item.available === false ? "opacity:0.5;" : ""}">
                 <td>${iconHtml(item)}</td>
@@ -583,6 +609,7 @@ export const AdminPortal = {
                         ? `<br><span style="color: var(--color-accent); font-size: 7pt;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `\u20b9${item.promoDiscount.value} OFF`}</span>`
                         : ""
                 }</td>
+                <td>${stockCell}</td>
                 <td style="text-align:right;">
                     <button class="admin-btn" data-edit="${item.id}">EDIT</button>
                     <button class="admin-btn" data-toggle-available="${item.id}">${item.available === false ? "MARK AVAILABLE" : "MARK UNAVAILABLE"}</button>
@@ -625,7 +652,7 @@ export const AdminPortal = {
                         <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}">DELETE SECTION</button>
                     </div>
                     <table class="admin-table">
-                        <thead><tr><th>ICON</th><th>NAME</th><th>PRICE</th><th style="text-align:right;">ACTION</th></tr></thead>
+                        <thead><tr><th>ICON</th><th>NAME</th><th>PRICE</th><th>STOCK</th><th style="text-align:right;">ACTION</th></tr></thead>
                         <tbody>${pageItems.map(rowHtml).join("")}</tbody>
                     </table>
                     ${
@@ -1407,6 +1434,14 @@ export const AdminPortal = {
                     <span style="font-size:8pt;">Payment: <strong style="color:${order.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${order.isPaid ? "PAID" : "UNPAID"}</strong></span>
                     ${!order.isPaid ? `<button class="admin-btn admin-btn-primary" id="oh-mark-paid">MARK PAID</button>` : ""}
                 </div>
+                ${
+                    order.rating
+                        ? `<div style="margin-top:10px; font-size:8pt; color:var(--color-accent);">
+                    CUSTOMER RATING: ${"★".repeat(order.rating)}${"☆".repeat(5 - order.rating)}
+                    ${order.feedbackComment ? `<div style="color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtmlAttr(order.feedbackComment)}"</div>` : ""}
+                </div>`
+                        : ""
+                }
             `;
 
             const markPaidBtn = document.getElementById("oh-mark-paid");

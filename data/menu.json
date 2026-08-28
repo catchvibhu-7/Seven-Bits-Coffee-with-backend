@@ -76,6 +76,14 @@
       "story": "Aerated Americano. Coffee in the cloud."
     },
     {
+      "id": 107,
+      "section": "fast-sellers",
+      "name": "Daily Driver",
+      "price": 150,
+      "icon": "cold-brew",
+      "story": "Batch brew. The stable, reliable drip."
+    },
+    {
       "id": 108,
       "section": "limited",
       "name": "Quantum Cortado",
@@ -298,62 +306,6 @@
       "price": 140,
       "icon": "macaron",
       "story": "Pixel-sized cold brew treats."
-    },
-    {
-      "id": 308,
-      "section": "savory",
-      "name": "Baked Vada Pav",
-      "price": 70,
-      "icon": "donut",
-      "story": "A spiced, temper-infused potato core hermetically sealed within a double-fermented brioche matrix, precision-baked to achieve optimal browning with zero immersion frying."
-    },
-    {
-      "id": 309,
-      "section": "fast-sellers",
-      "name": "Daily Driver",
-      "price": 150,
-      "icon": "americano",
-      "story": "Batch brew. The stable, reliable drip."
-    },
-    {
-      "id": 310,
-      "section": "fast-sellers",
-      "name": "test1",
-      "price": 50,
-      "icon": "americano",
-      "story": "dsf",
-      "deleted": true,
-      "available": false
-    },
-    {
-      "id": 311,
-      "section": "fast-sellers",
-      "name": "t2",
-      "price": 56,
-      "icon": "americano",
-      "story": "dfsd",
-      "deleted": true,
-      "available": false
-    },
-    {
-      "id": 312,
-      "section": "fast-sellers",
-      "name": "t3",
-      "price": 56,
-      "icon": "americano",
-      "story": "asds",
-      "deleted": true,
-      "available": false
-    },
-    {
-      "id": 313,
-      "section": "fast-sellers",
-      "name": "t4",
-      "price": 34,
-      "icon": "americano",
-      "story": "easda",
-      "deleted": true,
-      "available": false
     }
   ],
   "inventory": {

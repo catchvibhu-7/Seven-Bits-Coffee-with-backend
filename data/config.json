@@ -14,7 +14,6 @@
     "background": "#0a0a0a",
     "surface": "#111111",
     "text": "#f9fafb",
-    "textMuted": "#888888",
     "secondary": "#ff8000"
   },
   "footer": {
@@ -25,21 +24,5 @@
     "hours": "Mon-Sat: 8Am to 8Pm"
   },
   "upiVpa": "catchvibhu-1@okaysbi",
-  "upiPayeeName": "Kumar Vaibhav",
-  "heroTagline": "Born from love for Physics, Coffee, a cat named Ginger and an obsession with the number seven. We don't just brew, we process flavour with low-latency precision.",
-  "tableCount": 10,
-  "textStyles": {
-    "adminTabs": {
-      "fontSize": 9,
-      "color": "#ffffff"
-    },
-    "adminHelp": {
-      "fontSize": 8,
-      "color": "#ffffff"
-    },
-    "adminLabels": {
-      "fontSize": 8,
-      "color": "#ffffff"
-    }
-  }
+  "upiPayeeName": "Kumar Vaibhav"
 }

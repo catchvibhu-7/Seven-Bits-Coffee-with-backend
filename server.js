@@ -90,6 +90,7 @@ const FAVORITES_FILE = path.join(DATA_DIR, "favorites.json");
 const COMBOS_FILE = path.join(DATA_DIR, "combos.json");
 const TABLE_SESSIONS_FILE = path.join(DATA_DIR, "table-sessions.json");
 const COUPONS_FILE = path.join(DATA_DIR, "coupons.json");
+const ARCADE_SCORES_FILE = path.join(DATA_DIR, "arcade-scores.json");
 
 if (!fs.existsSync(AUDIT_LOG_FILE)) writeJson(AUDIT_LOG_FILE, []);
 if (!fs.existsSync(BRANDING_PROFILES_FILE)) writeJson(BRANDING_PROFILES_FILE, {});
@@ -190,6 +191,14 @@ if (!fs.existsSync(CONFIG_FILE)) {
       enabled: true,
       pointsPerRupeeSpent: 0.1, // e.g. 0.1 = 1 point per Rs.10 spent
       rupeeValuePerPoint: 0.5 // e.g. 0.5 = each point is worth Rs.0.50 off
+    },
+    // In-store arcade (ARCADE tab) - a customer/guest unlocks it for
+    // sessionHours after placing an order, admin-editable from Global
+    // Settings. This is deliberately in-store only: there's no reason to
+    // let someone play from home just because they ordered once.
+    arcade: {
+      enabled: true,
+      sessionHours: 2
     }
   });
 }
@@ -776,7 +785,7 @@ function resolveComboLine(requested, menu, combos) {
 
   const components = combo.items
     .map((c) => ({ product: menu.items.find((i) => i.id === c.id), qty: c.quantity }))
-    .filter((c) => c.product && c.product.available !== false);
+    .filter((c) => c.product && c.product.available !== false && !(c.product.stockCount != null && c.product.stockCount <= 0));
   if (components.length === 0) return [];
 
   const baseUnitSum = components.reduce((sum, c) => sum + c.product.price * c.qty, 0);
@@ -830,6 +839,10 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
     const product = menu.items.find((i) => i.id === id);
     if (!product) continue; // ignore unknown items rather than trusting the client
     if (product.available === false) continue; // item was taken off the menu - never trust client to skip it itself
+    if (product.stockCount != null && product.stockCount <= 0) continue; // sold out - dropped silently, same as unavailable
+    if (product.stockCount != null && quantity > product.stockCount) {
+      throw new Error(`${product.name} only has ${product.stockCount} left in stock`);
+    }
 
     const custom = resolveCustomization(requested.customization, product);
     // authoritative: promo-discounted base price (or plain base price if no
@@ -1854,6 +1867,16 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
   if (body.promoDiscount && !sanitizePromoDiscount(body.promoDiscount)) {
     return sendJson(res, 400, { error: "Invalid promo discount" });
   }
+  if (body.imageUrl && String(body.imageUrl).length > 8000) {
+    return sendJson(res, 400, { error: "Image URL is too long" });
+  }
+  let stockCount = null;
+  if (body.stockCount !== undefined && body.stockCount !== null && body.stockCount !== "") {
+    stockCount = parseInt(body.stockCount, 10);
+    if (!Number.isFinite(stockCount) || stockCount < 0) {
+      return sendJson(res, 400, { error: "Stock count must be zero or a positive number, or left blank to not track stock" });
+    }
+  }
 
   const nextId = menu.items.length ? Math.max(...menu.items.map((i) => i.id)) + 1 : 1;
   const item = {
@@ -1862,8 +1885,10 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
     name,
     price,
     icon: body.icon || "espresso",
+    imageUrl: body.imageUrl ? String(body.imageUrl).trim() : null,
     story: body.story || "",
-    promoDiscount: sanitizePromoDiscount(body.promoDiscount)
+    promoDiscount: sanitizePromoDiscount(body.promoDiscount),
+    stockCount
   };
   menu.items.push(item);
   writeJson(MENU_FILE, menu);
@@ -1880,6 +1905,12 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
   if (body.name !== undefined) item.name = String(body.name).trim();
   if (body.story !== undefined) item.story = String(body.story);
   if (body.icon !== undefined) item.icon = String(body.icon);
+  if (body.imageUrl !== undefined) {
+    if (body.imageUrl && String(body.imageUrl).length > 8000) {
+      return sendJson(res, 400, { error: "Image URL is too long" });
+    }
+    item.imageUrl = body.imageUrl ? String(body.imageUrl).trim() : null;
+  }
   if (body.section !== undefined) {
     if (!menu.sections.some((s) => s.id === body.section)) {
       return sendJson(res, 400, { error: "Unknown section" });
@@ -1897,6 +1928,18 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
   }
   if (body.deleted !== undefined) {
     item.deleted = Boolean(body.deleted); // restoring a soft-deleted item
+  }
+  if (body.stockCount !== undefined) {
+    if (body.stockCount === null || body.stockCount === "") {
+      item.stockCount = null; // stop tracking stock for this item
+    } else {
+      const stockCount = parseInt(body.stockCount, 10);
+      if (!Number.isFinite(stockCount) || stockCount < 0) {
+        return sendJson(res, 400, { error: "Stock count must be zero or a positive number, or left blank to not track stock" });
+      }
+      item.stockCount = stockCount;
+      if (stockCount > 0 && item.available === false) item.available = true; // restocking implicitly makes it orderable again
+    }
   }
   if (body.promoDiscount !== undefined) {
     if (body.promoDiscount === null) {
@@ -2102,6 +2145,12 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   if (body.customIcons && typeof body.customIcons === "object") {
     config.customIcons = { ...config.customIcons, ...body.customIcons };
   }
+  if (body.arcade && typeof body.arcade === "object") {
+    config.arcade = { ...config.arcade, ...body.arcade };
+    config.arcade.enabled = config.arcade.enabled !== false;
+    const hours = Number(config.arcade.sessionHours);
+    config.arcade.sessionHours = Number.isFinite(hours) && hours > 0 ? Math.min(hours, 24) : 2;
+  }
   writeJson(CONFIG_FILE, config);
   sendJson(res, 200, config);
 });
@@ -2301,6 +2350,23 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
       writeJson(USERS_FILE, users);
     }
   }
+  // Decrement stock for any tracked item (combo lines included - they carry
+  // the component's own menu id, so a combo purchase draws down its
+  // components' stock too). Items with stockCount === null are untracked
+  // and never touched here.
+  {
+    const menuForStock = readJson(MENU_FILE, { sections: [], items: [] });
+    let stockChanged = false;
+    for (const line of order.items) {
+      if (line.id == null) continue;
+      const product = menuForStock.items.find((i) => i.id === line.id);
+      if (!product || product.stockCount == null) continue;
+      product.stockCount = Math.max(0, product.stockCount - line.quantity);
+      if (product.stockCount === 0) product.available = false;
+      stockChanged = true;
+    }
+    if (stockChanged) writeJson(MENU_FILE, menuForStock);
+  }
 
   broadcastOrdersChanged();
   sendJson(res, 201, order);
@@ -2327,6 +2393,37 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
   writeJson(ORDERS_FILE, orders);
   broadcastOrdersChanged();
   sendJson(res, 200, order);
+});
+
+/** The customer/guest who placed the order rates it, once - same ownership
+ *  check as GET /api/orders/mine (never trust an id alone; a guest/customer
+ *  could otherwise rate any order by guessing its id). Re-submitting
+ *  overwrites the previous rating rather than erroring, so someone can
+ *  correct a misclick. */
+route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/feedback\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
+  const orders = readJson(ORDERS_FILE, []);
+  const order = orders.find((o) => o.id === params.id);
+  if (!order) return sendJson(res, 404, { error: "Order not found" });
+
+  const owns =
+    (session.role === "customer" && order.customerId === session.userId) ||
+    (session.role === "guest" && order.customerPhone === session.phone);
+  if (!owns) return sendJson(res, 403, { error: "This isn't your order" });
+
+  const rating = parseInt(body.rating, 10);
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+    return sendJson(res, 400, { error: "Rating must be between 1 and 5" });
+  }
+  const comment = String(body.comment || "").trim().slice(0, 500);
+
+  order.rating = rating;
+  order.feedbackComment = comment;
+  order.feedbackAt = new Date().toISOString();
+  writeJson(ORDERS_FILE, orders);
+  sendJson(res, 200, { rating: order.rating, comment: order.feedbackComment });
 });
 
 route("GET", /^\/api\/favorites\/?$/, async (req, res) => {
@@ -2476,6 +2573,553 @@ route("POST", /^\/api\/coupons\/validate\/?$/, async (req, res) => {
   if (!coupon) return sendJson(res, 404, { error: "Invalid or expired coupon code" });
   const subtotal = Number(body.subtotal) || 0;
   sendJson(res, 200, { code: coupon.code, type: coupon.type, value: coupon.value, discountAmount: computeCouponDiscount(coupon, subtotal) });
+});
+
+// ---------------------------------------------------------------------------
+// Arcade (ARCADE nav tab) - in-store only. A customer/guest unlocks it for
+// config.arcade.sessionHours after placing an order (see arcadeAccessInfo).
+// Tic-Tac-Toe match state is in-memory, not persisted - a server restart
+// mid-match just ends it, an acceptable trade for a "something to do while
+// you wait" feature rather than anything stakes-bearing. High scores ARE
+// persisted (ARCADE_SCORES_FILE) since there's no ongoing state to lose.
+// ---------------------------------------------------------------------------
+
+function arcadeOwnerKey(session) {
+  return session.role === "customer" ? `customer:${session.userId}` : `guest:${session.phone}`;
+}
+
+function arcadeAccessInfo(session) {
+  const config = readJson(CONFIG_FILE, {});
+  const arcadeConfig = config.arcade || { enabled: true, sessionHours: 2 };
+  if (!arcadeConfig.enabled) {
+    return { allowed: false, reason: "The arcade isn't available right now." };
+  }
+  const orders = readJson(ORDERS_FILE, []);
+  let mine = [];
+  if (session.role === "customer") mine = orders.filter((o) => o.customerId === session.userId);
+  else if (session.role === "guest") mine = orders.filter((o) => o.customerPhone === session.phone);
+  if (mine.length === 0) {
+    return { allowed: false, reason: "Place an order to unlock the arcade." };
+  }
+  const latest = mine.reduce((a, b) => (new Date(a.createdAt) > new Date(b.createdAt) ? a : b));
+  const expiresAt = new Date(new Date(latest.createdAt).getTime() + arcadeConfig.sessionHours * 3600000);
+  const allowed = expiresAt.getTime() > Date.now();
+  return {
+    allowed,
+    expiresAt: expiresAt.toISOString(),
+    reason: allowed ? null : "Your arcade session has expired - place a new order to keep playing."
+  };
+}
+
+route("GET", /^\/api\/arcade\/access\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  sendJson(res, 200, arcadeAccessInfo(session));
+});
+
+route("GET", /^\/api\/arcade\/scores\/?$/, async (req, res, params, url) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const game = url.searchParams.get("game");
+  if (!game) return sendJson(res, 400, { error: "game is required" });
+  const scores = readJson(ARCADE_SCORES_FILE, [])
+    .filter((s) => s.game === game)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+  sendJson(res, 200, scores);
+});
+
+route("POST", /^\/api\/arcade\/scores\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const access = arcadeAccessInfo(session);
+  if (!access.allowed) return sendJson(res, 403, { error: access.reason });
+  const body = await readBody(req);
+  const game = String(body.game || "");
+  const KNOWN_GAMES = ["tetris", "tictactoe", "snake", "pong", "memory", "simon", "minesweeper", "2048", "breakout", "flappy", "invaders", "connectfour", "checkers"];
+  if (!KNOWN_GAMES.includes(game)) return sendJson(res, 400, { error: "Unknown game" });
+  const score = parseInt(body.score, 10);
+  if (!Number.isFinite(score) || score <= 0 || score > 1000000) {
+    return sendJson(res, 400, { error: "Invalid score" });
+  }
+  const scores = readJson(ARCADE_SCORES_FILE, []);
+  scores.push({
+    id: scores.length ? Math.max(...scores.map((s) => s.id)) + 1 : 1,
+    game,
+    name: session.name || "Player",
+    score,
+    achievedAt: new Date().toISOString()
+  });
+  writeJson(ARCADE_SCORES_FILE, scores);
+  sendJson(res, 201, { ok: true });
+});
+
+// --- Tic-Tac-Toe vs another in-store player ---
+// A single waiting slot (not a full queue - this is a small in-store
+// arcade, not a matchmaking platform) pairs the next two players who ask.
+// Broadcasts on the same SSE channel orders use (see broadcastOrdersChanged/
+// sseClients) rather than opening a second stream - clients already
+// listening for "orders" events also listen for "arcade" ones and re-fetch
+// match state through the endpoints below.
+let arcadeWaitingPlayer = null; // { key, name } | null
+const arcadeMatches = new Map(); // matchId -> match
+let nextArcadeMatchId = 1;
+
+function broadcastArcadeChanged() {
+  for (const res of sseClients) {
+    res.write("event: arcade\ndata: changed\n\n");
+  }
+}
+
+function findArcadeMatchForPlayer(key) {
+  for (const match of arcadeMatches.values()) {
+    if (match.players.includes(key)) return match;
+  }
+  return null;
+}
+
+function checkTicTacToeWinner(board) {
+  const lines = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+  ];
+  for (const [a, b, c] of lines) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+  }
+  return board.every((cell) => cell) ? "draw" : null;
+}
+
+route("POST", /^\/api\/arcade\/tictactoe\/queue\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const access = arcadeAccessInfo(session);
+  if (!access.allowed) return sendJson(res, 403, { error: access.reason });
+
+  const key = arcadeOwnerKey(session);
+  const existingMatch = findArcadeMatchForPlayer(key);
+  if (existingMatch) return sendJson(res, 200, { status: "matched", matchId: existingMatch.id });
+
+  if (arcadeWaitingPlayer && arcadeWaitingPlayer.key !== key) {
+    const match = {
+      id: nextArcadeMatchId++,
+      players: [arcadeWaitingPlayer.key, key],
+      names: [arcadeWaitingPlayer.name, session.name || "Player"],
+      board: Array(9).fill(null),
+      turn: 0,
+      winner: null,
+      createdAt: new Date().toISOString()
+    };
+    arcadeMatches.set(match.id, match);
+    arcadeWaitingPlayer = null;
+    broadcastArcadeChanged();
+    return sendJson(res, 200, { status: "matched", matchId: match.id });
+  }
+
+  arcadeWaitingPlayer = { key, name: session.name || "Player" };
+  sendJson(res, 200, { status: "waiting" });
+});
+
+route("POST", /^\/api\/arcade\/tictactoe\/cancel\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const key = arcadeOwnerKey(session);
+  if (arcadeWaitingPlayer && arcadeWaitingPlayer.key === key) arcadeWaitingPlayer = null;
+  sendJson(res, 200, { ok: true });
+});
+
+route("GET", /^\/api\/arcade\/tictactoe\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const match = arcadeMatches.get(Number(params.id));
+  if (!match) return sendJson(res, 404, { error: "Match not found" });
+  const key = arcadeOwnerKey(session);
+  const you = match.players.indexOf(key);
+  if (you === -1) return sendJson(res, 403, { error: "Not your match" });
+  sendJson(res, 200, { ...match, you });
+});
+
+route("POST", /^\/api\/arcade\/tictactoe\/(?<id>\d+)\/move\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const match = arcadeMatches.get(Number(params.id));
+  if (!match) return sendJson(res, 404, { error: "Match not found" });
+  const key = arcadeOwnerKey(session);
+  const playerIndex = match.players.indexOf(key);
+  if (playerIndex === -1) return sendJson(res, 403, { error: "Not your match" });
+  if (match.winner) return sendJson(res, 400, { error: "Game already over" });
+  if (match.turn !== playerIndex) return sendJson(res, 400, { error: "Not your turn" });
+
+  const body = await readBody(req);
+  const cell = parseInt(body.cell, 10);
+  if (!Number.isFinite(cell) || cell < 0 || cell > 8 || match.board[cell]) {
+    return sendJson(res, 400, { error: "Invalid move" });
+  }
+
+  match.board[cell] = playerIndex === 0 ? "X" : "O";
+  match.winner = checkTicTacToeWinner(match.board);
+  match.turn = playerIndex === 0 ? 1 : 0;
+  broadcastArcadeChanged();
+  sendJson(res, 200, { ...match, you: playerIndex });
+});
+
+route("POST", /^\/api\/arcade\/tictactoe\/(?<id>\d+)\/leave\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  arcadeMatches.delete(Number(params.id));
+  broadcastArcadeChanged();
+  sendJson(res, 200, { ok: true });
+});
+
+// --- Connect Four vs another in-store player ---
+// Same single-waiting-slot pairing as Tic-Tac-Toe, separate queue/match
+// pools so the two games don't cross-pair players.
+let connectFourWaitingPlayer = null;
+const connectFourMatches = new Map();
+let nextConnectFourMatchId = 1;
+const C4_ROWS = 6;
+const C4_COLS = 7;
+
+function findConnectFourMatchForPlayer(key) {
+  for (const match of connectFourMatches.values()) {
+    if (match.players.includes(key)) return match;
+  }
+  return null;
+}
+
+function checkConnectFourWinner(board) {
+  const get = (r, c) => board[r * C4_COLS + c];
+  const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  for (let r = 0; r < C4_ROWS; r++) {
+    for (let c = 0; c < C4_COLS; c++) {
+      const cell = get(r, c);
+      if (!cell) continue;
+      for (const [dr, dc] of dirs) {
+        let count = 1;
+        for (let k = 1; k < 4; k++) {
+          const nr = r + dr * k;
+          const nc = c + dc * k;
+          if (nr < 0 || nr >= C4_ROWS || nc < 0 || nc >= C4_COLS || get(nr, nc) !== cell) break;
+          count++;
+        }
+        if (count >= 4) return cell;
+      }
+    }
+  }
+  return board.every((c) => c) ? "draw" : null;
+}
+
+route("POST", /^\/api\/arcade\/connectfour\/queue\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const access = arcadeAccessInfo(session);
+  if (!access.allowed) return sendJson(res, 403, { error: access.reason });
+
+  const key = arcadeOwnerKey(session);
+  const existingMatch = findConnectFourMatchForPlayer(key);
+  if (existingMatch) return sendJson(res, 200, { status: "matched", matchId: existingMatch.id });
+
+  if (connectFourWaitingPlayer && connectFourWaitingPlayer.key !== key) {
+    const match = {
+      id: nextConnectFourMatchId++,
+      players: [connectFourWaitingPlayer.key, key],
+      names: [connectFourWaitingPlayer.name, session.name || "Player"],
+      board: Array(C4_ROWS * C4_COLS).fill(null),
+      turn: 0,
+      winner: null,
+      createdAt: new Date().toISOString()
+    };
+    connectFourMatches.set(match.id, match);
+    connectFourWaitingPlayer = null;
+    broadcastArcadeChanged();
+    return sendJson(res, 200, { status: "matched", matchId: match.id });
+  }
+
+  connectFourWaitingPlayer = { key, name: session.name || "Player" };
+  sendJson(res, 200, { status: "waiting" });
+});
+
+route("POST", /^\/api\/arcade\/connectfour\/cancel\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const key = arcadeOwnerKey(session);
+  if (connectFourWaitingPlayer && connectFourWaitingPlayer.key === key) connectFourWaitingPlayer = null;
+  sendJson(res, 200, { ok: true });
+});
+
+route("GET", /^\/api\/arcade\/connectfour\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const match = connectFourMatches.get(Number(params.id));
+  if (!match) return sendJson(res, 404, { error: "Match not found" });
+  const key = arcadeOwnerKey(session);
+  const you = match.players.indexOf(key);
+  if (you === -1) return sendJson(res, 403, { error: "Not your match" });
+  sendJson(res, 200, { ...match, you });
+});
+
+route("POST", /^\/api\/arcade\/connectfour\/(?<id>\d+)\/move\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const match = connectFourMatches.get(Number(params.id));
+  if (!match) return sendJson(res, 404, { error: "Match not found" });
+  const key = arcadeOwnerKey(session);
+  const playerIndex = match.players.indexOf(key);
+  if (playerIndex === -1) return sendJson(res, 403, { error: "Not your match" });
+  if (match.winner) return sendJson(res, 400, { error: "Game already over" });
+  if (match.turn !== playerIndex) return sendJson(res, 400, { error: "Not your turn" });
+
+  const body = await readBody(req);
+  const column = parseInt(body.column, 10);
+  if (!Number.isFinite(column) || column < 0 || column >= C4_COLS) {
+    return sendJson(res, 400, { error: "Invalid column" });
+  }
+  let targetRow = -1;
+  for (let r = C4_ROWS - 1; r >= 0; r--) {
+    if (!match.board[r * C4_COLS + column]) {
+      targetRow = r;
+      break;
+    }
+  }
+  if (targetRow === -1) return sendJson(res, 400, { error: "That column is full" });
+
+  const symbol = playerIndex === 0 ? "R" : "Y";
+  match.board[targetRow * C4_COLS + column] = symbol;
+  match.winner = checkConnectFourWinner(match.board);
+  match.turn = playerIndex === 0 ? 1 : 0;
+  broadcastArcadeChanged();
+  sendJson(res, 200, { ...match, you: playerIndex });
+});
+
+route("POST", /^\/api\/arcade\/connectfour\/(?<id>\d+)\/leave\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  connectFourMatches.delete(Number(params.id));
+  broadcastArcadeChanged();
+  sendJson(res, 200, { ok: true });
+});
+
+// --- Checkers vs another in-store player (online only - no bot mode: full
+// American-checkers rules, including forced captures and multi-jump
+// chains, are complex enough that duplicating them correctly in a
+// client-side bot AI wasn't worth the risk of the two implementations
+// drifting apart; the server is the single source of truth here). ---
+let checkersWaitingPlayer = null;
+const checkersMatches = new Map();
+let nextCheckersMatchId = 1;
+const CK_SIZE = 8;
+
+function ckIdx(r, c) {
+  return r * CK_SIZE + c;
+}
+
+function ckInBounds(r, c) {
+  return r >= 0 && r < CK_SIZE && c >= 0 && c < CK_SIZE;
+}
+
+function initialCheckersBoard() {
+  const board = Array(64).fill(null);
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < CK_SIZE; c++) {
+      if ((r + c) % 2 === 1) board[ckIdx(r, c)] = "b"; // player 0 (black), starts top, moves down
+    }
+  }
+  for (let r = 5; r < 8; r++) {
+    for (let c = 0; c < CK_SIZE; c++) {
+      if ((r + c) % 2 === 1) board[ckIdx(r, c)] = "r"; // player 1 (red), starts bottom, moves up
+    }
+  }
+  return board;
+}
+
+function ckIsPlayerPiece(piece, playerIndex) {
+  if (!piece) return false;
+  return playerIndex === 0 ? piece === "b" || piece === "B" : piece === "r" || piece === "R";
+}
+
+function ckForwardDirs(piece, playerIndex) {
+  const isKing = piece === "B" || piece === "R";
+  if (isKing) return [-1, 1];
+  return playerIndex === 0 ? [1] : [-1]; // player 0 moves down (+row), player 1 moves up (-row)
+}
+
+/** Every legal capture-jump for one piece, single hop (chain continuation
+ *  is handled by calling this again from the landing square). */
+function ckCapturesForPiece(board, r, c, playerIndex) {
+  const piece = board[ckIdx(r, c)];
+  const moves = [];
+  for (const dr of ckForwardDirs(piece, playerIndex)) {
+    for (const dc of [-1, 1]) {
+      const midR = r + dr;
+      const midC = c + dc;
+      const landR = r + dr * 2;
+      const landC = c + dc * 2;
+      if (!ckInBounds(landR, landC)) continue;
+      const midPiece = board[ckIdx(midR, midC)];
+      if (midPiece && !ckIsPlayerPiece(midPiece, playerIndex) && !board[ckIdx(landR, landC)]) {
+        moves.push({ from: [r, c], to: [landR, landC], captured: [midR, midC] });
+      }
+    }
+  }
+  return moves;
+}
+
+function ckSimpleMovesForPiece(board, r, c, playerIndex) {
+  const piece = board[ckIdx(r, c)];
+  const moves = [];
+  for (const dr of ckForwardDirs(piece, playerIndex)) {
+    for (const dc of [-1, 1]) {
+      const nr = r + dr;
+      const nc = c + dc;
+      if (ckInBounds(nr, nc) && !board[ckIdx(nr, nc)]) {
+        moves.push({ from: [r, c], to: [nr, nc] });
+      }
+    }
+  }
+  return moves;
+}
+
+/** All legal moves for a player, applying the standard forced-capture rule:
+ *  if any capture exists anywhere on the board for this player, only
+ *  capture moves are legal this turn. */
+function ckLegalMoves(board, playerIndex) {
+  const captures = [];
+  const simples = [];
+  for (let r = 0; r < CK_SIZE; r++) {
+    for (let c = 0; c < CK_SIZE; c++) {
+      if (!ckIsPlayerPiece(board[ckIdx(r, c)], playerIndex)) continue;
+      captures.push(...ckCapturesForPiece(board, r, c, playerIndex));
+      simples.push(...ckSimpleMovesForPiece(board, r, c, playerIndex));
+    }
+  }
+  return captures.length > 0 ? captures : simples;
+}
+
+function ckMaybePromote(board, r, c) {
+  const piece = board[ckIdx(r, c)];
+  if (piece === "b" && r === CK_SIZE - 1) board[ckIdx(r, c)] = "B";
+  if (piece === "r" && r === 0) board[ckIdx(r, c)] = "R";
+}
+
+function ckWinner(board, nextPlayerIndex) {
+  const nextPlayerHasPieces = board.some((p) => ckIsPlayerPiece(p, nextPlayerIndex));
+  if (!nextPlayerHasPieces) return nextPlayerIndex === 0 ? "1" : "0"; // the OTHER player wins
+  if (ckLegalMoves(board, nextPlayerIndex).length === 0) return nextPlayerIndex === 0 ? "1" : "0";
+  return null;
+}
+
+function findCheckersMatchForPlayer(key) {
+  for (const match of checkersMatches.values()) {
+    if (match.players.includes(key)) return match;
+  }
+  return null;
+}
+
+route("POST", /^\/api\/arcade\/checkers\/queue\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const access = arcadeAccessInfo(session);
+  if (!access.allowed) return sendJson(res, 403, { error: access.reason });
+
+  const key = arcadeOwnerKey(session);
+  const existingMatch = findCheckersMatchForPlayer(key);
+  if (existingMatch) return sendJson(res, 200, { status: "matched", matchId: existingMatch.id });
+
+  if (checkersWaitingPlayer && checkersWaitingPlayer.key !== key) {
+    const match = {
+      id: nextCheckersMatchId++,
+      players: [checkersWaitingPlayer.key, key],
+      names: [checkersWaitingPlayer.name, session.name || "Player"],
+      board: initialCheckersBoard(),
+      turn: 0,
+      winner: null,
+      mustContinueFrom: null, // [r, c] mid-chain-capture, or null
+      createdAt: new Date().toISOString()
+    };
+    checkersMatches.set(match.id, match);
+    checkersWaitingPlayer = null;
+    broadcastArcadeChanged();
+    return sendJson(res, 200, { status: "matched", matchId: match.id });
+  }
+
+  checkersWaitingPlayer = { key, name: session.name || "Player" };
+  sendJson(res, 200, { status: "waiting" });
+});
+
+route("POST", /^\/api\/arcade\/checkers\/cancel\/?$/, async (req, res) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const key = arcadeOwnerKey(session);
+  if (checkersWaitingPlayer && checkersWaitingPlayer.key === key) checkersWaitingPlayer = null;
+  sendJson(res, 200, { ok: true });
+});
+
+route("GET", /^\/api\/arcade\/checkers\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const match = checkersMatches.get(Number(params.id));
+  if (!match) return sendJson(res, 404, { error: "Match not found" });
+  const key = arcadeOwnerKey(session);
+  const you = match.players.indexOf(key);
+  if (you === -1) return sendJson(res, 403, { error: "Not your match" });
+  sendJson(res, 200, { ...match, you, legalMoves: match.winner ? [] : ckLegalMoves(match.board, match.turn) });
+});
+
+route("POST", /^\/api\/arcade\/checkers\/(?<id>\d+)\/move\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  const match = checkersMatches.get(Number(params.id));
+  if (!match) return sendJson(res, 404, { error: "Match not found" });
+  const key = arcadeOwnerKey(session);
+  const playerIndex = match.players.indexOf(key);
+  if (playerIndex === -1) return sendJson(res, 403, { error: "Not your match" });
+  if (match.winner) return sendJson(res, 400, { error: "Game already over" });
+  if (match.turn !== playerIndex) return sendJson(res, 400, { error: "Not your turn" });
+
+  const body = await readBody(req);
+  const from = Array.isArray(body.from) ? body.from.map(Number) : null;
+  const to = Array.isArray(body.to) ? body.to.map(Number) : null;
+  if (!from || !to || from.length !== 2 || to.length !== 2) {
+    return sendJson(res, 400, { error: "Invalid move" });
+  }
+
+  // If mid-chain-capture, the same piece must keep moving from where it is.
+  if (match.mustContinueFrom && (from[0] !== match.mustContinueFrom[0] || from[1] !== match.mustContinueFrom[1])) {
+    return sendJson(res, 400, { error: "You must continue capturing with the same piece" });
+  }
+
+  const legalFromHere = match.mustContinueFrom
+    ? ckCapturesForPiece(match.board, from[0], from[1], playerIndex)
+    : ckLegalMoves(match.board, playerIndex);
+  const chosen = legalFromHere.find((m) => m.from[0] === from[0] && m.from[1] === from[1] && m.to[0] === to[0] && m.to[1] === to[1]);
+  if (!chosen) return sendJson(res, 400, { error: "Illegal move" });
+
+  match.board[ckIdx(to[0], to[1])] = match.board[ckIdx(from[0], from[1])];
+  match.board[ckIdx(from[0], from[1])] = null;
+  if (chosen.captured) {
+    match.board[ckIdx(chosen.captured[0], chosen.captured[1])] = null;
+  }
+  ckMaybePromote(match.board, to[0], to[1]);
+
+  const canContinueCapture = chosen.captured && ckCapturesForPiece(match.board, to[0], to[1], playerIndex).length > 0;
+  if (canContinueCapture) {
+    match.mustContinueFrom = to;
+  } else {
+    match.mustContinueFrom = null;
+    match.turn = playerIndex === 0 ? 1 : 0;
+    match.winner = ckWinner(match.board, match.turn);
+  }
+
+  broadcastArcadeChanged();
+  sendJson(res, 200, { ...match, you: playerIndex, legalMoves: match.winner ? [] : ckLegalMoves(match.board, match.turn) });
+});
+
+route("POST", /^\/api\/arcade\/checkers\/(?<id>\d+)\/leave\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, TRACKING_ROLES);
+  if (!session) return;
+  checkersMatches.delete(Number(params.id));
+  broadcastArcadeChanged();
+  sendJson(res, 200, { ok: true });
 });
 
 // ---------------------------------------------------------------------------
