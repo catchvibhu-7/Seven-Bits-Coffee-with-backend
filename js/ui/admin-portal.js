@@ -548,6 +548,11 @@ export const AdminPortal = {
         ];
 
         root.innerHTML = `
+            ${
+                this.session.role !== "manager"
+                    ? `<button class="admin-btn-secondary" id="open-setup-wizard" style="margin-bottom:16px;">&#9881; GETTING STARTED / SETUP WIZARD</button>`
+                    : ""
+            }
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
                 <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">\u20b9${kpi.today.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
                 <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">\u20b9${kpi.week.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
@@ -660,6 +665,17 @@ export const AdminPortal = {
             btn.addEventListener("click", async () => {
                 this.kpiRange = btn.dataset.range;
                 await this.renderKpiDashboard(root);
+            });
+        });
+
+        document.getElementById("open-setup-wizard")?.addEventListener("click", async () => {
+            const mod = await import("./setup-wizard-modal.js");
+            mod.renderSetupWizardModal({
+                onNavigate: (tabId) => {
+                    this.activeTab = tabId;
+                    this.renderTabs();
+                    this.renderActiveTab();
+                }
             });
         });
     },
