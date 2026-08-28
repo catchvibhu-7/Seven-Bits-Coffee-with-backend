@@ -34,7 +34,7 @@ function skeletonHtml() {
     // Mirrors the final layout's card shapes so there's no layout shift once
     // real data arrives.
     return `
-        <div style="padding:30px 30px 46px; max-width:1240px;">
+        <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
             <div style="height:90px; border-bottom:2px solid var(--color-border);"></div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(212px,1fr)); gap:14px; margin-top:26px;">
                 ${Array(4).fill('<div style="height:96px; background:var(--color-surface); border:1px solid var(--color-border);"></div>').join("")}
@@ -80,7 +80,7 @@ export async function renderStaffHome(session) {
         .slice(0, 6);
 
     root.innerHTML = `
-        <div style="padding:30px 30px 46px; max-width:1240px;">
+        <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
             <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap; border-bottom:2px solid var(--color-accent); padding-bottom:22px;">
                 <div>
                     <div style="font-size:11px; letter-spacing:.2em; color:var(--color-text-muted); text-transform:uppercase;">${dateLabel}</div>

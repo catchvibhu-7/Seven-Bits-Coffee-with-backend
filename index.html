@@ -241,39 +241,41 @@
 
         <!-- PAGE: ORDERS (Kitchen Display System / KOT Management) -->
         <div id="page-kitchen" class="page">
-            <!-- Station tabs restyled to match the admin panel's sub-tab look.
-                 TABLES/TABS sits here too (not a separate toggle button) since
-                 it's another way of tracking active orders - just grouped by
-                 table instead of by station. -->
-            <div class="kitchen-tabs admin-tabs">
-                <button class="admin-tab-btn active" data-station="MASTER" onclick="filterKitchen('MASTER')">ALL STATIONS</button>
-                <button class="admin-tab-btn" data-station="BARISTA" onclick="filterKitchen('BARISTA')">BARISTA</button>
-                <button class="admin-tab-btn" data-station="KITCHEN" onclick="filterKitchen('KITCHEN')">KITCHEN</button>
-                <button class="admin-tab-btn" data-station="DESSERTS" onclick="window.filterKitchen('DESSERTS')">DESSERTS</button>
-                <button class="admin-tab-btn" data-station="TABLES" onclick="window.filterKitchen('TABLES')">TABLES / TABS</button>
-            </div>
-
-            <!-- Active vs. history filter + date sort - not relevant to the Tables view -->
-            <div class="kitchen-toolbar" id="kitchen-status-toolbar">
-                <div class="kitchen-status-filter">
-                    <button class="admin-btn active" data-status-filter="active" onclick="window.setKitchenStatusFilter('active')">ACTIVE</button>
-                    <button class="admin-btn" data-status-filter="history" onclick="window.setKitchenStatusFilter('history')">HISTORY</button>
-                    <button class="admin-btn" data-status-filter="all" onclick="window.setKitchenStatusFilter('all')">SHOW ALL</button>
+            <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
+                <!-- Station tabs restyled to match the admin panel's sub-tab look.
+                     TABLES/TABS sits here too (not a separate toggle button) since
+                     it's another way of tracking active orders - just grouped by
+                     table instead of by station. -->
+                <div class="kitchen-tabs admin-tabs">
+                    <button class="admin-tab-btn active" data-station="MASTER" onclick="filterKitchen('MASTER')">ALL STATIONS</button>
+                    <button class="admin-tab-btn" data-station="BARISTA" onclick="filterKitchen('BARISTA')">BARISTA</button>
+                    <button class="admin-tab-btn" data-station="KITCHEN" onclick="filterKitchen('KITCHEN')">KITCHEN</button>
+                    <button class="admin-tab-btn" data-station="DESSERTS" onclick="window.filterKitchen('DESSERTS')">DESSERTS</button>
+                    <button class="admin-tab-btn" data-station="TABLES" onclick="window.filterKitchen('TABLES')">TABLES / TABS</button>
                 </div>
-                <select id="kitchen-sort" onchange="window.setKitchenSort(this.value)"
-                    style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:8pt;">
-                    <option value="newest">NEWEST FIRST</option>
-                    <option value="oldest">OLDEST FIRST</option>
-                </select>
+
+                <!-- Active vs. history filter + date sort - not relevant to the Tables view -->
+                <div class="kitchen-toolbar" id="kitchen-status-toolbar">
+                    <div class="kitchen-status-filter">
+                        <button class="admin-btn active" data-status-filter="active" onclick="window.setKitchenStatusFilter('active')">ACTIVE</button>
+                        <button class="admin-btn" data-status-filter="history" onclick="window.setKitchenStatusFilter('history')">HISTORY</button>
+                        <button class="admin-btn" data-status-filter="all" onclick="window.setKitchenStatusFilter('all')">SHOW ALL</button>
+                    </div>
+                    <select id="kitchen-sort" onchange="window.setKitchenSort(this.value)"
+                        style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:8pt;">
+                        <option value="newest">NEWEST FIRST</option>
+                        <option value="oldest">OLDEST FIRST</option>
+                    </select>
+                </div>
+
+                <!-- Postpaid table tabs - staff open/close these to group multiple
+                     orders into one combined bill. Only visible when the
+                     TABLES/TABS tab above is selected. -->
+                <div id="tables-panel-root" style="display:none; margin-bottom:20px;"></div>
+
+                <!-- Target for dynamic KOT ticket injection -->
+                <div id="kitchen-orders-root"></div>
             </div>
-
-            <!-- Postpaid table tabs - staff open/close these to group multiple
-                 orders into one combined bill. Only visible when the
-                 TABLES/TABS tab above is selected. -->
-            <div id="tables-panel-root" style="display:none; margin-bottom:20px;"></div>
-
-            <!-- Target for dynamic KOT ticket injection -->
-            <div id="kitchen-orders-root"></div>
         </div>
 
         <!-- PAGE: BILLING (staff-only - js/ui/billing-page.js) - a direct way
@@ -292,9 +294,8 @@
         <!-- PAGE: ADMIN (System configuration and menu repository) -->
         <div id="page-admin" class="page">
             <div class="admin-wrapper">
-                <header class="admin-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <header class="admin-header">
                     <h1 style="margin:0;">SYSTEM CONFIGURATION</h1>
-                    <button class="admin-btn-secondary" onclick="AdminPortal.logout()">LOGOUT</button>
                 </header>
 
                 <!-- Sub-tab nav: Global Settings / Menu Items / User Management / Branding -->

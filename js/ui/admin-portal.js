@@ -3088,13 +3088,5 @@ export const AdminPortal = {
                 fail(e.message);
             }
         });
-    },
-
-    async logout() {
-        await AuthSystem.logout();
-        if (window.showPage) window.showPage("home");
     }
 };
-
-// Ensure the portal is accessible globally for the HTML "LOGOUT" button
-window.AdminPortal = AdminPortal;

@@ -1417,10 +1417,15 @@ header {
     max-width: 98vw;
     width: 100%;
     box-sizing: border-box;
-    margin: 20px auto;
+    margin: 0 auto;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    padding: clamp(14px, 3vw, 36px);
+    /* Top padding fixed (not part of the responsive clamp below) so
+       "SYSTEM CONFIGURATION" starts at the same height as every other
+       page's own heading (Billing, Orders, staff Home, etc. all use the
+       same 26px) - side/bottom padding stays responsive for the wide
+       tables/forms this panel holds. */
+    padding: 26px clamp(14px, 3vw, 36px) 36px;
 }
 .admin-header {
     border-bottom: 2px solid var(--color-accent);

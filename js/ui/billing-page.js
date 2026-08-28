@@ -213,26 +213,22 @@ async function renderBillDetail() {
     }
 
     // Tag who a standalone order is for (phone/username - a guest order or a
-    // staff typo may have left this blank/wrong) and, for a dine-in order,
-    // which physical table - not shown for a table-session bill, which
-    // already has both from when the tab was opened.
+    // staff typo may have left this blank/wrong) and which physical table,
+    // if any - not shown for a table-session bill, which already has both
+    // from when the tab was opened. No separate save button - whatever's in
+    // these fields is picked up when Settle is clicked (see below), same as
+    // any other bill detail that's read fresh at settle time.
     const tagInfoHtml = order
         ? `
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px; flex-wrap:wrap;">
+            <div style="flex:0 1 100px;">
+                <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Table</label>
+                <input id="billing-tag-table" type="text" maxlength="20" value="${escapeHtml(order.tableNumber || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
+            </div>
             <div style="flex:0 1 220px;">
                 <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Phone / Username</label>
                 <input id="billing-tag-phone" type="text" maxlength="60" value="${escapeHtml(order.customerPhone || order.customerName || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
             </div>
-            ${
-                order.orderType === "dine-in"
-                    ? `
-            <div style="flex:0 1 100px;">
-                <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Table</label>
-                <input id="billing-tag-table" type="text" maxlength="20" value="${escapeHtml(order.tableNumber || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
-            </div>`
-                    : ""
-            }
-            <button type="button" id="billing-tag-save" style="align-self:flex-end; padding:7px 14px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-size:9px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Save</button>
         </div>`
         : "";
 
@@ -285,28 +281,27 @@ async function renderBillDetail() {
     detail.querySelectorAll(".billing-pay-method").forEach((btn) => {
         btn.addEventListener("click", () => {
             selectedMethod = btn.dataset.method;
-            renderBillDetail();
+            // Toggles the active method + settle button label in place
+            // instead of a full renderBillDetail() - a full re-render would
+            // read the table/phone fields back from the (still-unsaved)
+            // order object and silently discard whatever staff just typed.
+            detail.querySelectorAll(".billing-pay-method").forEach((b) => b.classList.toggle("active", b === btn));
+            const settleBtn = detail.querySelector("#billing-settle-btn");
+            if (settleBtn) settleBtn.textContent = `[ Settle ${money(bill.total)} by ${selectedMethod} ]`;
         });
-    });
-    detail.querySelector("#billing-tag-save")?.addEventListener("click", async () => {
-        const btn = detail.querySelector("#billing-tag-save");
-        btn.disabled = true;
-        try {
-            await KitchenSystem.tagOrderInfo(order.id, {
-                contact: detail.querySelector("#billing-tag-phone").value,
-                tableNumber: detail.querySelector("#billing-tag-table")?.value ?? undefined
-            });
-            window.showToast?.("Bill info updated");
-            await renderBillDetail();
-        } catch (e) {
-            window.showToast?.(e.message || "Could not update bill info", "error");
-            btn.disabled = false;
-        }
     });
     detail.querySelector("#billing-settle-btn")?.addEventListener("click", async () => {
         const btn = detail.querySelector("#billing-settle-btn");
         btn.disabled = true;
         try {
+            // Whatever's currently in the table/phone fields is saved as part
+            // of settling - no separate save step for a standalone order.
+            if (order) {
+                await KitchenSystem.tagOrderInfo(order.id, {
+                    contact: detail.querySelector("#billing-tag-phone").value,
+                    tableNumber: detail.querySelector("#billing-tag-table").value
+                });
+            }
             if (selectedBill.kind === "table") {
                 await TableSessionsSystem.close(selectedBill.id, true, selectedMethod);
             } else {

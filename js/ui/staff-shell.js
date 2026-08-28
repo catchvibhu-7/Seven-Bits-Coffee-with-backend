@@ -53,6 +53,16 @@ function shopShortForm() {
     return words.map((w) => w[0]).join("").toUpperCase().slice(0, 4);
 }
 
+/** The actual uploaded logo image (Branding -> Images -> Logo), shown
+ *  beside the text wordmark in both layouts - was text-only regardless of
+ *  whether a real logo had been set. Empty when no logo is configured, so
+ *  the wordmark alone still looks right for a shop that hasn't uploaded one. */
+function logoImageHtml(size) {
+    const url = AdminConfig.settings.logoUrl;
+    if (!url) return "";
+    return `<img src="${String(url).replace(/"/g, "&quot;")}" alt="" style="width:${size}px; height:${size}px; object-fit:contain; flex:none;" />`;
+}
+
 function loadLayout() {
     const configDefault = AdminConfig.settings.defaultNavLayout === "topbar" ? "topbar" : "rail";
     try {
@@ -329,10 +339,13 @@ export const StaffShell = {
         const rail = document.getElementById("staff-rail");
         if (!rail) return;
         rail.innerHTML = `
-            <div class="staff-rail-logo">
-                <div class="staff-rail-logo-mark">${shopWordmarkLines().join("<br>")}<span style="color:var(--color-text);">_</span></div>
-                <div class="staff-rail-sub">${this.isStaffSession() ? "Staff Terminal" : "Order Terminal"}</div>
-                <div class="staff-rail-status">&#9679; SYS.ONLINE</div>
+            <div class="staff-rail-logo" style="display:flex; align-items:center; gap:10px;">
+                ${logoImageHtml(36)}
+                <div style="min-width:0;">
+                    <div class="staff-rail-logo-mark">${shopWordmarkLines().join("<br>")}<span style="color:var(--color-text);">_</span></div>
+                    <div class="staff-rail-sub">${this.isStaffSession() ? "Staff Terminal" : "Order Terminal"}</div>
+                    <div class="staff-rail-status">&#9679; SYS.ONLINE</div>
+                </div>
             </div>
             <nav class="staff-nav-list" aria-label="Site navigation">
                 ${this.navButtonsHtml(tabs)}
@@ -359,6 +372,7 @@ export const StaffShell = {
         nav.classList.add("staff-topbar");
         nav.innerHTML = `
             <div class="staff-topbar-logo">
+                ${logoImageHtml(28)}
                 <span style="font-size:17px; font-weight:bold; letter-spacing:2px; color:var(--color-accent);">${shopShortForm()}</span>
                 <span style="font-size:9px; letter-spacing:.18em; color:var(--color-text-muted);">${this.isStaffSession() ? "POS" : "ORDER"}</span>
             </div>
