@@ -32,6 +32,35 @@ function money(n) {
 
 let selectedBill = null; // { kind: "table"|"order", id }
 let selectedMethod = "Cash";
+let billingPage = 1; // 1-based; open-bills list pagination
+const BILLING_PAGE_SIZE = 10;
+let printableBill = null; // set by renderBillDetail() once a bill resolves - what the Print panel's buttons act on
+
+/** Adapts a resolved bill (table-session or standalone-order shape) into
+ *  the order-shaped object window.printBill()/window.printKOT() (app.js)
+ *  already expect - reusing those exact print templates instead of a
+ *  separate one just for this page. */
+function billToPrintableOrder(bill, kind) {
+    return {
+        id: bill.id,
+        orderNumber: kind === "table" ? `TABLE ${bill.tableNumber}` : bill.orderNumber || bill.id,
+        createdAt: bill.createdAt || bill.openedAt || new Date().toISOString(),
+        tableNumber: bill.tableNumber || null,
+        method: kind === "table" ? "TABLE" : bill.method || "COUNTER",
+        items: bill.items,
+        subtotal: bill.subtotal,
+        promoDiscountTotal: bill.promoDiscountTotal || 0,
+        discountAmount: bill.discountAmount || 0,
+        couponCode: bill.couponCode || null,
+        cgst: bill.cgst || 0,
+        sgst: bill.sgst || 0,
+        serviceChargeActive: !!bill.serviceCharge,
+        serviceCharge: bill.serviceCharge || 0,
+        tipApplied: !!bill.tipAmount,
+        tipAmount: bill.tipAmount || 0,
+        total: bill.total
+    };
+}
 
 export async function renderBillingPage() {
     const root = document.getElementById("billing-root");
@@ -54,24 +83,57 @@ export async function renderBillingPage() {
         selectedBill = { kind: openBills[0].kind, id: openBills[0].id };
     }
 
+    const totalPages = Math.max(1, Math.ceil(openBills.length / BILLING_PAGE_SIZE));
+    billingPage = Math.min(Math.max(1, billingPage), totalPages);
+    const pageStart = (billingPage - 1) * BILLING_PAGE_SIZE;
+    const pageBills = openBills.slice(pageStart, pageStart + BILLING_PAGE_SIZE);
+
+    const pagerHtml =
+        totalPages > 1
+            ? `
+        <div class="menu-pager" style="margin-top:auto;">
+            <button type="button" class="admin-pg-btn" data-page="1" ${billingPage <= 1 ? "disabled" : ""} title="First page">«</button>
+            <button type="button" class="admin-pg-btn" data-page="${billingPage - 1}" ${billingPage <= 1 ? "disabled" : ""} title="Previous page">‹</button>
+            <span class="menu-pager-label">${pageStart + 1}-${Math.min(pageStart + BILLING_PAGE_SIZE, openBills.length)} of ${openBills.length}</span>
+            <button type="button" class="admin-pg-btn" data-page="${billingPage + 1}" ${billingPage >= totalPages ? "disabled" : ""} title="Next page">›</button>
+            <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${billingPage >= totalPages ? "disabled" : ""} title="Last page">»</button>
+        </div>`
+            : "";
+
     root.innerHTML = `
         <div style="display:grid; grid-template-columns:minmax(0,1fr); gap:16px;" class="billing-layout">
-            <div class="billing-list-col">
-                <h2 style="font-size:12.5px; font-weight:bold; letter-spacing:.2em; margin:0 0 10px; text-transform:uppercase; color:var(--color-accent);">Open bills (${openBills.length})</h2>
-                ${
-                    openBills.length === 0
-                        ? `<p style="color:var(--color-text-muted); font-size:9pt;">Nothing open right now.</p>`
-                        : openBills
-                              .map(
-                                  (b) => `
-                        <button type="button" class="billing-list-item${selectedBill && selectedBill.kind === b.kind && selectedBill.id === b.id ? " active" : ""}" data-kind="${b.kind}" data-id="${escapeHtml(String(b.id))}">
-                            <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(b.label)} <span style="color:var(--color-text-muted); font-weight:normal;">&middot; ${escapeHtml(b.sub)}</span></span>
-                            <span style="flex:none; font-weight:bold;">${money(b.total)}</span>
-                        </button>
-                    `
-                              )
-                              .join("")
-                }
+            <div class="billing-left-col">
+                <!-- Acts on whichever bill is selected below - see
+                     printableBill/billToPrintableOrder() and the click
+                     handlers wired after renderBillDetail() resolves it. -->
+                <div class="billing-print-panel">
+                    <h2 style="font-size:11px; font-weight:bold; letter-spacing:.18em; margin:0 0 10px; text-transform:uppercase; color:var(--color-accent);">Print / Reprint</h2>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <button type="button" id="billing-print-kot-btn" class="billing-print-btn" ${selectedBill ? "" : "disabled"}>[ Print KOT ]</button>
+                        <button type="button" id="billing-print-bill-btn" class="billing-print-btn" ${selectedBill ? "" : "disabled"}>[ Print bill ]</button>
+                    </div>
+                </div>
+
+                <div class="billing-list-col">
+                    <h2 style="font-size:12.5px; font-weight:bold; letter-spacing:.2em; margin:0 0 10px; text-transform:uppercase; color:var(--color-accent);">Open bills (${openBills.length})</h2>
+                    <div class="billing-list-scroll">
+                        ${
+                            pageBills.length === 0
+                                ? `<p style="color:var(--color-text-muted); font-size:9pt;">Nothing open right now.</p>`
+                                : pageBills
+                                      .map(
+                                          (b) => `
+                            <button type="button" class="billing-list-item${selectedBill && selectedBill.kind === b.kind && selectedBill.id === b.id ? " active" : ""}" data-kind="${b.kind}" data-id="${escapeHtml(String(b.id))}">
+                                <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(b.label)} <span style="color:var(--color-text-muted); font-weight:normal;">&middot; ${escapeHtml(b.sub)}</span></span>
+                                <span style="flex:none; font-weight:bold;">${money(b.total)}</span>
+                            </button>
+                        `
+                                      )
+                                      .join("")
+                        }
+                    </div>
+                    ${pagerHtml}
+                </div>
             </div>
             <div class="billing-detail-col" id="billing-detail"></div>
         </div>
@@ -84,14 +146,32 @@ export async function renderBillingPage() {
             renderBillingPage();
         });
     });
+    root.querySelectorAll(".billing-list-col [data-page]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const page = Number(btn.dataset.page);
+            if (!page || page < 1 || page > totalPages) return;
+            billingPage = page;
+            renderBillingPage();
+        });
+    });
 
     await renderBillDetail();
+
+    // Wired here (not in the markup above) since printableBill is only set
+    // once renderBillDetail() resolves the selection.
+    document.getElementById("billing-print-kot-btn")?.addEventListener("click", () => {
+        if (printableBill) window.printKOT?.(printableBill);
+    });
+    document.getElementById("billing-print-bill-btn")?.addEventListener("click", () => {
+        if (printableBill) window.printBill?.(printableBill);
+    });
 }
 
 async function renderBillDetail() {
     const detail = document.getElementById("billing-detail");
     if (!detail) return;
     if (!selectedBill) {
+        printableBill = null;
         detail.innerHTML = `<p style="color:var(--color-text-muted); font-size:9pt; padding:20px 0;">Select a bill to settle it.</p>`;
         return;
     }
@@ -100,22 +180,30 @@ async function renderBillDetail() {
     if (selectedBill.kind === "table") {
         bill = await TableSessionsSystem.get(selectedBill.id);
         if (!bill) {
+            printableBill = null;
             detail.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">That table was closed elsewhere. Pick another bill.</p>`;
             selectedBill = null;
             return;
         }
+        printableBill = billToPrintableOrder(bill, "table");
     } else {
         const order = KitchenSystem.orders.find((o) => o.id === selectedBill.id);
         if (!order) {
+            printableBill = null;
             detail.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">That order was already settled elsewhere. Pick another bill.</p>`;
             selectedBill = null;
             return;
         }
-        bill = { id: order.id, tableNumber: null, items: order.items, subtotal: order.subtotal, cgst: order.cgst, sgst: order.sgst, serviceCharge: order.serviceCharge, tipAmount: order.tipAmount, total: order.total };
+        bill = { id: order.id, orderNumber: order.orderNumber, tableNumber: null, items: order.items, subtotal: order.subtotal, cgst: order.cgst, sgst: order.sgst, serviceCharge: order.serviceCharge, tipAmount: order.tipAmount, total: order.total };
+        // The raw order (not the trimmed `bill` above) already matches what
+        // window.printBill()/printKOT() expect exactly - orderNumber,
+        // createdAt, method, promo/coupon fields and all - so print from
+        // that directly instead of re-deriving a lossier copy.
+        printableBill = order;
     }
 
     detail.innerHTML = `
-        <h1 style="font-size:22px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">BILL<span style="color:var(--color-accent);">#</span>${escapeHtml(String(bill.tableNumber != null ? "T" + bill.tableNumber : bill.id))}</h1>
+        <h1 style="font-size:22px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">BILL<span style="color:var(--color-accent);">#</span>${escapeHtml(String(bill.tableNumber != null ? "T" + bill.tableNumber : bill.orderNumber || bill.id))}</h1>
         <div style="background:var(--color-surface); border:1px solid var(--color-border); margin-top:14px;">
             <div style="display:flex; gap:12px; padding:9px 14px; background:var(--color-bg); border-bottom:1px solid var(--color-border); font-size:9px; letter-spacing:.12em; color:var(--color-text-muted); text-transform:uppercase;">
                 <span style="flex:1 1 100px; min-width:80px;">Item</span><span style="flex:none; width:32px; text-align:center;">Qty</span><span style="flex:none; width:64px; text-align:right;">Amount</span>

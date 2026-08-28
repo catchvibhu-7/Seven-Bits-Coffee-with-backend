@@ -143,13 +143,28 @@ header {
    ========================================================================== */
 .staff-rail {
     width: 246px;
-    flex: none;
     background: var(--color-surface);
     border-right: 1px solid var(--color-border);
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    padding: 20px 14px 14px;
+    /* Bottom padding reserves room for .staff-auth-section, which is
+       position:fixed over this same corner of the screen - without it, a
+       long nav list could scroll its last item(s) behind that fixed
+       footer. */
+    padding: 20px 14px 130px;
+    /* Truly pinned to the screen - position:fixed (not sticky/flex-stretch)
+       so it never shifts with scrolling or with how tall #app-main's
+       content grows. Taking it out of #app-shell's flex flow like this
+       means #app-main needs a matching margin-left whenever the rail is
+       showing (see setMainOffsetForLayout() in staff-shell.js) so its
+       content doesn't render underneath the rail. */
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    box-sizing: border-box;
+    z-index: 100;
 }
 
 .staff-rail-logo {
@@ -238,38 +253,54 @@ header {
     color: var(--color-accent-contrast);
 }
 
-.staff-rail-spacer {
-    flex: 1;
-    min-height: 24px;
-}
-
+/* Genuinely pinned to the bottom of the screen (not just pushed there by a
+   flex spacer, which could still land it partly below the fold on a short
+   window - see staff-shell.js's renderRail() comment). Same left/width as
+   .staff-rail so it lines up exactly under the nav list. */
 .staff-auth-section {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 246px;
+    box-sizing: border-box;
+    background: var(--color-surface);
     border-top: 1px solid var(--color-border);
-    padding-top: 14px;
+    border-right: 1px solid var(--color-border);
+    padding: 14px;
+    z-index: 101;
 }
 
-.staff-auth-label {
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    color: var(--color-text-muted);
-    padding: 0 4px 10px;
-    text-transform: uppercase;
-}
-
+/* The single identity/account button (#staff-account-btn, see
+   identityHtml() in staff-shell.js) - opens the same account dropdown
+   (name/role, Account Settings, Log out) as the customer nav's account
+   button, via window.renderAccountMenu(). Replaces what used to be a
+   separate "Signed in" label + static identity box + Rail/Top bar switch
+   button + Log out button. */
 .staff-auth-identity {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    width: 100%;
     gap: 8px;
     padding: 8px 10px;
-    background: rgba(217, 119, 6, 0.06);
-    border: 1px solid var(--color-border);
-    margin-bottom: 6px;
+    /* A visibly accent-bordered/tinted resting state (not just on hover) -
+       plain var(--color-border) gray on the dark background read as low
+       contrast/hard to notice as a real button. */
+    background: rgba(217, 119, 6, 0.1);
+    border: 1px solid var(--color-accent);
+    font-family: inherit;
     font-size: 11.5px;
+    cursor: pointer;
+    min-height: 44px;
+    box-sizing: border-box;
+}
+.staff-auth-identity:hover {
+    background: rgba(217, 119, 6, 0.18);
 }
 
 .staff-auth-name {
     font-weight: bold;
+    color: var(--color-text);
     letter-spacing: 0.04em;
     min-width: 0;
     overflow: hidden;
@@ -285,14 +316,13 @@ header {
     text-transform: uppercase;
 }
 
-.staff-auth-btn-row {
-    display: flex;
-    gap: 6px;
-}
-
-.staff-logout-btn,
-.staff-layout-btn {
-    flex: 1;
+/* Only the clock-in/out button uses this now (Rail/Top bar switching and
+   Log out both moved into the single account button's dropdown/settings -
+   see .staff-auth-identity above and account-settings-modal.js). Full width
+   stacked in the rail's vertical column; auto-width sitting inline with the
+   identity button in the horizontal top-bar - see the two width overrides
+   below rather than one flex:1 shared with a sibling that no longer exists. */
+.staff-logout-btn {
     padding: 8px 10px;
     background: transparent;
     border: 1px solid var(--color-border);
@@ -305,9 +335,14 @@ header {
     cursor: pointer;
     min-height: 44px;
 }
+.staff-auth-section .staff-logout-btn {
+    width: 100%;
+}
+.staff-topbar-identity .staff-logout-btn {
+    flex: none;
+}
 
-.staff-logout-btn:hover,
-.staff-layout-btn:hover {
+.staff-logout-btn:hover {
     border-color: var(--color-accent);
     color: var(--color-accent);
 }
@@ -321,8 +356,16 @@ header {
     height: 60px;
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
-    flex: none;
     flex-wrap: wrap;
+    /* Genuinely pinned to the screen (like .staff-rail's position:fixed),
+       not just sticky - #app-main gets a matching margin-top whenever this
+       layout is active (see setMainOffsetForLayout() in staff-shell.js) so
+       content doesn't render underneath it. */
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
 }
 
 .staff-topbar-logo {
@@ -355,6 +398,10 @@ header {
     margin-left: auto;
 }
 
+.staff-topbar-identity .staff-auth-identity {
+    width: auto;
+}
+
 .staff-topbar-identity .staff-auth-name {
     max-width: 140px;
 }
@@ -367,6 +414,13 @@ header {
     #app-shell {
         flex-direction: column;
     }
+    /* The rail drops out of position:fixed below (back to a normal-flow
+       row), so #app-main's fixed-rail margin-left (set in JS - see
+       setMainOffsetForLayout() in staff-shell.js) needs overriding back to
+       0 here; !important because it's fighting an inline style. */
+    #app-main {
+        margin-left: 0 !important;
+    }
     .staff-rail {
         width: 100%;
         min-width: 0;
@@ -378,11 +432,15 @@ header {
         overflow-x: auto;
         overscroll-behavior: contain;
         padding: 10px;
+        /* Collapsed to a horizontal strip here - undo the desktop rail's
+           full-viewport-height pin, it should only be as tall as its row of
+           nav buttons. */
+        position: static;
+        height: auto;
     }
     .staff-rail-logo,
     .staff-rail-status,
-    .staff-auth-section,
-    .staff-rail-spacer {
+    .staff-auth-section {
         display: none;
     }
     .staff-nav-list {
@@ -424,33 +482,54 @@ header {
     font-variant-numeric: tabular-nums;
 }
 
-/* Menu page layout: grid/list on the left, staff's persistent cart panel
-   (js/app.js's renderStaffCartPanel()) on the right at desktop widths only -
-   a phone-sized staff device falls back to the same footer cart bar +
-   checkout modal customers use (#staff-cart-panel just never opens). */
+/* Menu page layout: grid/list on the left, a persistent Cart/KOT panel
+   (js/app.js's renderMenuCartPanel()) on the right at desktop widths only,
+   for everyone - a phone-sized device falls back to the footer cart bar +
+   checkout modal (#menu-cart-panel just never opens, and the desktop-only
+   media query below force-hides the footer bar so the two don't both show
+   at once on a wide screen). */
 .menu-layout {
     display: flex;
-    gap: 20px;
+    gap: 0;
     align-items: flex-start;
 }
-#menu-root {
+.menu-grid-column {
     flex: 1;
     min-width: 0;
+    /* Breathing room on both sides - against the staff rail on the left
+       (which already has its own border-right divider) and against the
+       cart panel on the right (its own divider is the border-left below),
+       rather than content hugging either edge directly. */
+    padding: 0 24px;
 }
-.staff-cart-panel {
-    display: none; /* toggled to flex by renderStaffCartPanel() for KITCHEN_ROLES sessions */
+.menu-cart-panel {
+    display: none; /* toggled to flex by renderMenuCartPanel() */
     flex-direction: column;
     width: 340px;
     flex: none;
     background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    max-height: calc(100vh - 100px);
+    border: 1px solid var(--color-border); /* left edge doubles as the pane divider against .menu-grid-column */
+    /* A fixed height (not max-height) so the panel always fills this space
+       regardless of how few items are in the cart - the middle items list
+       (flex:1 1 auto in renderMenuCartPanel()) absorbs the slack, keeping
+       the subtotal/total/checkout footer pinned to the true bottom instead
+       of trailing right under a short cart with dead space beneath it. */
+    height: calc(100vh - 100px);
     position: sticky;
     top: 76px; /* clears the sticky .system-nav/top-bar above it */
 }
 @media (max-width: 900px) {
-    .staff-cart-panel {
+    .menu-cart-panel {
         display: none !important; /* progressive enhancement only - see comment above */
+    }
+}
+@media (min-width: 901px) {
+    /* The persistent Cart/KOT panel already shows the running total, so the
+       floating "BITS IN CART" bar would just be a redundant second total on
+       a wide screen - the jump-to-category FAB beside it stays (unrelated
+       feature, see the jumpTo/.btn-jump-fab visibility toggle in app.js). */
+    #cart-status {
+        display: none !important;
     }
 }
 
@@ -458,7 +537,63 @@ header {
 @media (min-width: 820px) {
     .billing-layout {
         grid-template-columns: 260px minmax(0, 1fr) !important;
+        /* Stretches the left column to match the (taller) detail column's
+           height, rather than the list column collapsing to fit just its
+           own short content and leaving a big blank gap below it. */
+        align-items: stretch !important;
     }
+}
+/* Left column is two stacked panels: a compact Print/Reprint panel on top,
+   then Open Bills filling whatever's left (with its own internal scroll +
+   pagination) - not one panel that just happens to be short. */
+.billing-left-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+}
+.billing-print-panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: 16px;
+    flex: none;
+}
+.billing-print-btn {
+    width: 100%;
+    padding: 11px;
+    background: #000;
+    border: 2px solid var(--color-accent);
+    color: var(--color-accent);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    min-height: 44px;
+}
+.billing-print-btn:hover:not(:disabled) {
+    background: rgba(217, 119, 6, 0.12);
+}
+.billing-print-btn:disabled {
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
+    opacity: 0.5;
+    cursor: default;
+}
+.billing-list-col {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+.billing-list-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
 }
 .billing-list-item {
     display: flex;
@@ -517,7 +652,10 @@ header {
    Alignment logic for the search bar and List/Grid toggle buttons.
    ========================================================================== */
 .menu-controls {
-    display: flex !important;
+    /* Hidden for now (favorites toggle + search) - not deleted, just
+       parked, since it needs a better home in the new layout than its own
+       full-width row. Flip this back to flex to bring it back. */
+    display: none !important;
     flex-direction: row !important;
     flex-wrap: nowrap; /* Prevents stacking on small screens */
     justify-content: flex-end;
@@ -527,53 +665,43 @@ header {
 }
 
 #menu-search {
-    height: 48px; /* Locked height for alignment */
+    height: 40px;
     background: black;
     border: 1px solid #333;
     color: var(--color-accent);
-    padding: 0 15px;
+    padding: 0 12px;
     font-family: 'Courier New', monospace;
     box-sizing: border-box; /* Includes border in height calculation */
     outline: none;
     flex-grow: 0;
-    min-width: 200px;
+    width: 220px;
 }
 
-.btn-view-toggle {
-    height: 44px; /* Matches search input height */
-    width: 44px;  /* Square aspect ratio */
-    flex-shrink: 0; /* Prevents buttons from squishing */
-    background: var(--color-surface);
+/* Grid/List segmented toggle - one bordered group, matching the design
+   mockup's ▦ Grid / ☰ List pair exactly (replaces the old pair of separate
+   icon-only square buttons). */
+.menu-view-toggle-group {
+    display: flex;
     border: 1px solid var(--color-border);
+    background: #000;
+    flex-shrink: 0;
+}
+.menu-view-toggle-group button {
+    padding: 8px 13px;
+    background: transparent;
+    border: 0;
+    color: var(--color-text-muted);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    padding: 0;
-    transition: all 0.2s;
+    min-height: 40px;
 }
-
-.btn-view-toggle:hover {
-    border-color: var(--color-accent);
-}
-
-.btn-view-toggle span.icon,
-.icon-ui-list,
-.icon-ui-grid {
-    width: 24px;
-    height: 24px;
-    display: block;
-    background-size: contain;
-    background-repeat: no-repeat;
-    filter: invert(0.8);
-}
-
-.icon-ui-list {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>');
-}
-.icon-ui-grid {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/></svg>');
+.menu-view-toggle-group button.active {
+    background: rgba(217, 119, 6, 0.12);
+    color: var(--color-accent);
 }
 
 /* Responsive adjustments for controls */
@@ -584,7 +712,9 @@ header {
         gap: 10px;
     }
     #menu-search {
-        height: 44px;
+        height: 36px;
+        width: 100%;
+        font-size: 0.8rem;
     }
     .menu-controls div {
         display: flex;
@@ -606,7 +736,11 @@ header {
     letter-spacing: 4px;
     border-left: 5px solid #d97706;
     padding-left: 15px;
+    margin-top: 24px;
     margin-bottom: 20px;
+}
+.section-title:first-child {
+    margin-top: 0;
 }
 
 /* Card chrome (background/border/padding) lives on the WRAPPER, not on
@@ -632,13 +766,83 @@ header {
 /* Category filter chips above the menu grid/list - mirrors the mockup's
    category-pill row exactly (same padding/letter-spacing/border treatment
    as .staff-nav-btn's active state uses for its accent tint). */
+/* Pinned to the top of the page while the item grid/list scrolls past it
+   underneath - background must be opaque (not transparent) so scrolled
+   content doesn't show through while it's stuck. */
+.menu-sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--color-bg);
+}
+/* In top-bar layout, .system-nav (fixed, see .staff-topbar) already
+   occupies the real top 60px of the screen - this header needs to stick
+   just below it instead of at 0, or the two would overlap/clip. */
+.system-nav.staff-topbar ~ #page-menu .menu-sticky-header {
+    top: 60px;
+}
+.menu-page-header {
+    padding: 10px 0 14px;
+}
+.menu-page-title {
+    font-size: 30px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    margin: 0;
+    text-transform: uppercase;
+}
+.menu-page-title span {
+    color: var(--color-accent);
+}
+/* Chips + Grid/List toggle sit on their own row under the heading, not
+   squeezed beside it - the chip row needs the full column width to wrap
+   cleanly instead of colliding with the toggle. justify-content:flex-start
+   (not space-between) keeps the toggle sitting right after the chips
+   instead of pinned to the far right with a big dead gap in between on a
+   wide screen. */
+.menu-header-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 14px;
+    /* No flex-wrap here (deliberately, unlike most rows on this page): with
+       wrap on, the browser decides whether .menu-cat-chips and
+       .menu-view-toggle-group fit side by side using their pre-shrink
+       content sizes, and bumps the toggle to its own line rather than ever
+       letting the chips shrink to make room - which defeated the point of
+       .menu-cat-chips's own flex-wrap below. Keeping this row nowrap forces
+       the actual wrapping to happen inside the chips only. */
+    border-bottom: 2px solid var(--color-accent);
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+}
+.menu-view-toggle-group {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
 .menu-cat-chips {
     display: flex;
     gap: 7px;
-    flex-wrap: wrap;
-    margin: 0 0 18px;
+    /* No wrap - chips that don't fit on this one row collapse into the "⋯"
+       overflow button/popover (see renderMenuCategoryChips() in app.js)
+       instead of pushing the row onto several extra lines and shoving
+       .menu-view-toggle-group down/behind them. */
+    flex-wrap: nowrap;
+    overflow: hidden;
+    margin: 0;
+    /* Without this, as a flex item inside .menu-header-controls this
+       container claims its full max-content width (as wide as every chip
+       laid out in one row) before ever deferring to the overflow logic
+       above - which pushes .menu-view-toggle-group onto its own line even
+       when there's visibly room beside the chips. flex+min-width:0 lets it
+       size down to the row's actual available width first. */
+    flex: 1 1 auto;
+    min-width: 0;
 }
-.menu-cat-chip {
+.menu-cat-chip,
+.menu-cat-overflow-btn {
     padding: 8px 13px;
     background: transparent;
     border: 1px solid var(--color-border);
@@ -650,8 +854,15 @@ header {
     text-transform: uppercase;
     cursor: pointer;
     min-height: 36px;
+    flex-shrink: 0;
 }
-.menu-cat-chip:hover {
+.menu-cat-overflow-btn {
+    font-size: 14px;
+    letter-spacing: 0;
+    padding: 8px 12px;
+}
+.menu-cat-chip:hover,
+.menu-cat-overflow-btn:hover {
     border-color: var(--color-accent);
     color: var(--color-accent);
 }
@@ -659,6 +870,40 @@ header {
     background: rgba(217, 119, 6, 0.1);
     border-color: var(--color-accent);
     color: var(--color-accent);
+}
+
+/* Popover listing categories that didn't fit in the main chip row - opened
+   from the "⋯" button (see renderMenuCategoryChips() in app.js). */
+.menu-cat-overflow-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-accent);
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.4);
+    z-index: 5500;
+    min-width: 200px;
+}
+.menu-cat-overflow-menu .menu-cat-chip {
+    width: 100%;
+    text-align: left;
+}
+
+/* Pager below the menu grid/list - reuses .admin-pg-btn (theme.css's Admin
+   order-history/menu-items pagination) rather than a one-off style. */
+.menu-pager {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    margin: 6px 0 20px;
+    padding: 4px 0;
+}
+.menu-pager-label {
+    font-size: 8pt;
+    color: var(--color-text-muted);
+    margin: 0 6px;
 }
 
 /* Full-width banner above the item's name/story in grid view only - list
@@ -802,44 +1047,11 @@ header {
 }
 
 
-.menu-controls {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 10px;
-}
-
-/* Default Desktop Size (44px) */
-#menu-search {
-    height: 44px;
-    flex-grow: 1;
-    max-width: 400px;
-}
-
-.btn-view-toggle {
-    height: 44px;
-    width: 44px;
-    flex-shrink: 0;
-}
-
-/* Compact Mobile Scaling (36px) */
 @media (max-width: 600px) {
-    #menu-search {
-        height: 36px;
-        font-size: 0.8rem;
-        padding: 0 10px;
-    }
-
-    .btn-view-toggle {
-        height: 36px;
-        width: 36px;
-    }
-
-    .btn-view-toggle span.icon {
-        width: 18px;
-        height: 18px;
+    .menu-view-toggle-group button {
+        padding: 6px 10px;
+        font-size: 10px;
+        min-height: 36px;
     }
 }
 
@@ -908,16 +1120,17 @@ header {
     background: #d97706;
     color: black;
     border: 2px solid #d97706;
-    padding: 5px 15px;
+    padding: 0 12px;
     cursor: pointer;
     font-family: inherit;
+    font-size: 0.85rem;
     font-weight: bold;
     display: flex;
     justify-content: center;
     align-items: center;
     transition: background 0.2s;
-    height: 34px;
-    width: 110px;
+    height: 30px;
+    white-space: nowrap;
 }
 
 .btn-add-fixed {
@@ -942,46 +1155,42 @@ header {
     display: flex;
     align-items: center;
     border: 2px solid #d97706;
-    height: 34px;
+    height: 30px;
     background: black;
 }
 
 .btn-qty-container button, .quantity-selector button {
-    width: 30px;
+    width: 26px;
     height: 100%;
     background: transparent;
     color: var(--color-accent);
     border: none;
     cursor: pointer;
-    font-size: 14pt;
+    font-size: 12pt;
     font-family: "Courier New", Courier, monospace;
 }
 
 .btn-qty-container span, .quantity-selector .quantity-display {
-    width: 30px;
+    width: 26px;
     text-align: center;
     color: var(--color-accent);
     font-weight: bold;
-}
-/* Desktop Base (34px) */
-.btn-order, .btn-add-fixed, .btn-qty-container {
-    height: 34px;
+    font-size: 0.85rem;
 }
 
-/* Mobile Slim (28px) */
+/* Mobile Slim (26px) */
 @media (max-width: 500px) {
     .btn-order, .btn-add-fixed {
-        height: 28px;
-        width: 85px; /* Narrower footprint */
-        font-size: 0.75rem;
-        padding: 0 5px;
+        height: 26px;
+        font-size: 0.72rem;
+        padding: 0 8px;
     }
 
     .btn-qty-container, .quantity-selector {
-        height: 28px;
+        height: 26px;
     }
 
-    .btn-qty-container button, 
+    .btn-qty-container button,
     .btn-qty-container span {
         width: 22px; /* Smaller touch targets for mobile row */
         font-size: 10pt;
@@ -994,17 +1203,24 @@ header {
 .footer-container {
     position: sticky;
     bottom: 20px;
-    left: 100%;
+    /* margin-left:auto (not the old "left:100%" sticky-offset hack) pushes
+       this to its container's right edge using normal block-level layout -
+       "left:100%" instead SHIFTS a box of this fixed width entirely past
+       its own container's right edge (it's meant for elements that shrink
+       to fit their content, not a fixed 90vw/500px one), which is exactly
+       why this used to spill out of the menu grid column and overlap
+       #menu-cart-panel beside it once staff/customers share that layout.
+       The 100% in the width formula resolves against this element's own
+       containing block, so it also can't ever be wider than its parent. */
+    margin-left: auto;
     z-index: 5000;
     display: flex !important;
     flex-direction: row !important;
     align-items: center;
     justify-content: flex-end; /* Keeps button on the right */
     gap: 12px;
-    /* Changed width to 90vw and added horizontal padding */
-    width: 90vw; 
-    max-width: 500px;
-    padding: 0 10px; 
+    width: min(90vw, 500px, 100%);
+    padding: 0 10px;
     box-sizing: border-box; /* Ensures padding doesn't expand the width */
     pointer-events: none;
 }
@@ -1518,159 +1734,12 @@ header {
 }
 
 /* ==========================================================================
-   11. HERO, ANIMATIONS & DECOR
-   Brand identity, storytelling sections, and pixel-art elements.
+   11. HOME (customer/guest storefront) + shared brand button styles
+   Mirrors the mockup's isGuestHome screen: hero, store-facts strip,
+   featured picks, roast story, and a widget rail - see renderCustomerHome()
+   in app.js for the real data (menu items, /api/stats/public, Branding
+   config) that populates it.
    ========================================================================== */
-#page-home {
-    position: relative; /* anchors .hero-backdrop's absolute positioning */
-}
-
-.hero-section {
-    text-align: center;
-    padding: clamp(30px, 8vw, 60px) 20px;
-    max-width: min(1080px, 94vw);
-    margin: 0 auto;
-    position: relative;
-    z-index: 1;
-}
-
-/* Ambient animated grid behind the hero - subtle, so it reads as "alive"
-   without fighting the text for attention. Pure CSS, no images. */
-.hero-backdrop {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 480px;
-    z-index: 0;
-    pointer-events: none;
-    background-image:
-        linear-gradient(rgba(217, 119, 6, 0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(217, 119, 6, 0.06) 1px, transparent 1px);
-    background-size: 42px 42px;
-    -webkit-mask-image: linear-gradient(to bottom, black, transparent 85%);
-    mask-image: linear-gradient(to bottom, black, transparent 85%);
-    animation: gridDrift 30s linear infinite;
-}
-@keyframes gridDrift {
-    from { background-position: 0 0, 0 0; }
-    to { background-position: 84px 42px, 84px 42px; }
-}
-@media (prefers-reduced-motion: reduce) {
-    .hero-backdrop { animation: none; }
-}
-
-/* Staggered fade-up reveal for the hero's contents on page load. */
-.hero-reveal {
-    opacity: 0;
-    transform: translateY(14px);
-    animation: heroReveal 0.6s ease-out forwards;
-}
-@keyframes heroReveal {
-    to { opacity: 1; transform: translateY(0); }
-}
-@media (prefers-reduced-motion: reduce) {
-    .hero-reveal { animation: none; opacity: 1; transform: none; }
-}
-
-/* Live stats ticker - real numbers fetched from the server. */
-.live-stats-ticker {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 30px;
-    padding: 8px 18px;
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-    font-size: 8pt;
-    letter-spacing: 0.5px;
-    color: var(--color-text-muted);
-}
-.live-stats-ticker .live-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--color-success);
-    display: inline-block;
-    animation: livePulse 1.6s ease-in-out infinite;
-}
-@keyframes livePulse {
-    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
-    50% { opacity: 0.5; box-shadow: 0 0 0 4px rgba(74, 222, 128, 0); }
-}
-.live-stats-ticker strong {
-    color: var(--color-accent);
-}
-
-/* Glitch/flicker hover effect on the primary CTA - fits the "hacker coffee
-   shop" brand voice. Base button styling is unchanged; this only adds the
-   hover behavior via a duplicated text layer. */
-.btn-glitch {
-    position: relative;
-    overflow: hidden;
-}
-.btn-glitch span {
-    position: relative;
-    display: inline-block;
-}
-.btn-glitch:hover span {
-    animation: btnGlitch 0.4s steps(2, end) 1;
-}
-.btn-glitch span::before {
-    content: attr(data-text);
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    color: var(--color-cyan);
-    opacity: 0;
-    clip-path: inset(0 0 0 0);
-}
-.btn-glitch:hover span::before {
-    animation: btnGlitchLayer 0.4s steps(2, end) 1;
-}
-@keyframes btnGlitch {
-    0% { transform: translate(0); }
-    25% { transform: translate(-2px, 1px); }
-    50% { transform: translate(2px, -1px); }
-    75% { transform: translate(-1px, 0); }
-    100% { transform: translate(0); }
-}
-@keyframes btnGlitchLayer {
-    0% { opacity: 0; clip-path: inset(0 0 90% 0); }
-    30% { opacity: 0.7; clip-path: inset(20% 0 60% 0); }
-    60% { opacity: 0.7; clip-path: inset(60% 0 10% 0); }
-    100% { opacity: 0; clip-path: inset(100% 0 0 0); }
-}
-@media (prefers-reduced-motion: reduce) {
-    .btn-glitch:hover span, .btn-glitch:hover span::before { animation: none; }
-}
-
-/* Scroll-reveal for Popular Picks cards - class toggled by JS (see
-   renderPopularPicks's IntersectionObserver) as each card enters view. */
-.popular-pick-card {
-    opacity: 0;
-    transform: translateY(16px);
-    transition: opacity 0.5s ease, transform 0.5s ease, border-color 0.15s, box-shadow 0.15s;
-}
-.popular-pick-card.in-view {
-    opacity: 1;
-    transform: translateY(0);
-}
-@media (prefers-reduced-motion: reduce) {
-    .popular-pick-card { opacity: 1; transform: none; transition: border-color 0.15s; }
-}
-
-.story-text {
-    font-size: 1rem;
-    line-height: 1.6;
-    color: var(--color-text-muted);
-    margin: 30px 0;
-    border-top: 1px solid var(--color-border);
-    border-bottom: 1px solid var(--color-border);
-    padding: 20px 0;
-}
-
 .btn-primary {
     background: var(--color-accent);
     color: var(--color-accent-contrast);
@@ -1684,52 +1753,415 @@ header {
     box-shadow: 4px 4px #000;
 }
 
-/* Home page "Popular Picks" preview - fills the empty space below the hero
-   with something browsable/interactive instead of blank space, and gives a
-   faster path to ordering than reading the MENU nav link. */
-.popular-picks-section {
-    max-width: min(1080px, 94vw);
-    margin: 10px auto 40px;
-    padding: 0 20px;
+.home-hero {
+    position: relative;
+    padding: 52px 0 44px;
+    margin: -20px -20px 0;
+    border-bottom: 2px solid var(--color-accent);
+    background-image: repeating-linear-gradient(135deg, rgba(249, 250, 251, .035) 0 6px, rgba(0, 0, 0, 0) 6px 14px);
 }
-.popular-picks-section h3 {
-    font-size: 10pt;
-    letter-spacing: 1px;
-    color: var(--color-accent);
-    margin-bottom: 15px;
-    text-align: center;
+/* Overrides cat.css's base .pixel-kitty-container (a self-contained strip
+   with its own margin/border) so the mascot instead overlays .home-hero's
+   own accent-colored border-bottom directly - the cat treads right along
+   that line rather than getting a separate dark-bordered strip below it.
+   Absolutely positioned against .home-hero's position:relative, so it adds
+   no extra height to the page layout. */
+.home-hero .pixel-kitty-container {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -2px;
+    width: auto;
+    height: 64px;
+    margin: 0;
+    border-bottom: none;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
 }
-.popular-picks-grid {
+.home-hero-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 30px;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 34px;
+    align-items: center;
 }
-.popular-pick-card {
+.home-hero-badge {
+    display: inline-block;
+    padding: 6px 10px;
+    border: 1px solid var(--color-accent);
+    color: var(--color-accent);
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+.home-hero-title {
+    font-size: clamp(34px, 5.5vw, 58px);
+    line-height: 1.05;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin: 20px 0 0;
+    text-transform: uppercase;
+    color: var(--color-text);
+}
+.home-hero-tagline {
+    font-size: 14.5px;
+    line-height: 1.75;
+    color: var(--color-text-muted);
+    margin: 20px 0 0;
+    max-width: 46ch;
+    letter-spacing: 0.03em;
+}
+.home-hero-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 26px;
+}
+.home-hero-secondary {
+    padding: 15px 22px;
+    background: #000;
+    border: 2px solid var(--color-border);
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.home-hero-secondary:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+.home-hero-image {
+    position: relative;
+    min-width: 0;
+    aspect-ratio: 4 / 3;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    padding: 18px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.15s, transform 0.15s;
+    box-shadow: 8px 8px 0 #000;
+    overflow: hidden;
 }
-.popular-pick-card:hover {
-    border-color: var(--color-accent);
-    transform: translateY(-3px);
+.home-hero-image-bg {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: grayscale(.5) contrast(1.12) brightness(.8);
+    /* Placeholder pattern until Branding sets a real hero photo (see
+       applyBranding() in app.js) - same hatch language as an empty menu
+       item's image slot, not a stock photo standing in for real content. */
+    background-image: repeating-linear-gradient(135deg, rgba(249, 250, 251, .06) 0 6px, rgba(0, 0, 0, 0) 6px 14px);
 }
-.popular-pick-card .icon {
-    width: 36px;
-    height: 36px;
-    margin: 0 auto 10px;
-    display: block;
+.home-hero-image-gradient {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(10, 10, 10, .9) 0%, rgba(10, 10, 10, 0) 55%);
 }
-.popular-pick-card .name {
+.home-hero-image-caption {
+    position: absolute;
+    left: 18px;
+    bottom: 16px;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+}
+
+.home-store-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    border-bottom: 1px solid var(--color-border);
+    margin: 0 -20px;
+}
+.home-fact {
+    padding: 18px 22px;
+    border-right: 1px dashed var(--color-border);
+    min-width: 0;
+}
+.home-fact-label {
+    font-size: 9.5px;
+    letter-spacing: 0.18em;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+}
+.home-fact-value {
+    font-size: 14px;
     font-weight: bold;
-    font-size: 9pt;
-    margin-bottom: 4px;
+    margin-top: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }
-.popular-pick-card .price {
+
+.home-body {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 34px 20px 46px;
+}
+.home-section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    border-left: 5px solid var(--color-accent);
+    padding-left: 13px;
+}
+.home-section-header h2 {
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 0.24em;
+    margin: 0;
+    text-transform: uppercase;
     color: var(--color-accent);
-    font-size: 9pt;
+}
+.home-section-header span {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.home-picks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+.home-pick-card {
+    text-align: left;
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 5px 5px 0 #000;
+    transition: border-color 0.15s;
+}
+.home-pick-card:hover {
+    border-color: var(--color-accent);
+}
+.home-pick-banner {
+    position: relative;
+    height: 172px;
+    width: 100%;
+    overflow: hidden;
+    border-bottom: 1px dashed var(--color-border);
+    background: #0f0f0f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.home-pick-banner img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    margin: 0;
+    filter: grayscale(.45) contrast(1.12) brightness(.82);
+}
+.home-pick-banner .icon {
+    width: 48px;
+    height: 48px;
+}
+.home-pick-badge {
+    position: absolute;
+    left: 13px;
+    bottom: 11px;
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    color: var(--color-accent);
+    text-transform: uppercase;
+}
+.home-pick-body {
+    padding: 16px 17px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    width: 100%;
+    /* Without this, width:100% (of the card's content box) plus this
+       padding add on top of it under the content-box default, rendering
+       34px wider than the card and pushing .home-pick-footer's "+ Add"
+       button past the card's own right edge. */
+    box-sizing: border-box;
+}
+.home-pick-name {
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--color-text);
+    letter-spacing: 0.05em;
+    line-height: 1.25;
+}
+.home-pick-note {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    line-height: 1.55;
+}
+.home-pick-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+    border-top: 1px dashed var(--color-border);
+    padding-top: 13px;
+}
+.home-pick-price {
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--color-accent);
+}
+.home-pick-add {
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    padding: 6px 11px;
+    background: #000;
+    border: 2px solid var(--color-accent);
+    color: var(--color-accent);
+}
+
+.home-grid-2col {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+    align-items: start;
+}
+.home-panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: 22px 24px;
+    min-width: 0;
+}
+.home-panel h2 {
+    font-size: 12.5px;
+    font-weight: bold;
+    letter-spacing: 0.24em;
+    margin: 0;
+    text-transform: uppercase;
+    color: var(--color-accent);
+}
+.home-panel > p {
+    font-size: 13px;
+    line-height: 1.85;
+    color: var(--color-text-muted);
+    margin: 14px 0 0;
+    letter-spacing: 0.03em;
+}
+.home-roast-steps {
+    margin-top: 18px;
+    border-top: 1px dashed var(--color-border);
+}
+.home-roast-step {
+    display: flex;
+    gap: 14px;
+    align-items: baseline;
+    padding: 12px 0;
+    border-bottom: 1px dashed var(--color-border);
+}
+.home-roast-step-no {
+    flex: none;
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--color-accent);
+    letter-spacing: 0.1em;
+}
+.home-roast-step-name {
+    flex: none;
+    width: 118px;
+    font-size: 11.5px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.home-roast-step-detail {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+}
+
+.home-side-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+.home-widget {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: 22px 24px;
+}
+.home-widget-accent {
+    border-color: var(--color-accent);
+    box-shadow: inset 0 0 26px rgba(217, 119, 6, .09);
+}
+.home-widget h2 {
+    font-size: 12.5px;
+    font-weight: bold;
+    letter-spacing: 0.24em;
+    margin: 0 0 4px;
+    text-transform: uppercase;
+    color: var(--color-accent);
+}
+.home-widget > p {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+    margin: 6px 0 0;
+}
+.home-widget-btn {
+    width: 100%;
+    margin-top: 14px;
+    padding: 11px;
+    background: #000;
+    border: 2px solid var(--color-accent);
+    color: var(--color-accent);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    min-height: 44px;
+}
+.home-visit-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px dashed var(--color-border);
+}
+.home-visit-row:first-child {
+    border-top: none;
+    padding-top: 8px;
+}
+.home-visit-label {
+    flex: none;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+}
+.home-visit-value {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    font-size: 12.5px;
+    letter-spacing: 0.04em;
+}
+
+@media (max-width: 700px) {
+    .home-hero { margin: -20px -20px 0; padding: 40px 0 32px; }
+    .home-store-facts { margin: 0 -20px; }
 }
 
 /* Home page footer - store details, admin-editable. Uses negative margins

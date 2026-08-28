@@ -21,6 +21,7 @@ import { NotificationSystem } from "./features/notification-logic.js";
 import { StaffShell } from "./ui/staff-shell.js";
 import { renderStaffHome } from "./ui/staff-home.js";
 import { renderBillingPage } from "./ui/billing-page.js";
+import { ArcadeSystem } from "./features/arcade-logic.js";
 
 // --- System State ---
 let cart = [];
@@ -36,6 +37,8 @@ let session = { authenticated: false, role: null, name: null, phone: null }; // 
 let favoritesFilterActive = false;
 let comboData = [];
 let activeCategory = "All"; // menu-cat-chips selection; "All" shows every section
+let menuSectionPages = {}; // { [sectionId]: 1-based page } - each section paginates independently; reset to {} whenever the filtered item set changes
+const MENU_PAGE_SIZE = 10;
 let lastSeenOrderStatuses = {}; // orderId -> last status seen by refreshOrderStatusWidget, so the ready chime fires once per transition, not on every poll
 
 const KITCHEN_ROLES = ["employee", "manager", "admin", "owner"];
@@ -67,15 +70,19 @@ async function refreshSession() {
 }
 
 /**
- * Swaps in the staff shell (left rail or top bar - js/ui/staff-shell.js) for
- * KITCHEN_ROLES sessions, or restores the untouched customer nav otherwise.
- * Customers/guests, and anyone not logged in, never see the shell - this is
- * the one place that decision gets made, on every session refresh (login,
- * logout, and initial page load).
+ * Swaps in the app shell (left rail or top bar - js/ui/staff-shell.js) for
+ * ANY real session - staff, customer, or guest alike, each getting its own
+ * role-appropriate tab list (see StaffShell.tabsForRole()) - since the
+ * rail/top-bar layout choice was never meant to be staff-exclusive, only its
+ * tab CONTENTS differ by role. Only a fully anonymous visitor with no
+ * session at all (never logged in, registered, or started a guest checkout)
+ * falls back to the untouched customer top nav. This is the one place that
+ * decision gets made, on every session refresh (login, logout, and initial
+ * page load).
  */
 function updateStaffShellForSession() {
     const currentPageId = document.querySelector(".page.active")?.id.replace("page-", "") || null;
-    if (KITCHEN_ROLES.includes(session.role)) {
+    if (session.role) {
         StaffShell.show(session, currentPageId);
     } else {
         StaffShell.hide();
@@ -104,8 +111,9 @@ function updateNavForSession() {
 
     updateTimeclockWidget();
 
-    const myOrdersLink = document.getElementById("my-orders-link-section");
-    if (myOrdersLink) myOrdersLink.style.display = "block"; // always available - openMyOrders() itself prompts login if needed
+    // #my-orders-link-section's visibility is owned by refreshOrderStatusWidget()
+    // now (it shares one widget-card slot with #order-status-section on the
+    // redesigned home page) rather than being force-shown here.
 
     const favFilterLabel = document.getElementById("favorites-filter-label");
     if (favFilterLabel) favFilterLabel.style.display = TRACKING_ROLES.includes(session.role) ? "flex" : "none";
@@ -170,17 +178,15 @@ window.applyBranding = (config) => {
 
     document.body.classList.toggle("theme-light", config.theme === "light");
 
-    const heroEl = document.querySelector(".icon-logo-hero");
+    const heroEl = document.getElementById("home-hero-image-bg");
     if (heroEl) {
-        if (config.heroImageUrl) {
-            heroEl.style.backgroundImage = `url(${JSON.stringify(config.heroImageUrl).slice(1, -1)})`;
-            heroEl.style.backgroundSize = "contain";
-            heroEl.style.backgroundRepeat = "no-repeat";
-            heroEl.style.backgroundPosition = "center";
-        } else {
-            heroEl.style.backgroundImage = "";
-        }
+        // Leaving this empty (no heroImageUrl set) keeps the hatch-pattern
+        // placeholder from theme.css's .home-hero-image-bg rule rather than
+        // forcing a stock photo in as a stand-in for a real storefront shot.
+        heroEl.style.backgroundImage = config.heroImageUrl ? `url(${JSON.stringify(config.heroImageUrl).slice(1, -1)})` : "";
     }
+    const captionEl = document.getElementById("home-hero-caption");
+    if (captionEl) captionEl.textContent = "The counter" + (config.footer?.address ? ` · ${config.footer.address}` : "");
 
     const logoEl = document.getElementById("site-logo");
     if (logoEl) {
@@ -246,7 +252,7 @@ window.handleTimeclockClick = async () => {
 
 window.handleAccountClick = () => {
     if (session.authenticated) {
-        renderAccountMenu();
+        window.renderAccountMenu("nav-account");
     } else {
         renderLoginModal(
             // refreshSession() (inside afterLoginSuccess) has already run by
@@ -260,19 +266,30 @@ window.handleAccountClick = () => {
 };
 
 /**
- * Small dropdown under the account nav button - kept separate from Account
+ * Small dropdown under the account button - kept separate from Account
  * Settings (rather than nesting Logout inside that modal) so Logout stays a
  * one-click action as more account features get added to Settings later.
+ * Shared by the customer nav's account button (#nav-account) and the staff
+ * shell's single identity button (#staff-account-btn, see staff-shell.js) -
+ * one dropdown pattern for "who am I / settings / log out" everywhere,
+ * rather than a separate one-off version for staff.
  */
-function renderAccountMenu() {
+window.renderAccountMenu = (triggerBtnId = "nav-account") => {
     document.getElementById("account-menu")?.remove();
-    const btn = document.getElementById("nav-account");
+    const btn = document.getElementById(triggerBtnId);
     if (!btn) return;
 
     const menu = document.createElement("div");
     menu.id = "account-menu";
     const rect = btn.getBoundingClientRect();
     const menuWidth = 180;
+
+    const items = [];
+    if (session.role !== "guest") {
+        items.push({ label: "ACCOUNT SETTINGS", action: () => renderAccountSettingsModal(session) });
+    }
+    items.push({ label: "LOG OUT", action: doLogout, danger: true });
+
     // Left-align to the button (not right-align) - right-aligning a menu
     // wider than a short button (e.g. "OWNER") pulls it left underneath
     // whatever nav tab sits before it, which looked like a placement bug.
@@ -280,18 +297,20 @@ function renderAccountMenu() {
     // viewport (e.g. a narrow mobile screen).
     const overflowsRight = rect.left + menuWidth > window.innerWidth;
     const horizontalRule = overflowsRight ? `right: ${window.innerWidth - rect.right}px;` : `left: ${rect.left}px;`;
+    // Opens downward by default; flips to opening upward (like the menu
+    // page's own category jump popup, which always opens above its FAB)
+    // when there isn't room below - the staff rail's account button sits
+    // fixed at the very bottom of the screen, where opening down would run
+    // the menu off-screen entirely.
+    const estimatedMenuHeight = items.length * 41 + 2;
+    const opensUp = rect.bottom + 6 + estimatedMenuHeight > window.innerHeight;
+    const verticalRule = opensUp ? `bottom: ${window.innerHeight - rect.top + 6}px;` : `top: ${rect.bottom + 6}px;`;
     menu.style.cssText = `
-        position: fixed; top: ${rect.bottom + 6}px; ${horizontalRule}
+        position: fixed; ${verticalRule} ${horizontalRule}
         background: var(--color-surface); border: 1px solid var(--color-accent);
         min-width: ${menuWidth}px; z-index: 5500; font-family: 'Courier New', monospace;
         box-shadow: 4px 4px 0 rgba(0,0,0,0.4);
     `;
-
-    const items = [];
-    if (session.role !== "guest") {
-        items.push({ label: "ACCOUNT SETTINGS", action: () => renderAccountSettingsModal(session) });
-    }
-    items.push({ label: "LOG OUT", action: doLogout, danger: true });
 
     menu.innerHTML = items
         .map(
@@ -329,7 +348,6 @@ function doLogout() {
         window.showPage("home");
     });
 }
-window.staffLogout = doLogout; // the staff shell's own LOGOUT button (js/ui/staff-shell.js) reuses this exact flow
 
 /**
  * Small toast used to confirm actions like "Settings saved" - several admin
@@ -439,8 +457,11 @@ window.showPage = async (pageId) => {
     }
     if (pageId === "home") {
         renderPopularPicks();
-        renderLiveStatsTicker();
+        renderHomeStoreFacts();
+        renderHomeRoastSteps();
+        renderHomeVisitRows();
         await refreshOrderStatusWidget();
+        refreshHomeArcadeButton();
         if (TRACKING_ROLES.includes(session.role)) ensureOrdersStream();
     }
     if (pageId === "arcade") {
@@ -467,10 +488,19 @@ function soundIconSvg(muted) {
 async function refreshOrderStatusWidget() {
     const section = document.getElementById("order-status-section");
     const root = document.getElementById("order-status-root");
+    const myOrdersLink = document.getElementById("my-orders-link-section");
     if (!section || !root) return;
 
-    if (!TRACKING_ROLES.includes(session.role)) {
+    // The two share one widget-card slot (see index.html) - whichever isn't
+    // showing the live order falls back to the always-available reorder
+    // shortcut, so that card is never empty.
+    const showFallback = () => {
         section.style.display = "none";
+        if (myOrdersLink) myOrdersLink.style.display = "block";
+    };
+
+    if (!TRACKING_ROLES.includes(session.role)) {
+        showFallback();
         return;
     }
 
@@ -486,7 +516,7 @@ async function refreshOrderStatusWidget() {
         return Date.now() - new Date(o.createdAt).getTime() < READY_VISIBLE_WINDOW_MS;
     });
     if (!activeOrder) {
-        section.style.display = "none";
+        showFallback();
         return;
     }
 
@@ -514,6 +544,7 @@ async function refreshOrderStatusWidget() {
             : "";
 
     section.style.display = "block";
+    if (myOrdersLink) myOrdersLink.style.display = "none";
     root.innerHTML = `
         <div class="status-card" style="border:1px solid var(--color-accent); padding:15px; font-family:'Courier New',monospace;">
             <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
@@ -528,6 +559,17 @@ async function refreshOrderStatusWidget() {
             <div style="font-size:9pt; margin-top:8px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 \u20b9${order.total.toFixed(2)}</div>
         </div>
     `;
+}
+
+/** The hero's second button used to just duplicate "Start order" ("See the
+ *  menu" pointed at the same page) - now it's the arcade shortcut instead,
+ *  shown only once the same server check the Arcade page itself uses
+ *  (ArcadeSystem.checkAccess) says it's actually unlocked. */
+async function refreshHomeArcadeButton() {
+    const btn = document.getElementById("home-hero-arcade-btn");
+    if (!btn) return;
+    const access = await ArcadeSystem.checkAccess();
+    btn.style.display = access.allowed ? "inline-block" : "none";
 }
 
 /**
@@ -889,6 +931,7 @@ window.initSearchBar = () => {
         searchInput.addEventListener("input", (e) => {
             clearTimeout(debounceTimer);
             const value = e.target.value;
+            menuSectionPages = {};
             debounceTimer = setTimeout(() => renderMenu(value), 150);
         });
     }
@@ -923,23 +966,25 @@ window.toggleJumpMenu = () => {
     }
 };
 
+/**
+ * Menu items no longer live under per-section scroll anchors (see
+ * renderMenu - it's one flat, paginated grid/list now, matching the design
+ * mockup). This jump menu now drives the same category-chip filter instead
+ * of a scroll target, so the existing FAB entry point still works rather
+ * than silently doing nothing.
+ */
 window.jumpTo = (sectionId) => {
-    const section = document.getElementById(`section-${sectionId}`);
-    if (section) {
-        const titleElement = section.querySelector("h2") || section.querySelector(".section-header");
-
-        if (titleElement) {
-            const headerOffset = 90;
-            const elementPosition = titleElement.getBoundingClientRect().top;
-            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-
-            window.scrollTo({ top: offsetPosition, behavior: "smooth" });
-        } else {
-            section.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-
-        document.getElementById("jump-menu").style.display = "none";
+    if (sectionId === "combos") {
+        activeCategory = "All";
+    } else {
+        const section = menuData.sections.find((s) => s.id === sectionId);
+        if (!section) return;
+        activeCategory = section.title;
     }
+    menuSectionPages = {};
+    renderMenu(document.getElementById("menu-search")?.value || "");
+    document.getElementById("menu-root")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("jump-menu").style.display = "none";
 };
 
 function escapeHtml(str) {
@@ -974,23 +1019,131 @@ function itemImageMarkup(item) {
     return iconMarkup(item.icon);
 }
 
-/** Category pill row above the menu grid/list, mirroring the mockup's
- *  category-chip filter - built fresh each render since it needs to reflect
- *  the current activeCategory highlight, and menuData.sections is small. */
+/**
+ * Category pill row above the menu grid/list, mirroring the mockup's
+ * category-chip filter - built fresh each render since it needs to reflect
+ * the current activeCategory highlight, and menuData.sections is small.
+ *
+ * Chips no longer wrap onto their own extra rows at a narrower window width
+ * (which used to push the Grid/List toggle down and overlap it) - the row
+ * stays single-line, and whichever chips don't fit collapse into a "⋯"
+ * overflow button with a popover listing the rest, same idea as the jump
+ * menu's popover. The active category always stays visible in the main
+ * row (bumping the last chip that fits into overflow instead) so you can
+ * always see what's currently selected without opening the popover.
+ */
 function renderMenuCategoryChips() {
     const root = document.getElementById("menu-cat-chips");
     if (!root) return;
     const cats = ["All", ...menuData.sections.map((s) => s.title)];
-    root.innerHTML = cats
-        .map(
-            (name) => `
-        <button type="button" class="menu-cat-chip${activeCategory === name ? " active" : ""}" data-cat="${escapeHtml(name)}">${escapeHtml(name)}</button>
-    `
-        )
-        .join("");
-    root.querySelectorAll(".menu-cat-chip").forEach((btn) => {
+
+    const wireChip = (btn) => {
         btn.addEventListener("click", () => {
             activeCategory = btn.dataset.cat;
+            menuSectionPages = {};
+            renderMenu(document.getElementById("menu-search")?.value || "");
+        });
+    };
+    const chipHtml = (name) => `<button type="button" class="menu-cat-chip${activeCategory === name ? " active" : ""}" data-cat="${escapeHtml(name)}">${escapeHtml(name)}</button>`;
+
+    // Render everything first so widths are measurable, then trim.
+    root.innerHTML = cats.map(chipHtml).join("");
+    root.querySelectorAll(".menu-cat-chip").forEach(wireChip);
+
+    const containerWidth = root.getBoundingClientRect().width;
+    if (containerWidth === 0) return; // not laid out yet (e.g. hidden page) - nothing to measure
+
+    const OVERFLOW_BTN_WIDTH = 44; // reserve room for the "⋯" button, in case it's needed
+    const chipEls = Array.from(root.querySelectorAll(".menu-cat-chip"));
+    const gap = 7; // matches .menu-cat-chips gap in theme.css
+    let usedWidth = 0;
+    let visibleCount = chipEls.length;
+    for (let i = 0; i < chipEls.length; i++) {
+        const w = chipEls[i].getBoundingClientRect().width + (i > 0 ? gap : 0);
+        const budget = i < chipEls.length - 1 ? containerWidth - OVERFLOW_BTN_WIDTH - gap : containerWidth;
+        if (usedWidth + w > budget) {
+            visibleCount = i;
+            break;
+        }
+        usedWidth += w;
+    }
+
+    if (visibleCount >= cats.length) return; // everything fits - no overflow menu needed
+
+    const activeIndex = cats.indexOf(activeCategory);
+    // Keep the active chip visible even if it would otherwise overflow - swap
+    // it in for whichever visible chip would be last, so the active category
+    // is never hidden behind the "⋯" popover.
+    const visibleIndexes = Array.from({ length: visibleCount }, (_, i) => i);
+    if (activeIndex >= visibleCount) {
+        visibleIndexes[visibleIndexes.length - 1] = activeIndex;
+    }
+    const hiddenIndexes = cats.map((_, i) => i).filter((i) => !visibleIndexes.includes(i));
+
+    root.innerHTML = visibleIndexes.map((i) => chipHtml(cats[i])).join("");
+    root.querySelectorAll(".menu-cat-chip").forEach(wireChip);
+
+    const overflowBtn = document.createElement("button");
+    overflowBtn.type = "button";
+    overflowBtn.className = "menu-cat-chip menu-cat-overflow-btn";
+    overflowBtn.setAttribute("aria-label", "More categories");
+    overflowBtn.textContent = "⋯";
+    root.appendChild(overflowBtn);
+
+    overflowBtn.addEventListener("click", () => {
+        document.getElementById("menu-cat-overflow-menu")?.remove();
+        const rect = overflowBtn.getBoundingClientRect();
+        const menu = document.createElement("div");
+        menu.id = "menu-cat-overflow-menu";
+        menu.className = "menu-cat-overflow-menu";
+        menu.style.cssText = `position:fixed; top:${rect.bottom + 6}px; left:${rect.left}px;`;
+        menu.innerHTML = hiddenIndexes
+            .map((i) => `<button type="button" class="menu-cat-chip${activeCategory === cats[i] ? " active" : ""}" data-cat="${escapeHtml(cats[i])}">${escapeHtml(cats[i])}</button>`)
+            .join("");
+        document.body.appendChild(menu);
+        menu.querySelectorAll(".menu-cat-chip").forEach(wireChip);
+        setTimeout(() => {
+            document.addEventListener(
+                "click",
+                function closeMenu(e) {
+                    if (!menu.contains(e.target) && e.target !== overflowBtn) {
+                        menu.remove();
+                        document.removeEventListener("click", closeMenu);
+                    }
+                },
+                { once: false }
+            );
+        }, 0);
+    });
+}
+
+/** Prev/Next pager for one section's item grid/list - reuses the same
+ *  «‹ X-Y of Z ›» pattern (.admin-pg-btn, see theme.css) already used for
+ *  order history/menu-items tables in Admin. Each section paginates on its
+ *  own (menuSectionPages[sectionId]), so paging one category doesn't affect
+ *  any other. Appended right after that section's grid/list container; a
+ *  no-op when that section's items all fit on one page. */
+function renderSectionPager(container, sectionId, currentPage, totalItems, totalPages) {
+    if (totalPages <= 1) return;
+
+    const pageStart = (currentPage - 1) * MENU_PAGE_SIZE;
+    const label = `${pageStart + 1}-${Math.min(pageStart + MENU_PAGE_SIZE, totalItems)} of ${totalItems}`;
+
+    const pagerEl = document.createElement("div");
+    pagerEl.className = "menu-pager";
+    pagerEl.innerHTML = `
+        <button type="button" class="admin-pg-btn" data-page="1" ${currentPage <= 1 ? "disabled" : ""} title="First page">«</button>
+        <button type="button" class="admin-pg-btn" data-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""} title="Previous page">‹</button>
+        <span class="menu-pager-label">${label}</span>
+        <button type="button" class="admin-pg-btn" data-page="${currentPage + 1}" ${currentPage >= totalPages ? "disabled" : ""} title="Next page">›</button>
+        <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${currentPage >= totalPages ? "disabled" : ""} title="Last page">»</button>
+    `;
+    container.appendChild(pagerEl);
+    pagerEl.querySelectorAll("[data-page]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const page = Number(btn.dataset.page);
+            if (!page || page < 1 || page > totalPages) return;
+            menuSectionPages[sectionId] = page;
             renderMenu(document.getElementById("menu-search")?.value || "");
         });
     });
@@ -1001,6 +1154,8 @@ function renderMenu(filterQuery = "") {
     if (!root) return;
     root.innerHTML = "";
     renderMenuCategoryChips();
+    document.getElementById("menu-view-grid-btn")?.classList.toggle("active", viewMode === "grid");
+    document.getElementById("menu-view-list-btn")?.classList.toggle("active", viewMode === "list");
 
     if (!favoritesFilterActive && !filterQuery && activeCategory === "All" && comboData.length > 0) {
         const comboSection = document.createElement("section");
@@ -1048,21 +1203,34 @@ function renderMenu(filterQuery = "") {
         root.appendChild(comboSection);
     }
 
+    // Each section paginates independently (10 items/page) - not one flat
+    // list spanning every section, so paging category A never touches
+    // category B's page number. Sections with zero matching items (after
+    // the search/favorites filter) are skipped entirely.
+    let anyItemsRendered = false;
+
     menuData.sections.forEach((section) => {
         if (activeCategory !== "All" && activeCategory !== section.title) return;
-        const items = menuData.items.filter(
-            (item) =>
-                item.section === section.id &&
-                item.name.toLowerCase().includes(filterQuery.toLowerCase()) &&
-                (!favoritesFilterActive || FavoritesSystem.isFavorite(item.id))
-        );
 
-        if (items.length === 0) return;
+        const sectionItems = menuData.items.filter((item) => {
+            if (item.section !== section.id) return false;
+            if (!item.name.toLowerCase().includes(filterQuery.toLowerCase())) return false;
+            if (favoritesFilterActive && !FavoritesSystem.isFavorite(item.id)) return false;
+            return true;
+        });
+        if (sectionItems.length === 0) return;
+        anyItemsRendered = true;
 
-        const sectionEl = document.createElement("section");
-        sectionEl.id = `section-${section.id}`;
-        sectionEl.className = "section-container";
-        sectionEl.innerHTML = `<h2 class="section-title">${section.title}</h2>`;
+        const totalPages = Math.max(1, Math.ceil(sectionItems.length / MENU_PAGE_SIZE));
+        const currentPage = Math.min(Math.max(1, menuSectionPages[section.id] || 1), totalPages);
+        menuSectionPages[section.id] = currentPage;
+        const pageStart = (currentPage - 1) * MENU_PAGE_SIZE;
+        const items = sectionItems.slice(pageStart, pageStart + MENU_PAGE_SIZE);
+
+        const headerEl = document.createElement("h2");
+        headerEl.className = "section-title";
+        headerEl.textContent = section.title;
+        root.appendChild(headerEl);
 
         const itemsContainer = document.createElement("div");
         itemsContainer.className = viewMode === "grid" ? "menu-grid" : "menu-list";
@@ -1169,43 +1337,58 @@ function renderMenu(filterQuery = "") {
             itemsContainer.appendChild(wrapperEl);
         });
 
-        sectionEl.appendChild(itemsContainer);
-        root.appendChild(sectionEl);
+        root.appendChild(itemsContainer);
+        renderSectionPager(root, section.id, currentPage, sectionItems.length, totalPages);
     });
 
-    if (favoritesFilterActive && !root.hasChildNodes()) {
-        root.innerHTML = `<p style="text-align:center; padding: 30px; font-size: 9pt; color: var(--color-text-muted);">No favorites yet - tap the \u2606 on any item to add one.</p>`;
+    if (!anyItemsRendered) {
+        root.innerHTML += favoritesFilterActive
+            ? `<p style="text-align:center; padding: 30px; font-size: 9pt; color: var(--color-text-muted);">No favorites yet - tap the \u2606 on any item to add one.</p>`
+            : `<p style="text-align:center; padding: 30px; font-size: 9pt; color: var(--color-text-muted);">No items match.</p>`;
     }
 
     const footer = document.getElementById("footer-actions");
     const cartBar = document.getElementById("cart-status");
+    const jumpFab = document.querySelector(".btn-jump-fab");
 
     if (footer) footer.style.display = "flex";
     if (cartBar) cartBar.style.display = cart.length > 0 ? "flex" : "none";
+    // The jump-to-category FAB only earns its place when "All" is selected -
+    // once a specific chip narrows the grid down already, a second way to
+    // jump to a category is just clutter.
+    if (jumpFab) jumpFab.style.display = activeCategory === "All" ? "" : "none";
 
-    renderStaffCartPanel();
+    renderMenuCartPanel();
 }
 
 /**
- * Persistent cart panel beside the menu grid, staff (KITCHEN_ROLES) only -
- * see .staff-cart-panel in theme.css and the comment in index.html for why
- * this exists alongside (not instead of) the footer cart bar + checkout
- * modal customers use. Re-runs every time renderMenu() does, which already
- * happens after every cart mutation (addCartLine/adjustCartLine/etc. all
- * call renderMenu()), so this stays in sync for free rather than needing
- * its own set of cart-change listeners.
+ * Persistent Cart/KOT panel beside the menu grid, for everyone - see
+ * .menu-cart-panel in theme.css and the comment in index.html for why this
+ * exists alongside (not instead of) the footer cart bar + checkout modal
+ * (the desktop-only breakpoint hides that bar once this panel is showing).
+ * Re-runs every time renderMenu() does, which already happens after every
+ * cart mutation (addCartLine/adjustCartLine/etc. all call renderMenu()), so
+ * this stays in sync for free rather than needing its own set of
+ * cart-change listeners.
  */
-function renderStaffCartPanel() {
-    const panel = document.getElementById("staff-cart-panel");
+function renderMenuCartPanel() {
+    const panel = document.getElementById("menu-cart-panel");
     if (!panel) return;
-    if (!KITCHEN_ROLES.includes(session.role)) {
-        panel.style.display = "none";
-        return;
-    }
     panel.style.display = "flex";
 
     const breakdown = CartSystem.calculateBreakdown(cart, siteConfig);
     const totalItems = cart.reduce((sum, c) => sum + c.quantity, 0);
+
+    // Group each item's default line together with its own customized
+    // variants (rather than raw insertion order) so a size/milk/extras
+    // version of something already in the cart lands next to it instead of
+    // trailing at the end of the list - same grouping the menu grid/list
+    // itself uses (defaultLine + customizedLines side by side per item).
+    const seenItemIds = [];
+    cart.forEach((line) => {
+        if (!seenItemIds.includes(line.id)) seenItemIds.push(line.id);
+    });
+    const groupedCart = seenItemIds.flatMap((id) => cart.filter((line) => line.id === id));
 
     panel.innerHTML = `
         <div style="padding:16px 18px 14px; border-bottom:1px dashed var(--color-border); flex:none;">
@@ -1216,15 +1399,46 @@ function renderStaffCartPanel() {
         </div>
         <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:4px 18px;">
             ${
-                cart.length === 0
+                groupedCart.length === 0
                     ? `<p style="padding:36px 0; text-align:center; color:var(--color-text-muted); font-size:11px; line-height:1.8;">Cart is empty.<br>Tap an item to add it.</p>`
-                    : cart
-                          .map(
-                              (line) => `
+                    : groupedCart
+                          .map((line, i) => {
+                              const isCustomized = line.cartKey !== defaultCartKey(line.id);
+                              // Same shape as the checkout modal's own "CUSTOMIZED" breakdown
+                              // (CustomizationSystem.describeLineWithAmounts) - each choice on
+                              // its own row with what it added, not just a name tag. Same base
+                              // row styling as a plain line too - a customized line isn't a
+                              // visually different kind of cart entry, just one with more detail.
+                              // Collapsed by default (like the checkout modal's own CUSTOMIZED
+                              // tag) - a 3-4 line breakdown per line adds up fast with several
+                              // customized items in the cart at once.
+                              const detailLines = isCustomized ? CustomizationSystem.describeLineWithAmounts(line) : [];
+                              const extraTotal = detailLines.reduce((sum, d) => sum + d.amount, 0);
+                              const breakdownId = `menu-cart-breakdown-${i}`;
+                              const detailsHtml = isCustomized
+                                  ? `
+                        <div style="margin-top:4px;">
+                            <span onclick="const el=document.getElementById('${breakdownId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" style="font-size:9px; font-weight:bold; letter-spacing:.08em; color:var(--color-accent); text-transform:uppercase; cursor:pointer; text-decoration:underline;">Customized</span>
+                            <span style="font-size:9px; color:var(--color-text-muted); margin-left:4px;">₹${extraTotal.toFixed(2)}</span>
+                            <div id="${breakdownId}" style="display:none; margin-top:3px;">
+                                ${detailLines
+                                    .map(
+                                        (d) => `
+                                <div style="display:flex; justify-content:space-between; gap:8px; font-size:9.5px; color:var(--color-text-muted); padding:1px 0 1px 8px;">
+                                    <span>${escapeHtml(d.label)}</span><span>₹${d.amount.toFixed(2)}</span>
+                                </div>`
+                                    )
+                                    .join("")}
+                            </div>
+                        </div>`
+                                  : "";
+                              return `
                 <div style="display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px dashed var(--color-border);">
                     <div style="flex:1; min-width:0;">
                         <div style="font-size:11.5px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(line.name)}</div>
                         <div style="font-size:9.5px; color:var(--color-text-muted); margin-top:3px;">₹${line.price.toFixed(2)} each</div>
+                        ${detailsHtml}
+                        ${line.notes ? `<div style="font-size:9.5px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(line.notes)}"</div>` : ""}
                     </div>
                     <div class="btn-qty-container">
                         <button onclick="window.adjustCartLine('${line.cartKey}', -1)">-</button>
@@ -1233,8 +1447,8 @@ function renderStaffCartPanel() {
                     </div>
                     <span style="width:56px; flex:none; text-align:right; font-size:11px; font-weight:bold;">₹${(line.price * line.quantity).toFixed(2)}</span>
                 </div>
-            `
-                          )
+            `;
+                          })
                           .join("")
             }
         </div>
@@ -1246,6 +1460,7 @@ function renderStaffCartPanel() {
                 <span style="font-size:22px; font-weight:bold; color:var(--color-accent);">₹${breakdown.total.toFixed(2)}</span>
             </div>
             <button id="staff-cart-checkout-btn" ${cart.length === 0 ? "disabled" : ""} style="width:100%; padding:12px; background:${cart.length ? "var(--color-accent)" : "var(--color-border)"}; color:${cart.length ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:none; font-size:11.5px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:${cart.length ? "pointer" : "not-allowed"}; min-height:44px;">[ Checkout ]</button>
+            <div style="font-size:9px; color:var(--color-text-muted); text-align:center; margin-top:8px; line-height:1.5;">Tip and service charge may be applied to final bill.</div>
         </div>
     `;
     panel.querySelector("#staff-cart-checkout-btn")?.addEventListener("click", () => window.handleCartStatusClick());
@@ -1260,6 +1475,7 @@ function paintFavoritesFilterStar() {
 
 window.toggleFavoritesFilter = () => {
     favoritesFilterActive = !favoritesFilterActive;
+    menuSectionPages = {};
     paintFavoritesFilterStar();
     renderMenu(document.getElementById("menu-search")?.value || "");
 };
@@ -1363,9 +1579,12 @@ window.handleCartStatusClick = async () => {
  */
 let kitchenStatusFilter = "active"; // "active" | "history" | "all"
 let kitchenSortOrder = "newest"; // "newest" | "oldest"
+let kitchenPage = 1; // 1-based; reset to 1 whenever the filtered ticket set changes
+const KITCHEN_PAGE_SIZE = 10;
 
 window.filterKitchen = async (station) => {
     currentKitchenStation = station;
+    kitchenPage = 1;
 
     document.querySelectorAll(".kitchen-tabs .admin-tab-btn").forEach((btn) => {
         btn.classList.remove("active");
@@ -1471,6 +1690,7 @@ async function renderTablesPanel() {
 
 window.setKitchenStatusFilter = (filter) => {
     kitchenStatusFilter = filter;
+    kitchenPage = 1;
     document.querySelectorAll("[data-status-filter]").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.statusFilter === filter);
     });
@@ -1479,6 +1699,7 @@ window.setKitchenStatusFilter = (filter) => {
 
 window.setKitchenSort = (sort) => {
     kitchenSortOrder = sort;
+    kitchenPage = 1;
     renderKitchen();
 };
 
@@ -1492,31 +1713,41 @@ function renderKitchen() {
         return kitchenSortOrder === "newest" ? -diff : diff;
     });
 
-    let visibleCount = 0;
-
+    // Filter first, THEN paginate the filtered set (10 tickets/page) - the
+    // old version filtered and rendered in the same pass, which had no
+    // natural place to slice for pagination.
+    const isMaster = currentKitchenStation === "MASTER";
+    const matchingOrders = [];
     sorted.forEach((order) => {
-            const isMaster = currentKitchenStation === "MASTER";
+        const orderIsComplete = !!order.servedAt;
+        // ACTIVE hides served orders; HISTORY shows only served ones;
+        // ALL shows everything regardless of status.
+        if (kitchenStatusFilter === "active" && orderIsComplete) return;
+        if (kitchenStatusFilter === "history" && !orderIsComplete) return;
+
+        const itemsToDisplay = isMaster
+            ? order.items
+            : order.items.filter((i) => {
+                  const station = i.station || KitchenSystem.getStation(i);
+                  return station === currentKitchenStation && (!i.isDone || kitchenStatusFilter !== "active");
+              });
+        if (!isMaster && itemsToDisplay.length === 0) return;
+
+        matchingOrders.push({ order, itemsToDisplay });
+    });
+
+    if (matchingOrders.length === 0) {
+        root.innerHTML = `<p style="color:var(--color-text-muted); font-family:'Courier New',monospace; font-size:9pt;">No ${kitchenStatusFilter === "history" ? "completed" : kitchenStatusFilter === "active" ? "active" : ""} orders${currentKitchenStation !== "MASTER" ? ` for ${currentKitchenStation}` : ""}.</p>`;
+        return;
+    }
+
+    const totalPages = Math.max(1, Math.ceil(matchingOrders.length / KITCHEN_PAGE_SIZE));
+    kitchenPage = Math.min(Math.max(1, kitchenPage), totalPages);
+    const pageStart = (kitchenPage - 1) * KITCHEN_PAGE_SIZE;
+    const pageOrders = matchingOrders.slice(pageStart, pageStart + KITCHEN_PAGE_SIZE);
+
+    pageOrders.forEach(({ order, itemsToDisplay }) => {
             const allItemsDone = order.items.every((i) => i.isDone);
-            // "Complete" now means SERVED, not just prepped - a ready order
-            // still needs a human to hand it off, so it stays in ACTIVE
-            // (with a MARK SERVED action) until that actually happens.
-            const orderIsComplete = !!order.servedAt;
-
-            // ACTIVE hides served orders; HISTORY shows only served ones;
-            // ALL shows everything regardless of status.
-            if (kitchenStatusFilter === "active" && orderIsComplete) return;
-            if (kitchenStatusFilter === "history" && !orderIsComplete) return;
-
-            const itemsToDisplay = isMaster
-                ? order.items
-                : order.items.filter((i) => {
-                      const station = i.station || KitchenSystem.getStation(i);
-                      return station === currentKitchenStation && (!i.isDone || kitchenStatusFilter !== "active");
-                  });
-
-            if (!isMaster && itemsToDisplay.length === 0) return;
-
-            visibleCount++;
             const hasPendingItems = itemsToDisplay.some((i) => !i.isDone);
             const status = KitchenSystem.statusOf(order);
             const statusColor = KitchenSystem.STATUS_COLORS[status];
@@ -1563,9 +1794,42 @@ function renderKitchen() {
             root.appendChild(ticket);
         });
 
-    if (visibleCount === 0) {
-        root.innerHTML = `<p style="color:var(--color-text-muted); font-family:'Courier New',monospace; font-size:9pt;">No ${kitchenStatusFilter === "history" ? "completed" : kitchenStatusFilter === "active" ? "active" : ""} orders${currentKitchenStation !== "MASTER" ? ` for ${currentKitchenStation}` : ""}.</p>`;
-    }
+    renderKitchenPager(matchingOrders.length, totalPages);
+}
+
+/** Prev/Next pager for the Orders/Kitchen ticket grid - reuses the same
+ *  «‹ X-Y of Z ›» pattern (.admin-pg-btn) as the menu grid/list's own
+ *  per-section pager and Admin's order-history table. Appended right after
+ *  the ticket grid; a no-op when everything fits on one page. */
+function renderKitchenPager(totalOrders, totalPages) {
+    if (totalPages <= 1) return;
+    const root = document.getElementById("kitchen-orders-root");
+    if (!root) return;
+
+    const pageStart = (kitchenPage - 1) * KITCHEN_PAGE_SIZE;
+    const label = `${pageStart + 1}-${Math.min(pageStart + KITCHEN_PAGE_SIZE, totalOrders)} of ${totalOrders}`;
+
+    const pagerEl = document.createElement("div");
+    pagerEl.className = "menu-pager";
+    // #kitchen-orders-root is a CSS grid (see theme.css) - without this the
+    // pager becomes a grid cell itself instead of spanning the full row.
+    pagerEl.style.gridColumn = "1 / -1";
+    pagerEl.innerHTML = `
+        <button type="button" class="admin-pg-btn" data-page="1" ${kitchenPage <= 1 ? "disabled" : ""} title="First page">«</button>
+        <button type="button" class="admin-pg-btn" data-page="${kitchenPage - 1}" ${kitchenPage <= 1 ? "disabled" : ""} title="Previous page">‹</button>
+        <span class="menu-pager-label">${label}</span>
+        <button type="button" class="admin-pg-btn" data-page="${kitchenPage + 1}" ${kitchenPage >= totalPages ? "disabled" : ""} title="Next page">›</button>
+        <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${kitchenPage >= totalPages ? "disabled" : ""} title="Last page">»</button>
+    `;
+    root.appendChild(pagerEl);
+    pagerEl.querySelectorAll("[data-page]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const page = Number(btn.dataset.page);
+            if (!page || page < 1 || page > totalPages) return;
+            kitchenPage = page;
+            renderKitchen();
+        });
+    });
 }
 
 window.markPaid = async (orderId) => {
@@ -1722,74 +1986,130 @@ window.renderFooter = (config) => {
 };
 
 /**
- * Home page "Popular Picks" - a handful of featured items so there's
+ * Home page "This week's picks" - a handful of featured items so there's
  * something to click right on arrival, not just an empty page below the
  * hero. Clicking a card adds it to the cart and jumps to the Menu page so
- * the person can see it land there.
+ * the person can see it land there. Badge labels are a static flourish (not
+ * data-bound to anything real, same as the design mockup this mirrors).
  */
 function renderPopularPicks() {
     const root = document.getElementById("popular-picks-grid");
     if (!root || !menuData.items.length) return;
 
+    const PICK_BADGES = ["House favourite", "Slow steep", "Baker's pick"];
     // First section's items are the intended "signature" picks; fall back
     // to the first few items overall if that section is ever empty/renamed.
     const firstSectionId = menuData.sections[0]?.id;
-    const picks = (firstSectionId ? menuData.items.filter((i) => i.section === firstSectionId) : menuData.items).slice(0, 4);
+    const picks = (firstSectionId ? menuData.items.filter((i) => i.section === firstSectionId) : menuData.items).slice(0, 3);
 
     root.innerHTML = picks
         .map(
             (item, i) => `
-        <div class="popular-pick-card" style="transition-delay: ${i * 60}ms;" onclick="window.pickFromHome(${item.id})">
-            ${itemImageMarkup(item)}
-            <div class="name">${item.name}</div>
-            <div class="price">\u20b9${item.price}</div>
+        <button type="button" class="home-pick-card" onclick="window.pickFromHome(${item.id})">
+            <div class="home-pick-banner">
+                ${itemImageMarkup(item)}
+                <span class="home-pick-badge">${PICK_BADGES[i] || ""}</span>
+            </div>
+            <div class="home-pick-body">
+                <span class="home-pick-name">${escapeHtml(item.name)}</span>
+                <span class="home-pick-note">${escapeHtml(item.story || "")}</span>
+                <div class="home-pick-footer">
+                    <span class="home-pick-price">\u20b9${item.price}</span>
+                    <span class="home-pick-add">+ Add</span>
+                </div>
+            </div>
+        </button>
+    `
+        )
+        .join("");
+}
+
+/**
+ * Store-facts strip under the hero - two real, live facts from the public
+ * stats endpoint (same data the old live-stats-ticker showed) plus two
+ * static facts from Branding config, laid out as one 4-up bar matching the
+ * design mockup's storeFacts row.
+ */
+async function renderHomeStoreFacts() {
+    const root = document.getElementById("home-store-facts");
+    if (!root) return;
+
+    let stats = null;
+    try {
+        const res = await fetch("/api/stats/public");
+        if (res.ok) stats = await res.json();
+    } catch (e) {
+        stats = null;
+    }
+
+    const facts = [
+        { label: "Open today", value: siteConfig.footer?.hours || "See hours below", color: "var(--color-success)" },
+        { label: "Address", value: siteConfig.footer?.address || "-", color: "var(--color-text)" },
+        { label: "Orders today", value: stats ? String(stats.ordersToday) : "-", color: "var(--color-text)" },
+        { label: "Bits brewed today", value: stats ? String(stats.itemsServedToday) : "-", color: "var(--color-accent)" }
+    ];
+    root.innerHTML = facts
+        .map(
+            (f) => `
+        <div class="home-fact">
+            <div class="home-fact-label">${escapeHtml(f.label)}</div>
+            <div class="home-fact-value" style="color:${f.color};">${escapeHtml(f.value)}</div>
         </div>
     `
         )
         .join("");
-
-    // Fade cards in as they scroll into view rather than all at once - see
-    // .popular-pick-card / .in-view in theme.css for the actual animation.
-    if ("IntersectionObserver" in window) {
-        const observer = new IntersectionObserver(
-            (entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting) {
-                        entry.target.classList.add("in-view");
-                        observer.unobserve(entry.target);
-                    }
-                });
-            },
-            { threshold: 0.15 }
-        );
-        root.querySelectorAll(".popular-pick-card").forEach((card) => observer.observe(card));
-    } else {
-        root.querySelectorAll(".popular-pick-card").forEach((card) => card.classList.add("in-view"));
-    }
 }
 
 /**
- * Small "live" ticker on the home page showing today's real order/item
- * counts - not decorative fake numbers. Uses the public, non-sensitive
- * stats endpoint (no revenue, no names) so it works for anyone, logged in
- * or not.
+ * "How we roast" process steps - decorative brand copy, same role as the
+ * design mockup's hardcoded roastSteps (not meant to be admin-configurable,
+ * just static storytelling content).
  */
-async function renderLiveStatsTicker() {
-    const root = document.getElementById("live-stats-ticker");
+function renderHomeRoastSteps() {
+    const root = document.getElementById("home-roast-steps");
     if (!root) return;
-    try {
-        const res = await fetch("/api/stats/public");
-        if (!res.ok) throw new Error();
-        const stats = await res.json();
-        root.innerHTML = `
-            <span class="live-dot"></span>
-            <span><strong>${stats.ordersToday}</strong> ORDER${stats.ordersToday === 1 ? "" : "S"} TODAY</span>
-            <span style="opacity:0.4;">\u00b7</span>
-            <span><strong>${stats.itemsServedToday}</strong> BITS BREWED TODAY</span>
-        `;
-    } catch (e) {
-        root.style.display = "none";
-    }
+    const steps = [
+        { no: "01", name: "Sourced", detail: "Small-batch beans, bought direct, one sack at a time." },
+        { no: "02", name: "Drum roast", detail: "Twelve-minute profile, logged to the second." },
+        { no: "03", name: "Rested", detail: "A few days off-gas before the first pour." },
+        { no: "04", name: "Poured", detail: "Ground to order, never before you walk in." }
+    ];
+    root.innerHTML = steps
+        .map(
+            (r) => `
+        <div class="home-roast-step">
+            <span class="home-roast-step-no">${r.no}</span>
+            <span class="home-roast-step-name">${escapeHtml(r.name)}</span>
+            <span class="home-roast-step-detail">${escapeHtml(r.detail)}</span>
+        </div>
+    `
+        )
+        .join("");
+}
+
+/** "Find us" widget - real store details from Branding config, skipping any field that isn't set rather than showing a blank row. */
+function renderHomeVisitRows() {
+    const root = document.getElementById("home-visit-rows");
+    if (!root) return;
+    const f = siteConfig.footer || {};
+    const rows = [
+        { label: "Address", value: f.address },
+        { label: "Phone", value: f.phone },
+        { label: "Email", value: f.email },
+        { label: "Hours", value: f.hours }
+    ].filter((r) => r.value);
+    root.innerHTML = rows.length
+        ? rows
+              .map(
+                  (r) => `
+        <div class="home-visit-row">
+            <span class="home-visit-label">${escapeHtml(r.label)}</span>
+            <span class="home-visit-value">${escapeHtml(r.value)}</span>
+        </div>
+    `
+              )
+              .join("")
+        : `<p style="color:var(--color-text-muted); font-size:11.5px; margin-top:10px;">Store details coming soon.</p>`;
 }
 
 window.pickFromHome = (itemId) => {

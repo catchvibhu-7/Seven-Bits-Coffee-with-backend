@@ -92,6 +92,11 @@ const COMBOS_FILE = path.join(DATA_DIR, "combos.json");
 const TABLE_SESSIONS_FILE = path.join(DATA_DIR, "table-sessions.json");
 const COUPONS_FILE = path.join(DATA_DIR, "coupons.json");
 const ARCADE_SCORES_FILE = path.join(DATA_DIR, "arcade-scores.json");
+// Per-user settings that aren't tied to any one feature enough to live on the
+// user record itself (users.json) - starts with just the staff nav layout
+// choice (rail/top-bar), keyed by userId so it follows a person across
+// devices/browsers instead of being stuck in one browser's localStorage.
+const USER_PREFERENCES_FILE = path.join(DATA_DIR, "user-preferences.json");
 
 if (!fs.existsSync(AUDIT_LOG_FILE)) writeJson(AUDIT_LOG_FILE, []);
 if (!fs.existsSync(BRANDING_PROFILES_FILE)) writeJson(BRANDING_PROFILES_FILE, {});
@@ -103,6 +108,7 @@ if (!fs.existsSync(OVERTIME_APPROVALS_FILE)) writeJson(OVERTIME_APPROVALS_FILE, 
 // a storeId, but with a single store seeded there's no behavior change yet -
 // this just means a real second store later doesn't need a data migration.
 if (!fs.existsSync(STORES_FILE)) writeJson(STORES_FILE, [{ id: 1, name: "Main Store", address: "" }]);
+if (!fs.existsSync(USER_PREFERENCES_FILE)) writeJson(USER_PREFERENCES_FILE, {});
 
 /**
  * Records sensitive admin actions (currently: password resets and staff
@@ -2493,6 +2499,28 @@ route("DELETE", /^\/api\/favorites\/(?<itemId>\d+)\/?$/, async (req, res, params
     favorites.filter((f) => !(f.ownerKey === key && f.itemId === itemId))
   );
   sendJson(res, 200, { ok: true });
+});
+
+// Per-user preferences (currently just the staff rail/top-bar layout choice)
+// - one object keyed by userId, {} until someone has actually set anything.
+route("GET", /^\/api\/user-preferences\/?$/, async (req, res) => {
+  const session = currentSession(req);
+  if (!session || session.userId == null) return sendJson(res, 200, {});
+  const all = readJson(USER_PREFERENCES_FILE, {});
+  sendJson(res, 200, all[session.userId] || {});
+});
+
+route("PATCH", /^\/api\/user-preferences\/?$/, async (req, res) => {
+  const session = currentSession(req);
+  if (!session || session.userId == null) return sendJson(res, 401, { error: "Not authenticated" });
+  const body = await readBody(req);
+  if (body.layout && !["rail", "topbar"].includes(body.layout)) {
+    return sendJson(res, 400, { error: "Invalid layout" });
+  }
+  const all = readJson(USER_PREFERENCES_FILE, {});
+  all[session.userId] = { ...all[session.userId], ...(body.layout ? { layout: body.layout } : {}) };
+  writeJson(USER_PREFERENCES_FILE, all);
+  sendJson(res, 200, all[session.userId]);
 });
 
 // ---------------------------------------------------------------------------

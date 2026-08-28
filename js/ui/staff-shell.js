@@ -1,19 +1,31 @@
 /**
- * SEVEN BITS COFFEE - STAFF SHELL (nav chrome for employee/manager/admin/owner)
+ * SEVEN BITS COFFEE - APP SHELL (nav chrome for every signed-in session)
  * Location: /js/ui/staff-shell.js
  *
  * Renders one of two layouts - a left rail (#staff-rail, an <aside> beside
  * #app-main) or a top bar (.staff-topbar, a <header> that visually replaces
  * .system-nav inside #app-main) - from the SAME tab-list data, so there's
  * one source of truth for what's in the nav regardless of which layout is
- * showing. Customers/guests never see either: app.js only calls into this
- * module once a KITCHEN_ROLES session is confirmed, and #staff-rail defaults
- * to display:none in the CSS so an untouched page looks exactly as before.
+ * showing. The layout choice (and its per-account persistence - see
+ * fetchServerLayout()/saveServerLayout()) isn't staff-only: customer/guest
+ * sessions get the same rail/top-bar switcher, just with a shorter
+ * Home/Menu/Arcade tab list (CUSTOMER_TAB_DEFS) instead of staff's five
+ * (STAFF_TAB_DEFS) - see isStaffSession(). Only a fully anonymous visitor
+ * with no session at all never sees either layout: app.js's
+ * updateStaffShellForSession() falls back to hide() (the untouched customer
+ * top nav) in that one case, and #staff-rail defaults to display:none in
+ * the CSS so that visitor's first paint looks exactly as before this
+ * module existed. Despite the file name (kept to avoid a churny rename
+ * across app.js/index.html/theme.css), this module is no longer staff-only.
  *
  * The mockup this is based on had a 4-button role *switcher* in the rail's
  * "Auth level" section - that was a design-time preview toggle, not a real
- * feature. The real-world equivalent is simpler: show who's actually logged
- * in, and a LOGOUT button.
+ * feature. The real-world equivalent is simpler: one account button
+ * (name + role, see identityHtml()) that opens the same account dropdown
+ * (Account Settings, Log out) the customer nav uses - see
+ * window.renderAccountMenu() in app.js. Rail/top-bar layout switching lives
+ * inside Account Settings now (account-settings-modal.js), not as its own
+ * visible button.
  */
 const LAYOUT_KEY = "sb-staff-nav-layout";
 
@@ -34,19 +46,82 @@ function saveLayout(v) {
     }
 }
 
+// localStorage is per-browser only - a manager who switches machines (or
+// clears site data) loses their layout choice. /api/user-preferences (see
+// server.js) persists it per userId instead, so it follows the account
+// everywhere. localStorage stays as the instant, no-network read used for
+// the very first render; the server fetch reconciles shortly after in
+// show(), same pattern as any other "fast local read, slower authoritative
+// refresh" widget in this app.
+async function fetchServerLayout() {
+    try {
+        const res = await fetch("/api/user-preferences", { credentials: "include" });
+        if (!res.ok) return null;
+        const prefs = await res.json();
+        return prefs.layout === "rail" || prefs.layout === "topbar" ? prefs.layout : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function saveServerLayout(v) {
+    fetch("/api/user-preferences", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layout: v })
+    }).catch(() => {
+        // Best-effort - the localStorage copy (saveLayout) already applied,
+        // so a dropped request here just means the choice doesn't follow to
+        // another device this time, not a broken toggle.
+    });
+}
+
+// Both the rail and the top bar are position:fixed (see .staff-rail /
+// .staff-topbar in theme.css - genuinely pinned to the screen, not just
+// position:sticky), so whichever is active is taken out of #app-shell's
+// normal flex flow entirely. #app-main needs a matching margin (left for
+// the rail, top for the top bar) or its content would render underneath
+// the fixed nav instead of beside/below it.
+const RAIL_WIDTH_PX = 246;
+const TOPBAR_HEIGHT_PX = 60;
+function setMainOffsetForLayout(layout) {
+    const main = document.getElementById("app-main");
+    if (!main) return;
+    main.style.marginLeft = layout === "rail" ? `${RAIL_WIDTH_PX}px` : "0";
+    main.style.marginTop = layout === "topbar" ? `${TOPBAR_HEIGHT_PX}px` : "0";
+}
+
 function escapeHtml(str) {
     return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Mirrors app.js's KITCHEN_ROLES - inlined rather than imported since app.js
+// isn't set up as a module other files pull constants from (same reasoning
+// as account-settings-modal.js's own STAFF_ROLES copy). Used only to pick
+// which tab list below applies to the current session.
+const KITCHEN_ROLES = ["employee", "manager", "admin", "owner"];
+
 // Kept in one place so rail/top-bar always agree on what's in the nav, and
 // so a later phase can add a real order-count badge to "Orders" without
 // touching two separate render paths.
-const TAB_DEFS = [
+const STAFF_TAB_DEFS = [
     { key: "staff-home", label: "Home", pageId: "staff-home" },
     { key: "menu", label: "Menu", pageId: "menu" },
     { key: "orders", label: "Orders", pageId: "kitchen" },
     { key: "billing", label: "Billing", pageId: "billing" },
     { key: "admin", label: "Admin", pageId: "admin", managerUp: true }
+];
+
+// Same rail/top-bar switcher, customer/guest edition - mirrors the plain
+// three-button customer nav in index.html (Home/Menu/Arcade) instead of the
+// staff tab set. The layout choice itself (and its server-side persistence -
+// see fetchServerLayout()/saveServerLayout()) isn't a staff-only feature;
+// only the CONTENTS of the nav differ by who's looking at it.
+const CUSTOMER_TAB_DEFS = [
+    { key: "home", label: "Home", pageId: "home" },
+    { key: "menu", label: "Menu", pageId: "menu" },
+    { key: "arcade", label: "Arcade", pageId: "arcade" }
 ];
 
 export const StaffShell = {
@@ -55,20 +130,55 @@ export const StaffShell = {
     activeTab: "staff-home",
     managerUpRoles: ["manager", "admin", "owner"],
 
-    /** Called once a KITCHEN_ROLES session is confirmed (see app.js). */
+    isStaffSession() {
+        return KITCHEN_ROLES.includes(this.session?.role);
+    },
+
+    /** Called once ANY session (staff, customer, or guest) is confirmed -
+     *  see updateStaffShellForSession() in app.js. A fully anonymous visitor
+     *  (no session at all) never reaches here; that case still gets the
+     *  untouched customer top nav via hide(). */
     show(session, activePageId) {
         this.session = session;
+        this.activeTab = this.isStaffSession() ? "staff-home" : "home";
         this.layout = loadLayout();
         this.setActiveFromPageId(activePageId);
         const rail = document.getElementById("staff-rail");
         const nav = document.querySelector(".system-nav");
         if (rail) rail.style.display = this.layout === "rail" ? "flex" : "none";
         if (nav) nav.style.display = this.layout === "rail" ? "none" : "flex";
+        setMainOffsetForLayout(this.layout);
+        this.render();
+        this.syncLayoutFromServer();
+    },
+
+    /** Reconciles against the per-user server copy (see fetchServerLayout())
+     *  after the instant localStorage-based render above already happened -
+     *  only re-renders if the account's stored choice actually differs (e.g.
+     *  set from a different browser/device), so the common case is a no-op. */
+    async syncLayoutFromServer() {
+        const serverLayout = await fetchServerLayout();
+        if (!serverLayout || serverLayout === this.layout || this.session == null) return;
+        this.layout = serverLayout;
+        saveLayout(this.layout);
+        this.applyLayoutToDom();
+    },
+
+    applyLayoutToDom() {
+        const rail = document.getElementById("staff-rail");
+        const nav = document.querySelector(".system-nav");
+        if (rail) rail.style.display = this.layout === "rail" ? "flex" : "none";
+        if (nav) nav.style.display = this.layout === "rail" ? "none" : "flex";
+        if (this.layout !== "rail" && nav) nav.classList.add("staff-topbar");
+        setMainOffsetForLayout(this.layout);
         this.render();
     },
 
-    /** Called when the session drops below KITCHEN_ROLES (logout, or a
-     *  customer/guest browsing) - restores the untouched customer chrome. */
+    /** Called when there's no session at all - a fully anonymous visitor who
+     *  hasn't logged in, registered, or started a guest checkout yet -
+     *  restores the untouched customer chrome. Any real session (customer,
+     *  guest, or staff) uses show() instead, see updateStaffShellForSession()
+     *  in app.js. */
     hide() {
         const rail = document.getElementById("staff-rail");
         const nav = document.querySelector(".system-nav");
@@ -81,16 +191,19 @@ export const StaffShell = {
             nav.classList.remove("staff-topbar");
             nav.innerHTML = this.customerNavHtml;
         }
+        setMainOffsetForLayout(null);
     },
 
     setActiveFromPageId(pageId) {
-        const tab = TAB_DEFS.find((t) => t.pageId === pageId);
+        const defs = this.isStaffSession() ? STAFF_TAB_DEFS : CUSTOMER_TAB_DEFS;
+        const tab = defs.find((t) => t.pageId === pageId);
         if (tab) this.activeTab = tab.key;
     },
 
     tabsForRole() {
+        if (!this.isStaffSession()) return CUSTOMER_TAB_DEFS;
         const role = this.session?.role;
-        return TAB_DEFS.filter((t) => !t.managerUp || this.managerUpRoles.includes(role));
+        return STAFF_TAB_DEFS.filter((t) => !t.managerUp || this.managerUpRoles.includes(role));
     },
 
     /** Toggles rail <-> top-bar in place - no page navigation happens, so
@@ -98,20 +211,37 @@ export const StaffShell = {
     switchLayout() {
         this.layout = this.layout === "rail" ? "topbar" : "rail";
         saveLayout(this.layout);
-        const rail = document.getElementById("staff-rail");
-        const nav = document.querySelector(".system-nav");
-        if (rail) rail.style.display = this.layout === "rail" ? "flex" : "none";
-        if (nav) nav.style.display = this.layout === "rail" ? "none" : "flex";
-        if (this.layout !== "rail" && nav) nav.classList.add("staff-topbar");
-        this.render();
+        saveServerLayout(this.layout);
+        this.applyLayoutToDom();
     },
 
     render() {
         const tabs = this.tabsForRole();
         const identityHtml = this.identityHtml();
+        // Switching layouts only ever re-renders the NEWLY active container
+        // (rail or top-bar) - the other one is just hidden (display:none),
+        // not cleared, so its stale markup (including its own copy of
+        // #staff-account-btn) stayed in the DOM. getElementById() then
+        // silently returned that hidden, zero-sized element instead of the
+        // visible one, which is why the account dropdown used to open at
+        // (0,0) after switching layouts. Clearing the inactive one first
+        // guarantees only one #staff-account-btn (etc.) ever exists.
         if (this.layout === "rail") {
+            const nav = document.querySelector(".system-nav");
+            // renderTopbar() adds this class every time it runs, but nothing
+            // ever removed it again on the way back to rail - it stuck
+            // around on .system-nav (even display:none, class selectors
+            // don't care) and kept matching the topbar-only sticky-header
+            // offset rule in theme.css, pushing .menu-sticky-header 60px
+            // down in rail mode too instead of flush to top:0.
+            if (nav) {
+                nav.innerHTML = "";
+                nav.classList.remove("staff-topbar");
+            }
             this.renderRail(tabs, identityHtml);
         } else {
+            const rail = document.getElementById("staff-rail");
+            if (rail) rail.innerHTML = "";
             this.renderTopbar(tabs, identityHtml);
         }
     },
@@ -131,15 +261,19 @@ export const StaffShell = {
             .join("");
     },
 
+    /** The one account button - name + role level, opens the shared
+     *  account dropdown (Account Settings incl. Site Layout, Log out) via
+     *  window.renderAccountMenu(), same pattern as the customer nav's
+     *  account button. */
     identityHtml() {
         const s = this.session || {};
         const name = s.name || (s.role ? s.role.toUpperCase() : "STAFF");
         const role = s.role ? s.role.toUpperCase() : "";
         return `
-            <div class="staff-auth-identity">
+            <button type="button" id="staff-account-btn" class="staff-auth-identity">
                 <span class="staff-auth-name">${escapeHtml(name)}</span>
                 <span class="staff-auth-role">${escapeHtml(role)}</span>
-            </div>
+            </button>
         `;
     },
 
@@ -149,21 +283,20 @@ export const StaffShell = {
         rail.innerHTML = `
             <div class="staff-rail-logo">
                 <div class="staff-rail-logo-mark">SEVEN<br>BITS<span style="color:var(--color-text);">_</span></div>
-                <div class="staff-rail-sub">Coffee &middot; Staff Terminal</div>
+                <div class="staff-rail-sub">Coffee &middot; ${this.isStaffSession() ? "Staff Terminal" : "Order Terminal"}</div>
                 <div class="staff-rail-status">&#9679; SYS.ONLINE</div>
             </div>
-            <nav class="staff-nav-list" aria-label="Staff navigation">
+            <nav class="staff-nav-list" aria-label="Site navigation">
                 ${this.navButtonsHtml(tabs)}
             </nav>
-            <div class="staff-rail-spacer"></div>
+            <!-- Genuinely pinned to the bottom of the screen (position:fixed
+                 - see .staff-auth-section in theme.css), not just pushed
+                 there by a flex spacer - a spacer only pins it as far down
+                 as the rail's own layout allows, which could still land it
+                 partly below the fold on a short window. -->
             <div class="staff-auth-section">
-                <div class="staff-auth-label">Signed in</div>
+                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none; margin-bottom:6px;" onclick="window.handleTimeclockClick()"></button>
                 ${identityHtml}
-                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none; width:100%; margin-bottom:6px;" onclick="window.handleTimeclockClick()"></button>
-                <div class="staff-auth-btn-row">
-                    <button type="button" class="staff-layout-btn" aria-label="Switch to top-bar layout">Top bar</button>
-                    <button type="button" class="staff-logout-btn">Log out</button>
-                </div>
             </div>
         `;
         this.wireButtons(rail);
@@ -177,16 +310,14 @@ export const StaffShell = {
         nav.innerHTML = `
             <div class="staff-topbar-logo">
                 <span style="font-size:17px; font-weight:bold; letter-spacing:2px; color:var(--color-accent);">7BITS</span>
-                <span style="font-size:9px; letter-spacing:.18em; color:var(--color-text-muted);">POS</span>
+                <span style="font-size:9px; letter-spacing:.18em; color:var(--color-text-muted);">${this.isStaffSession() ? "POS" : "ORDER"}</span>
             </div>
-            <nav class="staff-topbar-nav" aria-label="Staff navigation">
+            <nav class="staff-topbar-nav" aria-label="Site navigation">
                 ${this.navButtonsHtml(tabs, { topbar: true })}
             </nav>
             <div class="staff-topbar-identity">
                 <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none;" onclick="window.handleTimeclockClick()"></button>
                 ${identityHtml}
-                <button type="button" class="staff-layout-btn" aria-label="Switch to left-rail layout">Rail</button>
-                <button type="button" class="staff-logout-btn">Log out</button>
             </div>
         `;
         this.wireButtons(nav);
@@ -194,9 +325,10 @@ export const StaffShell = {
     },
 
     wireButtons(root) {
+        const defs = this.isStaffSession() ? STAFF_TAB_DEFS : CUSTOMER_TAB_DEFS;
         root.querySelectorAll(".staff-nav-btn").forEach((btn) => {
             btn.addEventListener("click", () => {
-                const tab = TAB_DEFS.find((t) => t.key === btn.dataset.tab);
+                const tab = defs.find((t) => t.key === btn.dataset.tab);
                 if (!tab) return;
                 this.activeTab = tab.key;
                 window.showPage(tab.pageId).then(() => {
@@ -204,9 +336,8 @@ export const StaffShell = {
                 });
             });
         });
-        root.querySelector(".staff-layout-btn")?.addEventListener("click", () => this.switchLayout());
-        root.querySelector(".staff-logout-btn")?.addEventListener("click", () => {
-            window.staffLogout?.();
+        root.querySelector("#staff-account-btn")?.addEventListener("click", () => {
+            window.renderAccountMenu?.("staff-account-btn");
         });
     },
 
