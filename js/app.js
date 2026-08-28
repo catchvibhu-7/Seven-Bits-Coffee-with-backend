@@ -118,10 +118,6 @@ function updateNavForSession() {
 
     updateTimeclockWidget();
 
-    // #my-orders-link-section's visibility is owned by refreshOrderStatusWidget()
-    // now (it shares one widget-card slot with #order-status-section on the
-    // redesigned home page) rather than being force-shown here.
-
     const favFilterLabel = document.getElementById("favorites-filter-label");
     if (favFilterLabel) favFilterLabel.style.display = TRACKING_ROLES.includes(session.role) ? "flex" : "none";
 }
@@ -525,56 +521,57 @@ window.showPage = async (pageId) => {
     }
 };
 
-/**
- * Shows the signed-in customer's/guest's current order and its live status
- * on the home page - but ONLY when there's an actual order in progress.
- * Staff, nobody logged in, a customer/guest with no orders, and a
- * customer/guest whose only orders are already fully completed all just
- * don't show this section at all, rather than an empty/prompt state taking
- * up space on every visit.
- */
 function soundIconSvg(muted) {
     return muted
         ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>`
         : `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03z"/><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
 }
 
-async function refreshOrderStatusWidget() {
-    const section = document.getElementById("order-status-section");
-    const root = document.getElementById("order-status-root");
-    const myOrdersLink = document.getElementById("my-orders-link-section");
-    if (!section || !root) return;
+// The order this popup click handler shows - kept as module state rather
+// than re-fetched on click, since the compact nav widget already has it
+// fresh from the render that's currently on screen.
+let activeOrderForPopup = null;
 
-    // The two share one widget-card slot (see index.html) - whichever isn't
-    // showing the live order falls back to the always-available reorder
-    // shortcut, so that card is never empty.
-    const showFallback = () => {
-        section.style.display = "none";
-        if (myOrdersLink) myOrdersLink.style.display = "block";
-    };
+async function refreshOrderStatusWidget() {
+    // Lives in the nav shell now (rail + topbar, next to the account button)
+    // instead of a fixed home-page card, so it's visible from any page - see
+    // staff-shell.js's renderRail()/renderTopbar(), which call this after
+    // every render (login, logout, layout switch, page navigation).
+    const targets = [document.getElementById("rail-order-widget"), document.getElementById("topbar-order-widget")].filter(Boolean);
+    if (targets.length === 0) return;
 
     if (!TRACKING_ROLES.includes(session.role)) {
-        showFallback();
+        targets.forEach((el) => (el.innerHTML = ""));
+        activeOrderForPopup = null;
         return;
     }
+
+    // "Previous order" fallback opens the same order-history modal as
+    // before (with ratings) - see window.openMyOrders().
+    const renderFallback = () => {
+        targets.forEach((el) => {
+            el.innerHTML = `<button type="button" class="nav-order-widget-btn nav-order-widget-prev" onclick="window.openMyOrders()">Previous order</button>`;
+        });
+        activeOrderForPopup = null;
+    };
 
     const orders = await KitchenSystem.fetchMine();
     // "Active" = still being made, or reached a terminal state (READY/
     // SERVED) recently enough that the confirmation is still useful - once
     // that's been true for a while, or once there's simply no order, this
-    // section just disappears rather than showing an empty/prompt state
-    // indefinitely.
+    // falls back to "Previous order" instead of showing a stale card forever.
     const READY_VISIBLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
     const activeOrder = orders.find((o) => {
         if (o.status !== "READY" && o.status !== "SERVED") return true;
         return Date.now() - new Date(o.createdAt).getTime() < READY_VISIBLE_WINDOW_MS;
     });
     if (!activeOrder) {
-        showFallback();
+        renderFallback();
         return;
     }
 
     const order = activeOrder;
+    activeOrderForPopup = order;
     const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
     const statusColor = STATUS_COLORS[order.status] || "var(--color-accent)";
 
@@ -589,31 +586,54 @@ async function refreshOrderStatusWidget() {
     }
     lastSeenOrderStatuses[order.id] = order.status;
 
-    // Only offer the "enable notifications" prompt when we haven't asked yet
-    // (permission === "default") - once granted or denied, the browser's
-    // own choice stands and nagging again would just be annoying.
+    // Minimal by design - order number, live status color, that's it. Full
+    // detail (items, paid/pending, notification/sound toggles) is one click
+    // away in the popup - see window.openOrderStatusPopup().
+    const compactHtml = `
+        <button type="button" class="nav-order-widget-btn" onclick="window.openOrderStatusPopup()">
+            <span class="nav-order-widget-num">#${escapeHtml(String(order.orderNumber || order.id))}</span>
+            <span class="nav-order-widget-status" style="color:${statusColor};">${escapeHtml(order.status)}</span>
+        </button>
+    `;
+    targets.forEach((el) => (el.innerHTML = compactHtml));
+}
+
+/** Full order detail, shown as a popup when the compact nav widget is
+ *  clicked - same content the old fixed home-page card used to show
+ *  inline, just on demand now instead of always taking up layout space. */
+window.openOrderStatusPopup = () => {
+    const order = activeOrderForPopup;
+    if (!order) return;
+    document.getElementById("order-status-popup")?.remove();
+    const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
+    const statusColor = STATUS_COLORS[order.status] || "var(--color-accent)";
     const notifyPromptHtml =
         NotificationSystem.permission() === "default"
             ? `<button onclick="window.requestOrderNotifications(this)" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;" title="Get a notification when your order is ready">\u{1F514}</button>`
             : "";
 
-    section.style.display = "block";
-    if (myOrdersLink) myOrdersLink.style.display = "none";
-    root.innerHTML = `
-        <div class="status-card" style="border:1px solid var(--color-accent); padding:15px; font-family:'Courier New',monospace;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                <span>#${order.orderNumber || order.id}</span>
+    const overlay = document.createElement("div");
+    overlay.id = "order-status-popup";
+    overlay.className = "modal-overlay";
+    overlay.style.zIndex = "4500";
+    overlay.innerHTML = `
+        <div class="modal-content" style="background:var(--color-surface); border:2px solid var(--color-accent); padding:24px; width:min(360px, 92vw); box-sizing:border-box; font-family:'Courier New',monospace;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <span style="font-size:14px; font-weight:bold;">#${escapeHtml(String(order.orderNumber || order.id))}</span>
                 <span style="display:flex; align-items:center; gap:8px;">
                     ${notifyPromptHtml}
                     <button onclick="window.toggleOrderSound(this)" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-accent); opacity:${SoundSystem.isMuted() ? "0.5" : "1"}; padding:0;">${soundIconSvg(SoundSystem.isMuted())}</button>
-                    <span style="color:${statusColor}; font-weight:bold;">${order.status}</span>
+                    <span style="color:${statusColor}; font-weight:bold;">${escapeHtml(order.status)}</span>
                 </span>
             </div>
-            <div style="font-size:9pt; color:var(--color-text-muted);">${order.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")}</div>
-            <div style="font-size:9pt; margin-top:8px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 \u20b9${order.total.toFixed(2)}</div>
+            <div style="font-size:10pt; color:var(--color-text-muted); margin-bottom:10px;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
+            <div style="font-size:10pt; margin-bottom:18px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 \u20b9${order.total.toFixed(2)}</div>
+            <button type="button" style="width:100%; padding:11px; background:var(--color-border); color:var(--color-text); border:none; cursor:pointer; text-transform:uppercase; font-family:inherit;" onclick="document.getElementById('order-status-popup').remove()">Close</button>
         </div>
     `;
-}
+    document.body.appendChild(overlay);
+};
+window.refreshOrderStatusWidget = refreshOrderStatusWidget;
 
 /** The hero's second button used to just duplicate "Start order" ("See the
  *  menu" pointed at the same page) - now it's the arcade shortcut instead,

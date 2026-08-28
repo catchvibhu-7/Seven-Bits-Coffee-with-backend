@@ -406,6 +406,60 @@ header {
     width: auto;
 }
 
+/* Compact "your order" widget - lives beside the account button in both
+   layouts (see #rail-order-widget/#topbar-order-widget, staff-shell.js) -
+   just an order number and a live status color, click for the full detail
+   popup (window.openOrderStatusPopup(), app.js). Empty (no active order,
+   not signed in) collapses to nothing rather than an empty box. */
+.nav-order-widget:empty {
+    display: none;
+}
+.nav-order-widget-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    min-height: 36px;
+    box-sizing: border-box;
+}
+.nav-order-widget-btn:hover {
+    border-color: var(--color-accent);
+}
+.nav-order-widget-num {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.nav-order-widget-status {
+    flex: none;
+    text-transform: uppercase;
+}
+.nav-order-widget-prev {
+    justify-content: center;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+}
+.staff-auth-section .nav-order-widget {
+    width: 100%;
+    margin-bottom: 8px;
+}
+.staff-auth-section .nav-order-widget-btn {
+    width: 100%;
+}
+.staff-topbar-identity .nav-order-widget-btn {
+    width: auto;
+}
+
 .staff-topbar-identity .staff-auth-name {
     max-width: 140px;
 }

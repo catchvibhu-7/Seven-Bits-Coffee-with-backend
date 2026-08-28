@@ -132,22 +132,12 @@
                     </div>
 
                     <div class="home-side-col">
-                        <!-- Shows the signed-in customer's/guest's most recent ACTIVE order +
-                             live status when there is one (see refreshOrderStatusWidget in
-                             app.js); falls back to the always-available reorder shortcut
-                             otherwise - this widget is never empty. -->
+                        <!-- "Your order" moved to a compact widget in the nav shell itself
+                             (rail/topbar, next to the account button - see
+                             refreshOrderStatusWidget in app.js) so it's visible from any
+                             page, not just here - Find us now takes the accent-highlighted
+                             slot that used to be its. -->
                         <div class="home-widget home-widget-accent">
-                            <div id="order-status-section" style="display: none;">
-                                <h2>Your order</h2>
-                                <div id="order-status-root"></div>
-                            </div>
-                            <div id="my-orders-link-section" style="display: none;">
-                                <h2>My orders</h2>
-                                <p>Reorder something you&rsquo;ve had before in one tap.</p>
-                                <button class="home-widget-btn" onclick="window.openMyOrders()">My orders &amp; reorder</button>
-                            </div>
-                        </div>
-                        <div class="home-widget">
                             <h2 id="home-heading-findus">Find us</h2>
                             <div id="home-visit-rows"></div>
                         </div>

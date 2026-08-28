@@ -343,12 +343,14 @@ export const StaffShell = {
                  as the rail's own layout allows, which could still land it
                  partly below the fold on a short window. -->
             <div class="staff-auth-section">
+                <div id="rail-order-widget" class="nav-order-widget"></div>
                 <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none; margin-bottom:6px;" onclick="window.handleTimeclockClick()"></button>
                 ${identityHtml}
             </div>
         `;
         this.wireButtons(rail);
         window.updateTimeclockWidget?.();
+        window.refreshOrderStatusWidget?.();
     },
 
     renderTopbar(tabs, identityHtml) {
@@ -364,12 +366,14 @@ export const StaffShell = {
                 ${this.navButtonsHtml(tabs, { topbar: true })}
             </nav>
             <div class="staff-topbar-identity">
+                <div id="topbar-order-widget" class="nav-order-widget"></div>
                 <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none;" onclick="window.handleTimeclockClick()"></button>
                 ${identityHtml}
             </div>
         `;
         this.wireButtons(nav);
         window.updateTimeclockWidget?.();
+        window.refreshOrderStatusWidget?.();
     },
 
     wireButtons(root) {
