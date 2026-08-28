@@ -1380,35 +1380,57 @@ header {
 .config-controls {
     margin-bottom: 30px;
 }
+/* Admin form fields, sized compactly on purpose - these used to inherit
+   whatever oversized inline styles a given field happened to have (10px
+   padding text inputs, 42px-tall full-width color swatches, an unstyled
+   ~48px native date input, etc.), which made a page with more than a
+   handful of fields (Theme, Menu Items rows, This week's picks) feel
+   cluttered/intimidating rather than dense-but-scannable. */
 .control-group {
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 .control-group label,
 .admin-field-label {
     display: block;
-    font-size: var(--admin-label-font-size, 9pt);
+    font-size: var(--admin-label-font-size, 8pt);
     color: var(--admin-label-color, var(--color-text-muted));
-    margin-bottom: 5px;
+    margin-bottom: 4px;
 }
 .control-group input[type="text"],
-.control-group input[type="number"] {
+.control-group input[type="number"],
+.control-group input[type="date"],
+.control-group input[type="password"],
+.control-group select {
     background: var(--color-bg);
     border: 1px solid var(--color-border);
     color: var(--color-text);
-    padding: 10px;
+    padding: 7px 8px;
     width: 100%;
     box-sizing: border-box;
     font-family: inherit;
+    font-size: 8.5pt;
+}
+/* Tells the browser to draw the native date-picker calendar popup (and the
+   little calendar-icon glyph) in a dark palette instead of its default
+   light one - the popup itself can't be styled with plain CSS otherwise,
+   so without this it stayed a stark white box against this dark theme. */
+.control-group input[type="date"] {
+    color-scheme: dark;
+}
+.control-group select {
+    cursor: pointer;
 }
 .control-group input[type="color"] {
     /* type=color ignores padding oddly in most browsers, rendering as a
        thin sliver if padded like a text input - give it a fixed height
-       and no padding instead so the swatch actually shows. */
+       and no padding instead so the swatch actually shows. Capped to a
+       small square swatch rather than stretching the full column width -
+       nobody needs a giant color bar to see/pick a color. */
     background: var(--color-bg);
     border: 1px solid var(--color-border);
-    width: 100%;
-    height: 42px;
-    padding: 3px;
+    width: 44px;
+    height: 30px;
+    padding: 2px;
     box-sizing: border-box;
     cursor: pointer;
 }
@@ -1510,14 +1532,14 @@ header {
 .admin-table th {
     text-align: left;
     color: var(--color-accent);
-    padding: 10px 8px;
+    padding: 7px 8px;
     border-bottom: 1px solid var(--color-accent);
     font-size: 8pt;
     letter-spacing: 0.5px;
     text-transform: uppercase;
 }
 .admin-table td {
-    padding: 10px 8px;
+    padding: 6px 8px;
     border-bottom: 1px solid var(--color-border);
     color: var(--color-text);
     vertical-align: middle;

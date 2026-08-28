@@ -27,7 +27,31 @@
  * inside Account Settings now (account-settings-modal.js), not as its own
  * visible button.
  */
+import { AdminConfig } from "../features/config-logic.js";
+
 const LAYOUT_KEY = "sb-staff-nav-layout";
+
+/** Splits the configured shop name into up to 2 stacked words for the rail
+ *  logo mark (e.g. "Seven Bits Coffee" -> "SEVEN"/"BITS") - this used to be
+ *  hardcoded to this shop's own name regardless of what Branding actually
+ *  had configured. AdminConfig.settings is the same singleton app.js
+ *  already populates (AdminConfig.loadSettings()), so this reads whatever
+ *  is currently live without needing it threaded through show(). */
+function shopWordmarkLines() {
+    const words = String(AdminConfig.settings.shopName || "").trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return ["YOUR", "SHOP"];
+    if (words.length === 1) return [words[0].toUpperCase()];
+    return [words[0].toUpperCase(), words[1].toUpperCase()];
+}
+
+/** Short form for the top-bar's compact logo slot (e.g. "SEVEN BITS COFFEE"
+ *  -> "SB" from first letters, or the whole word if there's only one). */
+function shopShortForm() {
+    const words = String(AdminConfig.settings.shopName || "").trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return "SHOP";
+    if (words.length === 1) return words[0].toUpperCase();
+    return words.map((w) => w[0]).join("").toUpperCase().slice(0, 4);
+}
 
 function loadLayout() {
     try {
@@ -298,8 +322,8 @@ export const StaffShell = {
         if (!rail) return;
         rail.innerHTML = `
             <div class="staff-rail-logo">
-                <div class="staff-rail-logo-mark">SEVEN<br>BITS<span style="color:var(--color-text);">_</span></div>
-                <div class="staff-rail-sub">Coffee &middot; ${this.isStaffSession() ? "Staff Terminal" : "Order Terminal"}</div>
+                <div class="staff-rail-logo-mark">${shopWordmarkLines().join("<br>")}<span style="color:var(--color-text);">_</span></div>
+                <div class="staff-rail-sub">${this.isStaffSession() ? "Staff Terminal" : "Order Terminal"}</div>
                 <div class="staff-rail-status">&#9679; SYS.ONLINE</div>
             </div>
             <nav class="staff-nav-list" aria-label="Site navigation">
@@ -325,7 +349,7 @@ export const StaffShell = {
         nav.classList.add("staff-topbar");
         nav.innerHTML = `
             <div class="staff-topbar-logo">
-                <span style="font-size:17px; font-weight:bold; letter-spacing:2px; color:var(--color-accent);">7BITS</span>
+                <span style="font-size:17px; font-weight:bold; letter-spacing:2px; color:var(--color-accent);">${shopShortForm()}</span>
                 <span style="font-size:9px; letter-spacing:.18em; color:var(--color-text-muted);">${this.isStaffSession() ? "POS" : "ORDER"}</span>
             </div>
             <nav class="staff-topbar-nav" aria-label="Site navigation">

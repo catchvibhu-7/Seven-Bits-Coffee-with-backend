@@ -26,7 +26,14 @@ export function renderImagePickerModal({ onSelect }) {
     const overlay = document.createElement("div");
     overlay.id = "image-picker-overlay";
     overlay.className = "modal-overlay";
-    overlay.style.zIndex = "6000";
+    // Always the top-most layer, regardless of z-index - this is opened
+    // FROM other modals (item-modal, Branding's inline BROWSE buttons, the
+    // setup wizard) at various z-indexes of their own (5000-6500), so a
+    // fixed value here would eventually sit behind whichever parent modal
+    // has the highest one - as happened with the setup wizard (6500) vs.
+    // this used to be 6000, making the picker open behind it and
+    // unreachable.
+    overlay.style.zIndex = "9000";
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 26px; width: min(640px, 92vw); max-height: 85vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">CHOOSE IMAGE</h2>

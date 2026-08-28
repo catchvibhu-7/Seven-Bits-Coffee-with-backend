@@ -35,7 +35,7 @@ function tabGroupsForRole(role) {
             tabs: [
                 { id: "menu", label: "Menu Items" },
                 { id: "combos", label: "Combos" },
-                { id: "customization", label: "Customization Pricing" }
+                { id: "customization", label: "Customization" }
             ]
         },
         {
@@ -60,7 +60,10 @@ function tabGroupsForRole(role) {
             label: "BRANDING & CONTENT",
             tabs: isManagerOnly
                 ? []
-                : [{ id: "branding", label: "Branding" }]
+                : [
+                      { id: "branding", label: "Branding" },
+                      { id: "content", label: "Content" }
+                  ]
         },
         {
             label: "PAYMENTS",
@@ -179,6 +182,7 @@ export const AdminPortal = {
         if (this.activeTab === "payroll") return this.renderPayroll(root);
         if (this.activeTab === "staff") return this.renderStaffManagement(root);
         if (this.activeTab === "branding") return this.renderBranding(root);
+        if (this.activeTab === "content") return this.renderContent(root);
     },
 
     // ---------------------------------------------------------------- GLOBAL
@@ -390,8 +394,11 @@ export const AdminPortal = {
                         ? `
                 <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">RESTORE</h3>
                 <p class="admin-help-text" style="color:var(--color-danger);">Overwrites current data with whatever's in the backup file - menu, orders, staff accounts, everything it contains. This can't be undone. Only restore a backup you trust.</p>
-                <input type="file" id="restore-file-input" accept="application/json" style="margin-bottom:10px;" />
-                <br />
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+                    <label for="restore-file-input" class="admin-btn-secondary" style="cursor:pointer;">CHOOSE FILE</label>
+                    <input type="file" id="restore-file-input" accept="application/json" style="display:none;" />
+                    <span id="restore-file-name" style="font-size:8pt; color:var(--color-text-muted);">No file selected.</span>
+                </div>
                 <button class="admin-btn-secondary" id="restore-upload" style="border-color:var(--color-danger); color:var(--color-danger);" disabled>RESTORE FROM BACKUP</button>
                 `
                         : ""
@@ -414,6 +421,7 @@ export const AdminPortal = {
         document.getElementById("restore-file-input").addEventListener("change", (e) => {
             restoreFile = e.target.files[0] || null;
             restoreBtn.disabled = !restoreFile;
+            document.getElementById("restore-file-name").textContent = restoreFile ? restoreFile.name : "No file selected.";
         });
 
         restoreBtn.addEventListener("click", () => {
@@ -453,12 +461,12 @@ export const AdminPortal = {
             <div class="config-controls">
                 <h3 style="margin-top:0;">EXPORT ORDERS (CSV)</h3>
                 <p class="admin-help-text">Downloads a spreadsheet-ready CSV of orders for bookkeeping/tax filing - one row per order with items, tax, and totals.</p>
-                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:14px;">
-                    <div class="control-group" style="flex:1; min-width:160px;">
+                <div style="display:flex; gap:12px; margin-bottom:14px;">
+                    <div class="control-group" style="flex:0 0 150px;">
                         <label>FROM (optional)</label>
                         <input type="date" id="report-from" />
                     </div>
-                    <div class="control-group" style="flex:1; min-width:160px;">
+                    <div class="control-group" style="flex:0 0 150px;">
                         <label>TO (optional)</label>
                         <input type="date" id="report-to" />
                     </div>
@@ -893,6 +901,11 @@ export const AdminPortal = {
     // ------------------------------------------------------------ MENU ITEMS
     menuItemPages: {}, // per-section current page number, keyed by section id
     showDeletedMenuItems: false, // toggled via the SHOW INACTIVE checkbox on Menu Items
+    // Sections start collapsed (header + count only) - showing every item
+    // table for every section at once, each with 3 always-visible action
+    // buttons per row, was the main source of "cluttered/intimidating"
+    // feedback on this tab. Keyed by section id, true = expanded.
+    expandedMenuSections: {},
 
     renderMenuItems(root) {
         const sectionById = Object.fromEntries(this.menu.sections.map((s) => [s.id, s.title]));
@@ -917,7 +930,7 @@ export const AdminPortal = {
                 <td>\u20b9${item.price}</td>
                 <td></td>
                 <td style="text-align:right;">
-                    <button class="admin-btn" data-restore="${item.id}">RESTORE</button>
+                    <button class="admin-btn" data-restore="${item.id}" style="padding:4px 8px; font-size:7pt;">RESTORE</button>
                 </td>
             </tr>
         `;
@@ -938,10 +951,10 @@ export const AdminPortal = {
                         : ""
                 }</td>
                 <td>${stockCell}</td>
-                <td style="text-align:right;">
-                    <button class="admin-btn" data-edit="${item.id}">EDIT</button>
-                    <button class="admin-btn" data-toggle-available="${item.id}">${item.available === false ? "MARK AVAILABLE" : "MARK UNAVAILABLE"}</button>
-                    <button class="admin-btn admin-btn-danger" data-delete="${item.id}">DELETE</button>
+                <td style="text-align:right; white-space:nowrap;">
+                    <button class="admin-btn" data-edit="${item.id}" style="padding:4px 8px; font-size:7pt;">EDIT</button>
+                    <button class="admin-btn" data-toggle-available="${item.id}" style="padding:4px 8px; font-size:7pt;" title="${item.available === false ? "Mark available" : "Mark unavailable"}">${item.available === false ? "SHOW" : "HIDE"}</button>
+                    <button class="admin-btn admin-btn-danger" data-delete="${item.id}" style="padding:4px 8px; font-size:7pt;">DEL</button>
                 </td>
             </tr>
         `;
@@ -957,16 +970,26 @@ export const AdminPortal = {
             const items = this.showDeletedMenuItems
                 ? [...rawItems].sort((a, b) => (a.deleted === b.deleted ? 0 : a.deleted ? 1 : -1))
                 : rawItems.filter((i) => !i.deleted);
+            const expanded = !!this.expandedMenuSections[section.id];
+            const headerHtml = `
+                <div class="menu-section-header" data-toggle-section="${section.id}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; cursor:pointer; border-bottom:1px solid var(--color-border);">
+                    <h3 style="font-size:9.5pt; letter-spacing:1px; color:var(--color-accent); display:flex; align-items:center; gap:8px; margin:0;">
+                        <span style="display:inline-block; transition:transform .1s; transform:rotate(${expanded ? "90deg" : "0deg"});">&#9656;</span>
+                        ${escapeHtmlAttr(section.title)} <span style="color:var(--color-text-muted); font-size:8pt;">(${items.length})</span>
+                    </h3>
+                    <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}" style="padding:4px 8px; font-size:7pt;">DELETE SECTION</button>
+                </div>
+            `;
             if (items.length === 0) {
                 return `
-                    <div class="menu-section-block" style="margin-bottom:26px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                            <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent);">${escapeHtmlAttr(section.title)}</h3>
-                            <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}">DELETE SECTION</button>
-                        </div>
-                        <p class="admin-help-text">No items in this section yet.</p>
+                    <div class="menu-section-block" style="margin-bottom:10px;">
+                        ${headerHtml}
+                        ${expanded ? `<p class="admin-help-text" style="padding:8px 4px;">No items in this section yet.</p>` : ""}
                     </div>
                 `;
+            }
+            if (!expanded) {
+                return `<div class="menu-section-block" style="margin-bottom:10px;">${headerHtml}</div>`;
             }
             const page = this.menuItemPages[section.id] || 1;
             const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
@@ -974,11 +997,8 @@ export const AdminPortal = {
             const pageItems = items.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
 
             return `
-                <div class="menu-section-block" data-section="${section.id}" style="margin-bottom:26px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent);">${escapeHtmlAttr(section.title)} <span style="color:var(--color-text-muted); font-size:8pt;">(${items.length})</span></h3>
-                        <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}">DELETE SECTION</button>
-                    </div>
+                <div class="menu-section-block" data-section="${section.id}" style="margin-bottom:10px;">
+                    ${headerHtml}
                     <table class="admin-table">
                         <thead><tr><th>ICON</th><th>NAME</th><th>PRICE</th><th>STOCK</th><th style="text-align:right;">ACTION</th></tr></thead>
                         <tbody>${pageItems.map(rowHtml).join("")}</tbody>
@@ -1030,6 +1050,8 @@ export const AdminPortal = {
             <div class="admin-toolbar" style="display:flex; align-items:center; flex-wrap:wrap; gap:14px;">
                 <button class="admin-btn-primary" id="menu-add-item">+ ADD ITEM</button>
                 <button class="admin-btn" id="menu-add-section">+ ADD SECTION</button>
+                <button class="admin-btn" id="menu-expand-all">EXPAND ALL</button>
+                <button class="admin-btn" id="menu-collapse-all">COLLAPSE ALL</button>
                 <label style="display:flex; align-items:center; gap:5px; font-size: var(--admin-help-font-size, 7.5pt); color: var(--admin-help-color, var(--color-text-muted)); cursor:pointer; font-family: 'Courier New', monospace; margin-left:auto;">
                     <input type="checkbox" id="menu-show-deleted" ${this.showDeletedMenuItems ? "checked" : ""} style="width:auto;" />
                     SHOW INACTIVE
@@ -1041,6 +1063,14 @@ export const AdminPortal = {
 
         document.getElementById("menu-add-item").addEventListener("click", () => this.openItemModal(null));
         document.getElementById("menu-add-section").addEventListener("click", () => this.addMenuSection(root));
+        document.getElementById("menu-expand-all").addEventListener("click", () => {
+            this.menu.sections.forEach((s) => (this.expandedMenuSections[s.id] = true));
+            this.renderMenuItems(root);
+        });
+        document.getElementById("menu-collapse-all").addEventListener("click", () => {
+            this.menu.sections.forEach((s) => (this.expandedMenuSections[s.id] = false));
+            this.renderMenuItems(root);
+        });
         document.getElementById("menu-show-deleted").addEventListener("change", (e) => {
             this.showDeletedMenuItems = e.target.checked;
             this.menuItemPages = {}; // page numbers may no longer be valid once the item counts change
@@ -1053,7 +1083,19 @@ export const AdminPortal = {
         root.querySelectorAll("[data-toggle-available]").forEach((btn) =>
             btn.addEventListener("click", () => this.toggleItemAvailable(Number(btn.dataset.toggleAvailable), root))
         );
-        root.querySelectorAll("[data-delete-section]").forEach((btn) => btn.addEventListener("click", () => this.deleteMenuSection(btn.dataset.deleteSection, root)));
+        root.querySelectorAll("[data-delete-section]").forEach((btn) =>
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation(); // sits inside the collapsible header - don't also toggle it
+                this.deleteMenuSection(btn.dataset.deleteSection, root);
+            })
+        );
+        root.querySelectorAll("[data-toggle-section]").forEach((header) =>
+            header.addEventListener("click", () => {
+                const id = header.dataset.toggleSection;
+                this.expandedMenuSections[id] = !this.expandedMenuSections[id];
+                this.renderMenuItems(root);
+            })
+        );
         root.querySelectorAll("[data-approve-disable]").forEach((btn) =>
             btn.addEventListener("click", () => this.toggleItemAvailable(Number(btn.dataset.approveDisable), root, false))
         );
@@ -1974,7 +2016,7 @@ export const AdminPortal = {
         });
     },
 
-    // ------------------------------------------------------------ BRANDING
+    // ------------------------------------------------------------ BRANDING (visual: theme/colors/images/icons)
     async renderBranding(root) {
         const c = AdminConfig.settings;
         const colors = c.colors || {};
@@ -1983,132 +2025,49 @@ export const AdminPortal = {
         const profilesRes = await fetch("/api/branding-profiles", { credentials: "include" });
         const profiles = profilesRes.ok ? await profilesRes.json() : {};
 
+        const colorField = (id, label, value) => `
+            <div class="control-group" style="flex:0 0 auto;">
+                <label>${label}</label>
+                <input type="color" id="${id}" value="${value}" />
+            </div>
+        `;
+
         root.innerHTML = `
             <div class="config-controls">
-                <h3 style="margin-top:0;">SHOP IDENTITY</h3>
-                <div class="control-group">
-                    <label>SHOP NAME</label>
-                    <input type="text" id="cfg-shop-name" value="${escapeHtmlAttr(c.shopName || "")}" />
+                <h3 style="margin-top:0;">THEME</h3>
+                <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+                    <div class="control-group" style="flex:0 0 160px;">
+                        <label>PRESET</label>
+                        <select id="brand-theme">
+                            <option value="dark" ${c.theme !== "light" && c.theme !== "custom" ? "selected" : ""}>DARK</option>
+                            <option value="light" ${c.theme === "light" ? "selected" : ""}>LIGHT</option>
+                            <option value="custom" ${c.theme === "custom" ? "selected" : ""}>CUSTOM</option>
+                        </select>
+                    </div>
+                    ${colorField("brand-accent", "ACCENT", colors.accent || "#d97706")}
+                    ${colorField("brand-background", "BACKGROUND", colors.background || "#0a0a0a")}
+                    ${colorField("brand-surface", "SURFACE", colors.surface || "#111111")}
+                    ${colorField("brand-text", "TEXT", colors.text || "#f9fafb")}
+                    ${colorField("brand-secondary", "SECONDARY", colors.secondary || "#22d3ee")}
                 </div>
-                <div class="control-group">
-                    <label>HOME PAGE BADGE (small line above the hero heading, e.g. "Est. 2019 &middot; 8-bit roastery")</label>
-                    <input type="text" id="cfg-hero-badge" maxlength="80" value="${escapeHtmlAttr(c.heroBadgeText || "")}" />
-                </div>
-                <div class="control-group">
-                    <label>HOME PAGE ABOUT TEXT</label>
-                    <textarea id="cfg-hero-tagline" rows="3" maxlength="400" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;">${escapeHtmlAttr(c.heroTagline || "")}</textarea>
-                </div>
-                <div class="control-group">
-                    <label>RECEIPT FOOTER MESSAGE (printed at the bottom of the customer bill - the logo above it comes from LOGO IMAGE below)</label>
-                    <input type="text" id="cfg-receipt-footer" maxlength="120" value="${escapeHtmlAttr(c.receiptFooterText || "")}" />
-                </div>
+                <p class="admin-help-text">Preset fills in its standard colors below - tweak after, or pick CUSTOM to leave your own alone. Secondary is used for "preparing" status, station tabs, etc.</p>
 
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">THEME</h3>
+                <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">IMAGES</h3>
                 <div class="control-group">
-                    <label>THEME (choosing a preset fills in its standard colors below - tweak them after, or pick CUSTOM to leave your own colors alone)</label>
-                    <select id="brand-theme" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; width:100%; box-sizing:border-box; font-family:inherit;">
-                        <option value="dark" ${c.theme !== "light" && c.theme !== "custom" ? "selected" : ""}>DARK</option>
-                        <option value="light" ${c.theme === "light" ? "selected" : ""}>LIGHT</option>
-                        <option value="custom" ${c.theme === "custom" ? "selected" : ""}>CUSTOM</option>
-                    </select>
-                </div>
-
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="control-group">
-                        <label>ACCENT COLOR</label>
-                        <input type="color" id="brand-accent" value="${colors.accent || "#d97706"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>BACKGROUND COLOR</label>
-                        <input type="color" id="brand-background" value="${colors.background || "#0a0a0a"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>SURFACE COLOR (CARDS)</label>
-                        <input type="color" id="brand-surface" value="${colors.surface || "#111111"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>TEXT COLOR</label>
-                        <input type="color" id="brand-text" value="${colors.text || "#f9fafb"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>SECONDARY / INFO COLOR (used for "preparing" status, station tabs, etc.)</label>
-                        <input type="color" id="brand-secondary" value="${colors.secondary || "#22d3ee"}" />
-                    </div>
-                </div>
-
-                <div class="control-group">
-                    <label>HERO / STOREFRONT IMAGE (shown on the home page - leave blank to keep the default icon)</label>
+                    <label>HERO / STOREFRONT IMAGE (home page - blank keeps the default icon)</label>
                     <div style="display:flex; gap:8px;">
-                        <input type="text" id="brand-hero" value="${c.heroImageUrl || ""}" placeholder="https://... or pick from the bucket" style="flex:1;" />
+                        <input type="text" id="brand-hero" maxlength="500" value="${escapeHtmlAttr(c.heroImageUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
                         <button type="button" id="brand-hero-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
                     </div>
                 </div>
                 <div class="control-group">
-                    <label>LOGO IMAGE (shown in the top nav - leave blank to hide)</label>
+                    <label>LOGO IMAGE (top nav - blank hides it)</label>
                     <div style="display:flex; gap:8px;">
-                        <input type="text" id="brand-logo" value="${c.logoUrl || ""}" placeholder="https://... or pick from the bucket" style="flex:1;" />
+                        <input type="text" id="brand-logo" maxlength="500" value="${escapeHtmlAttr(c.logoUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
                         <button type="button" id="brand-logo-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
                     </div>
                 </div>
-                <p class="admin-help-text">Paste a URL, or BROWSE to upload a new image or pick one already in the bucket (shared with menu item photos).</p>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">HOME PAGE CONTENT</h3>
-                <p class="admin-help-text">Section headings, this week's picks, and the roast-process story on the home page - all were fixed text before, now editable per shop.</p>
-
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
-                    <div class="control-group">
-                        <label>PICKS SECTION HEADING</label>
-                        <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
-                    </div>
-                    <div class="control-group">
-                        <label>ROAST SECTION HEADING</label>
-                        <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
-                    </div>
-                    <div class="control-group">
-                        <label>CONTACT SECTION HEADING</label>
-                        <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
-                    </div>
-                </div>
-
-                <label style="display:block; font-size:9px; letter-spacing:.14em; color:var(--color-text-muted); text-transform:uppercase; margin-top:18px;">This week's picks</label>
-                <p class="admin-help-text">Choose which items feature on the home page and the tag shown on each (e.g. "House favourite"). Leave nothing checked to fall back to the first few items in your top menu section.</p>
-                <div id="home-picks-list" style="display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; border:1px solid var(--color-border); padding:10px; margin-bottom:10px;"></div>
-
-                <label style="display:block; font-size:9px; letter-spacing:.14em; color:var(--color-text-muted); text-transform:uppercase; margin-top:18px;">Roast process story</label>
-                <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
-                <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;"></div>
-                <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
-                <br />
-                <button class="admin-btn-primary" id="home-content-save">SAVE HOME PAGE CONTENT</button>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ADMIN PANEL TEXT</h3>
-                <p class="admin-help-text">Font size and color for the admin panel's own sub-tab navigation row (Dashboard / Menu Items / etc.), its small muted helper/description text (like this line), and its form field labels (ACCENT COLOR, STAFF, DATE, etc.) - staff/admin-facing only, not shown to customers.</p>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="control-group">
-                        <label>TAB NAVIGATION - FONT SIZE (PT)</label>
-                        <input type="number" id="brand-admintabs-size" min="5" max="24" step="0.5" value="${(textStyles.adminTabs && textStyles.adminTabs.fontSize) || 9}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; width:100%; box-sizing:border-box; font-family:inherit;" />
-                    </div>
-                    <div class="control-group">
-                        <label>TAB NAVIGATION - COLOR</label>
-                        <input type="color" id="brand-admintabs-color" value="${(textStyles.adminTabs && textStyles.adminTabs.color) || "#888888"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>HELPER TEXT - FONT SIZE (PT)</label>
-                        <input type="number" id="brand-adminhelp-size" min="5" max="24" step="0.5" value="${(textStyles.adminHelp && textStyles.adminHelp.fontSize) || 7.5}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; width:100%; box-sizing:border-box; font-family:inherit;" />
-                    </div>
-                    <div class="control-group">
-                        <label>HELPER TEXT - COLOR</label>
-                        <input type="color" id="brand-adminhelp-color" value="${(textStyles.adminHelp && textStyles.adminHelp.color) || "#888888"}" />
-                    </div>
-                    <div class="control-group">
-                        <label>FIELD LABELS - FONT SIZE (PT)</label>
-                        <input type="number" id="brand-adminlabels-size" min="5" max="24" step="0.5" value="${(textStyles.adminLabels && textStyles.adminLabels.fontSize) || 8}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; width:100%; box-sizing:border-box; font-family:inherit;" />
-                    </div>
-                    <div class="control-group">
-                        <label>FIELD LABELS - COLOR</label>
-                        <input type="color" id="brand-adminlabels-color" value="${(textStyles.adminLabels && textStyles.adminLabels.color) || "#888888"}" />
-                    </div>
-                </div>
+                <p class="admin-help-text">Paste a URL, or BROWSE to upload/pick from the bucket (shared with menu item photos).</p>
 
                 <p id="branding-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
@@ -2116,8 +2075,8 @@ export const AdminPortal = {
                     <button class="admin-btn-secondary" id="branding-reset">RESET TO DEFAULT</button>
                 </div>
 
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">CUSTOM ICONS</h3>
-                <p class="admin-help-text">Add your own icon (by image URL) to make it available in the menu item editor, alongside the built-in icon set.</p>
+                <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">CUSTOM ICONS</h3>
+                <p class="admin-help-text">Upload or link your own icon to make it available in the menu item editor, alongside the built-in set.</p>
                 <div id="custom-icons-list" style="margin-bottom:10px;">
                     ${
                         Object.keys(customIcons).length === 0
@@ -2125,10 +2084,10 @@ export const AdminPortal = {
                             : Object.entries(customIcons)
                                   .map(
                                       ([key, url]) => `
-                                <div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--color-border);">
-                                    <img src="${url}" style="width:24px; height:24px; object-fit:contain;" />
-                                    <span style="flex:1; font-size:8pt;">${key}</span>
-                                    <button class="admin-btn admin-btn-danger" data-remove-icon="${key}">REMOVE</button>
+                                <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
+                                    <img src="${escapeHtmlAttr(url)}" style="width:22px; height:22px; object-fit:contain;" />
+                                    <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(key)}</span>
+                                    <button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>
                                 </div>
                             `
                                   )
@@ -2136,12 +2095,13 @@ export const AdminPortal = {
                     }
                 </div>
                 <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-icon-key" placeholder="icon name (e.g. pumpkin-spice)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" id="new-icon-url" placeholder="image URL" style="flex:2; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" id="new-icon-key" maxlength="40" placeholder="icon name (e.g. pumpkin-spice)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" id="new-icon-url" maxlength="500" placeholder="image URL" style="flex:2; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                    <button type="button" class="admin-btn-secondary" id="new-icon-pick" style="white-space:nowrap;">BROWSE</button>
                     <button class="admin-btn" id="add-custom-icon">ADD</button>
                 </div>
 
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">SAVED THEMES (e.g. HOLIDAY PROFILES)</h3>
+                <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">SAVED THEMES (e.g. HOLIDAY PROFILES)</h3>
                 <p class="admin-help-text">Save the branding above as a named profile (Diwali, Christmas, etc.) to switch back to instantly later.</p>
                 <div id="branding-profiles-list" style="margin-bottom:10px;">
                     ${
@@ -2150,10 +2110,10 @@ export const AdminPortal = {
                             : Object.keys(profiles)
                                   .map(
                                       (name) => `
-                                <div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--color-border);">
-                                    <span style="flex:1; font-size:8pt;">${name}</span>
-                                    <button class="admin-btn" data-activate-profile="${name}">ACTIVATE</button>
-                                    <button class="admin-btn admin-btn-danger" data-delete-profile="${name}">DELETE</button>
+                                <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
+                                    <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(name)}</span>
+                                    <button class="admin-btn" data-activate-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">ACTIVATE</button>
+                                    <button class="admin-btn admin-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">DELETE</button>
                                 </div>
                             `
                                   )
@@ -2161,35 +2121,29 @@ export const AdminPortal = {
                     }
                 </div>
                 <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-profile-name" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <button class="admin-btn" id="save-profile">SAVE CURRENT AS PROFILE</button>
+                    <input type="text" id="new-profile-name" maxlength="40" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                    <button class="admin-btn" id="save-profile">SAVE AS PROFILE</button>
                 </div>
 
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">STORE DETAILS (HOME PAGE FOOTER)</h3>
-                <div class="control-group">
-                    <label>TAGLINE</label>
-                    <input type="text" id="brand-footer-tagline" value="${(c.footer && c.footer.tagline) || ""}" placeholder="e.g. Hand-brewed since 2024" />
-                </div>
-                <div class="control-group">
-                    <label>ADDRESS</label>
-                    <input type="text" id="brand-footer-address" value="${(c.footer && c.footer.address) || ""}" placeholder="Street, City, State, PIN" />
-                </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="control-group">
-                        <label>PHONE</label>
-                        <input type="text" id="brand-footer-phone" value="${(c.footer && c.footer.phone) || ""}" placeholder="+91 ..." />
+                <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">ADMIN PANEL TEXT</h3>
+                <p class="admin-help-text">Font size/color for the admin panel's own sub-tab row, muted helper text, and field labels - staff-facing only, not shown to customers.</p>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end;">
+                    <div class="control-group" style="flex:0 0 110px;">
+                        <label>TABS SIZE</label>
+                        <input type="number" id="brand-admintabs-size" min="5" max="24" step="0.5" value="${(textStyles.adminTabs && textStyles.adminTabs.fontSize) || 9}" />
                     </div>
-                    <div class="control-group">
-                        <label>EMAIL</label>
-                        <input type="text" id="brand-footer-email" value="${(c.footer && c.footer.email) || ""}" placeholder="hello@..." />
+                    ${colorField("brand-admintabs-color", "TABS COLOR", (textStyles.adminTabs && textStyles.adminTabs.color) || "#888888")}
+                    <div class="control-group" style="flex:0 0 110px;">
+                        <label>HELPER TEXT SIZE</label>
+                        <input type="number" id="brand-adminhelp-size" min="5" max="24" step="0.5" value="${(textStyles.adminHelp && textStyles.adminHelp.fontSize) || 7.5}" />
                     </div>
+                    ${colorField("brand-adminhelp-color", "HELPER COLOR", (textStyles.adminHelp && textStyles.adminHelp.color) || "#888888")}
+                    <div class="control-group" style="flex:0 0 110px;">
+                        <label>LABELS SIZE</label>
+                        <input type="number" id="brand-adminlabels-size" min="5" max="24" step="0.5" value="${(textStyles.adminLabels && textStyles.adminLabels.fontSize) || 8}" />
+                    </div>
+                    ${colorField("brand-adminlabels-color", "LABELS COLOR", (textStyles.adminLabels && textStyles.adminLabels.color) || "#888888")}
                 </div>
-                <div class="control-group">
-                    <label>HOURS</label>
-                    <input type="text" id="brand-footer-hours" value="${(c.footer && c.footer.hours) || ""}" placeholder="Mon-Sat: 8am - 8pm" />
-                </div>
-
-                <button class="admin-btn-primary" id="branding-save-2">SAVE BRANDING</button>
             </div>
         `;
 
@@ -2213,102 +2167,14 @@ export const AdminPortal = {
             document.getElementById("brand-secondary").value = preset.secondary;
         });
 
-        const homePicksById = Object.fromEntries((c.homePicks || []).map((p) => [p.itemId, p.tag]));
-        const pickableItems = this.menu.items.filter((i) => !i.deleted);
-        document.getElementById("home-picks-list").innerHTML =
-            pickableItems.length === 0
-                ? `<p style="color:var(--color-text-muted); font-size:9pt;">No menu items yet.</p>`
-                : pickableItems
-                      .map((item) => {
-                          const checked = homePicksById[item.id] !== undefined;
-                          const tag = homePicksById[item.id] || "";
-                          return `
-                <label style="display:flex; align-items:center; gap:8px; font-size:9pt;">
-                    <input type="checkbox" class="home-pick-check" data-item-id="${item.id}" ${checked ? "checked" : ""} />
-                    <span style="flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.name}</span>
-                    <input type="text" class="home-pick-tag" data-item-id="${item.id}" placeholder="Tag (e.g. House favourite)" value="${tag.replace(/"/g, "&quot;")}" style="flex:0 0 220px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" ${checked ? "" : "disabled"} />
-                </label>
-            `;
-                      })
-                      .join("");
-        document.querySelectorAll(".home-pick-check").forEach((cb) => {
-            cb.addEventListener("change", () => {
-                const tagInput = document.querySelector(`.home-pick-tag[data-item-id="${cb.dataset.itemId}"]`);
-                tagInput.disabled = !cb.checked;
-            });
-        });
-        const DEFAULT_ROAST_STEPS = [
-            { name: "Sourced", detail: "Small-batch beans, bought direct, one sack at a time." },
-            { name: "Drum roast", detail: "Twelve-minute profile, logged to the second." },
-            { name: "Rested", detail: "A few days off-gas before the first pour." },
-            { name: "Poured", detail: "Ground to order, never before you walk in." }
-        ];
-        const MAX_ROAST_STEPS = 6;
-        const roastEditor = document.getElementById("home-roast-editor");
-
-        function renderRoastEditor(steps) {
-            roastEditor.innerHTML = steps
-                .map(
-                    (step, i) => `
-                <div class="roast-step-row" style="display:flex; gap:8px; align-items:center;">
-                    <input type="text" class="roast-step-name" placeholder="Step name" maxlength="40" value="${escapeHtmlAttr(step.name || "")}" style="flex:0 0 160px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" class="roast-step-detail" placeholder="Detail line" maxlength="160" value="${escapeHtmlAttr(step.detail || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
-                    <button type="button" class="roast-step-remove admin-btn-secondary" data-index="${i}" style="flex:none;">&times;</button>
-                </div>
-            `
-                )
-                .join("");
-            roastEditor.querySelectorAll(".roast-step-remove").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    steps.splice(Number(btn.dataset.index), 1);
-                    renderRoastEditor(steps);
-                });
-            });
-        }
-
-        const roastSteps = (c.roastSteps && c.roastSteps.length ? c.roastSteps : DEFAULT_ROAST_STEPS).map((s) => ({ ...s }));
-        renderRoastEditor(roastSteps);
-
-        document.getElementById("home-roast-add").addEventListener("click", () => {
-            if (roastSteps.length >= MAX_ROAST_STEPS) return fail(`Up to ${MAX_ROAST_STEPS} steps`);
-            roastSteps.push({ name: "", detail: "" });
-            renderRoastEditor(roastSteps);
-        });
-
-        document.getElementById("home-content-save").addEventListener("click", async () => {
-            const homePicks = Array.from(document.querySelectorAll(".home-pick-check"))
-                .filter((cb) => cb.checked)
-                .map((cb) => ({
-                    itemId: Number(cb.dataset.itemId),
-                    tag: document.querySelector(`.home-pick-tag[data-item-id="${cb.dataset.itemId}"]`).value.trim()
-                }));
-            const finalRoastSteps = Array.from(roastEditor.querySelectorAll(".roast-step-row"))
-                .map((row) => ({
-                    name: row.querySelector(".roast-step-name").value.trim(),
-                    detail: row.querySelector(".roast-step-detail").value.trim()
-                }))
-                .filter((s) => s.name || s.detail);
-            try {
-                await AdminConfig.saveSettings({
-                    homePicks,
-                    roastSteps: finalRoastSteps,
-                    homeHeadings: {
-                        picks: document.getElementById("cfg-home-heading-picks").value.trim(),
-                        roast: document.getElementById("cfg-home-heading-roast").value.trim(),
-                        findUs: document.getElementById("cfg-home-heading-findus").value.trim()
-                    }
-                });
-                ok("Home page content saved");
-            } catch (e) {
-                fail(e.message);
-            }
-        });
-
         document.getElementById("brand-hero-pick").addEventListener("click", () => {
             renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-hero").value = url) });
         });
         document.getElementById("brand-logo-pick").addEventListener("click", () => {
             renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-logo").value = url) });
+        });
+        document.getElementById("new-icon-pick").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("new-icon-url").value = url) });
         });
 
         const doSaveBranding = async () => {
@@ -2316,10 +2182,6 @@ export const AdminPortal = {
             errorEl.textContent = "";
             try {
                 const updated = await AdminConfig.saveSettings({
-                    shopName: document.getElementById("cfg-shop-name").value,
-                    heroBadgeText: document.getElementById("cfg-hero-badge").value,
-                    heroTagline: document.getElementById("cfg-hero-tagline").value,
-                    receiptFooterText: document.getElementById("cfg-receipt-footer").value,
                     theme: document.getElementById("brand-theme").value,
                     heroImageUrl: document.getElementById("brand-hero").value.trim(),
                     logoUrl: document.getElementById("brand-logo").value.trim(),
@@ -2337,17 +2199,9 @@ export const AdminPortal = {
                             fontSize: Number(document.getElementById("brand-adminlabels-size").value) || 8,
                             color: document.getElementById("brand-adminlabels-color").value
                         }
-                    },
-                    footer: {
-                        tagline: document.getElementById("brand-footer-tagline").value.trim(),
-                        address: document.getElementById("brand-footer-address").value.trim(),
-                        phone: document.getElementById("brand-footer-phone").value.trim(),
-                        email: document.getElementById("brand-footer-email").value.trim(),
-                        hours: document.getElementById("brand-footer-hours").value.trim()
                     }
                 });
                 if (window.applyBranding) window.applyBranding(updated);
-                if (window.renderFooter) window.renderFooter(updated);
                 ok("Branding saved");
             } catch (e) {
                 errorEl.textContent = e.message;
@@ -2355,12 +2209,11 @@ export const AdminPortal = {
             }
         };
         document.getElementById("branding-save").addEventListener("click", doSaveBranding);
-        document.getElementById("branding-save-2").addEventListener("click", doSaveBranding);
 
         document.getElementById("branding-reset").addEventListener("click", () => {
             renderInfoModal({
                 title: "RESET BRANDING",
-                message: "Reset theme, colors, hero image, logo, and admin panel text size/color back to the original defaults? Store details (footer) and shop settings are not affected.",
+                message: "Reset theme, colors, hero image, logo, and admin panel text size/color back to the original defaults? Shop identity, home page content, and store details are not affected.",
                 confirmText: "RESET",
                 cancelText: "CANCEL",
                 onConfirm: async () => {
@@ -2451,6 +2304,302 @@ export const AdminPortal = {
                 }
             })
         );
+    },
+
+    // ------------------------------------------------------------ CONTENT (shop identity/copy/home page text)
+    async renderContent(root) {
+        const c = AdminConfig.settings;
+
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">SHOP IDENTITY</h3>
+                <div class="control-group">
+                    <label>SHOP NAME</label>
+                    <input type="text" id="cfg-shop-name" maxlength="60" value="${escapeHtmlAttr(c.shopName || "")}" />
+                </div>
+                <div class="control-group">
+                    <label>HOME PAGE BADGE (e.g. "Est. 2019 &middot; 8-bit roastery")</label>
+                    <input type="text" id="cfg-hero-badge" maxlength="80" value="${escapeHtmlAttr(c.heroBadgeText || "")}" />
+                </div>
+                <div class="control-group">
+                    <label>HOME PAGE ABOUT TEXT</label>
+                    <textarea id="cfg-hero-tagline" rows="3" maxlength="400" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8.5pt;">${escapeHtmlAttr(c.heroTagline || "")}</textarea>
+                </div>
+                <div class="control-group">
+                    <label>RECEIPT FOOTER MESSAGE (printed at the bottom of the bill, under the logo from Branding)</label>
+                    <input type="text" id="cfg-receipt-footer" maxlength="120" value="${escapeHtmlAttr(c.receiptFooterText || "")}" />
+                </div>
+                <p id="identity-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="identity-save">SAVE SHOP IDENTITY</button>
+
+                <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">HOME PAGE CONTENT</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                    <div class="control-group">
+                        <label>PICKS HEADING</label>
+                        <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
+                    </div>
+                    <div class="control-group">
+                        <label>ROAST HEADING</label>
+                        <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
+                    </div>
+                    <div class="control-group">
+                        <label>CONTACT HEADING</label>
+                        <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
+                    </div>
+                </div>
+
+                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">This week's picks</label>
+                <p class="admin-help-text">Pick which items feature on the home page and the tag shown on each. Leave nothing checked to fall back to the first few items in your top menu section.</p>
+                <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+                <div id="home-picks-list" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+
+                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
+                <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
+                <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+                <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
+                <br />
+                <p id="content-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="home-content-save">SAVE HOME PAGE CONTENT</button>
+
+                <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">STORE DETAILS (HOME PAGE FOOTER)</h3>
+                <div class="control-group">
+                    <label>TAGLINE</label>
+                    <input type="text" id="brand-footer-tagline" maxlength="120" value="${escapeHtmlAttr((c.footer && c.footer.tagline) || "")}" placeholder="e.g. Hand-brewed since 2024" />
+                </div>
+                <div class="control-group">
+                    <label>ADDRESS</label>
+                    <input type="text" id="brand-footer-address" maxlength="200" value="${escapeHtmlAttr((c.footer && c.footer.address) || "")}" placeholder="Street, City, State, PIN" />
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div class="control-group">
+                        <label>PHONE</label>
+                        <input type="text" id="brand-footer-phone" maxlength="20" value="${escapeHtmlAttr((c.footer && c.footer.phone) || "")}" placeholder="+91 ..." />
+                    </div>
+                    <div class="control-group">
+                        <label>EMAIL</label>
+                        <input type="text" id="brand-footer-email" maxlength="80" value="${escapeHtmlAttr((c.footer && c.footer.email) || "")}" placeholder="hello@..." />
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>HOURS</label>
+                    <input type="text" id="brand-footer-hours" maxlength="60" value="${escapeHtmlAttr((c.footer && c.footer.hours) || "")}" placeholder="Mon-Sat: 8am - 8pm" />
+                </div>
+                <p id="footer-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                <button class="admin-btn-primary" id="footer-save">SAVE STORE DETAILS</button>
+            </div>
+        `;
+
+        document.getElementById("identity-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("identity-error");
+            errorEl.textContent = "";
+            const shopName = document.getElementById("cfg-shop-name").value.trim();
+            if (!shopName) {
+                errorEl.textContent = "Shop name can't be empty.";
+                return;
+            }
+            try {
+                const updated = await AdminConfig.saveSettings({
+                    shopName,
+                    heroBadgeText: document.getElementById("cfg-hero-badge").value,
+                    heroTagline: document.getElementById("cfg-hero-tagline").value,
+                    receiptFooterText: document.getElementById("cfg-receipt-footer").value
+                });
+                if (window.applyBranding) window.applyBranding(updated);
+                ok("Shop identity saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
+
+        // ---- This week's picks: section-grouped list + smart suggestions ----
+        const homePicksById = Object.fromEntries((c.homePicks || []).map((p) => [p.itemId, p.tag]));
+        const pickableItems = this.menu.items.filter((i) => !i.deleted && i.available !== false);
+        const sectionTitleById = Object.fromEntries(this.menu.sections.map((s) => [s.id, s.title]));
+
+        const pickRowHtml = (item) => {
+            const checked = homePicksById[item.id] !== undefined;
+            const tag = homePicksById[item.id] || "";
+            return `
+                <label style="display:flex; align-items:center; gap:8px; font-size:8.5pt; padding:3px 0;">
+                    <input type="checkbox" class="home-pick-check" data-item-id="${item.id}" ${checked ? "checked" : ""} />
+                    <span style="flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item.name)}</span>
+                    <input type="text" class="home-pick-tag" data-item-id="${item.id}" maxlength="40" placeholder="Tag (e.g. House favourite)" value="${escapeHtmlAttr(tag)}" style="flex:0 0 200px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px 7px; font-family:inherit; font-size:8pt;" ${checked ? "" : "disabled"} />
+                </label>
+            `;
+        };
+
+        document.getElementById("home-picks-list").innerHTML =
+            pickableItems.length === 0
+                ? `<p style="color:var(--color-text-muted); font-size:9pt;">No menu items yet.</p>`
+                : this.menu.sections
+                      .map((section) => {
+                          const items = pickableItems.filter((i) => i.section === section.id);
+                          if (items.length === 0) return "";
+                          return `
+                        <div style="margin-bottom:10px;">
+                            <div style="font-size:7.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:2px;">${escapeHtmlAttr(section.title)}</div>
+                            ${items.map(pickRowHtml).join("")}
+                        </div>
+                    `;
+                      })
+                      .join("");
+
+        const wirePickRows = () => {
+            document.querySelectorAll(".home-pick-check").forEach((cb) => {
+                cb.addEventListener("change", () => {
+                    const tagInput = document.querySelector(`.home-pick-tag[data-item-id="${cb.dataset.itemId}"]`);
+                    tagInput.disabled = !cb.checked;
+                    if (cb.checked && !tagInput.value) tagInput.focus();
+                });
+            });
+        };
+        wirePickRows();
+
+        // Suggestion chips - each one CHECKS matching items (doesn't save by
+        // itself) so the admin can still review/adjust tags before hitting
+        // Save. Top sellers reuses the same 30-day KPI data the Dashboard
+        // shows; promoted/rarely-ordered are derived from data already
+        // loaded here, no extra endpoint needed.
+        const suggestionsEl = document.getElementById("home-picks-suggestions");
+        const checkItems = (items, defaultTag) => {
+            items.forEach((item) => {
+                const cb = document.querySelector(`.home-pick-check[data-item-id="${item.id}"]`);
+                if (!cb || cb.checked) return;
+                cb.checked = true;
+                const tagInput = document.querySelector(`.home-pick-tag[data-item-id="${item.id}"]`);
+                tagInput.disabled = false;
+                if (!tagInput.value) tagInput.value = defaultTag;
+            });
+        };
+        const promoted = pickableItems.filter((i) => i.promoDiscount);
+        suggestionsEl.innerHTML = `
+            <button type="button" class="admin-btn-secondary" id="suggest-top-sellers" style="padding:4px 8px; font-size:7pt;">+ TOP SELLERS</button>
+            <button type="button" class="admin-btn-secondary" id="suggest-promoted" style="padding:4px 8px; font-size:7pt;" ${promoted.length === 0 ? "disabled" : ""}>+ ON PROMOTION${promoted.length ? ` (${promoted.length})` : ""}</button>
+            <button type="button" class="admin-btn-secondary" id="suggest-rarely-ordered" style="padding:4px 8px; font-size:7pt;">+ RARELY ORDERED</button>
+        `;
+        document.getElementById("suggest-promoted").addEventListener("click", () => checkItems(promoted, "On offer"));
+        document.getElementById("suggest-top-sellers").addEventListener("click", async () => {
+            try {
+                const kpi = await PayrollSystem.fetchKpi("1m");
+                const topNames = new Set((kpi.bestSellers || []).map((s) => s.name));
+                checkItems(
+                    pickableItems.filter((i) => topNames.has(i.name)),
+                    "House favourite"
+                );
+            } catch (e) {
+                fail("Could not load top sellers");
+            }
+        });
+        document.getElementById("suggest-rarely-ordered").addEventListener("click", async () => {
+            try {
+                const kpi = await PayrollSystem.fetchKpi("1m");
+                const orderedNames = new Set((kpi.bestSellers || []).map((s) => s.name));
+                // "Rarely ordered" = not in the last 30 days' top-5 sellers -
+                // an approximation (the KPI endpoint only exposes a top-5
+                // list, not full per-item counts), good enough to surface
+                // candidates worth a second look rather than a precise stat.
+                checkItems(
+                    pickableItems.filter((i) => !orderedNames.has(i.name)).slice(0, 5),
+                    "Underrated pick"
+                );
+            } catch (e) {
+                fail("Could not check order history");
+            }
+        });
+
+        // ---- Roast steps editor ----
+        const DEFAULT_ROAST_STEPS = [
+            { name: "Sourced", detail: "Small-batch beans, bought direct, one sack at a time." },
+            { name: "Drum roast", detail: "Twelve-minute profile, logged to the second." },
+            { name: "Rested", detail: "A few days off-gas before the first pour." },
+            { name: "Poured", detail: "Ground to order, never before you walk in." }
+        ];
+        const MAX_ROAST_STEPS = 6;
+        const roastEditor = document.getElementById("home-roast-editor");
+
+        function renderRoastEditor(steps) {
+            roastEditor.innerHTML = steps
+                .map(
+                    (step, i) => `
+                <div class="roast-step-row" style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" class="roast-step-name" placeholder="Step name" maxlength="40" value="${escapeHtmlAttr(step.name || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="roast-step-detail" placeholder="Detail line" maxlength="160" value="${escapeHtmlAttr(step.detail || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <button type="button" class="roast-step-remove admin-btn-secondary" data-index="${i}" style="flex:none; padding:4px 8px;">&times;</button>
+                </div>
+            `
+                )
+                .join("");
+            roastEditor.querySelectorAll(".roast-step-remove").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    steps.splice(Number(btn.dataset.index), 1);
+                    renderRoastEditor(steps);
+                });
+            });
+        }
+
+        const roastSteps = (c.roastSteps && c.roastSteps.length ? c.roastSteps : DEFAULT_ROAST_STEPS).map((s) => ({ ...s }));
+        renderRoastEditor(roastSteps);
+
+        document.getElementById("home-roast-add").addEventListener("click", () => {
+            if (roastSteps.length >= MAX_ROAST_STEPS) return fail(`Up to ${MAX_ROAST_STEPS} steps`);
+            roastSteps.push({ name: "", detail: "" });
+            renderRoastEditor(roastSteps);
+        });
+
+        document.getElementById("home-content-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("content-error");
+            errorEl.textContent = "";
+            const homePicks = Array.from(document.querySelectorAll(".home-pick-check"))
+                .filter((cb) => cb.checked)
+                .map((cb) => ({
+                    itemId: Number(cb.dataset.itemId),
+                    tag: document.querySelector(`.home-pick-tag[data-item-id="${cb.dataset.itemId}"]`).value.trim()
+                }));
+            const finalRoastSteps = Array.from(roastEditor.querySelectorAll(".roast-step-row"))
+                .map((row) => ({
+                    name: row.querySelector(".roast-step-name").value.trim(),
+                    detail: row.querySelector(".roast-step-detail").value.trim()
+                }))
+                .filter((s) => s.name || s.detail);
+            try {
+                await AdminConfig.saveSettings({
+                    homePicks,
+                    roastSteps: finalRoastSteps,
+                    homeHeadings: {
+                        picks: document.getElementById("cfg-home-heading-picks").value.trim(),
+                        roast: document.getElementById("cfg-home-heading-roast").value.trim(),
+                        findUs: document.getElementById("cfg-home-heading-findus").value.trim()
+                    }
+                });
+                ok("Home page content saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
+
+        document.getElementById("footer-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("footer-error");
+            errorEl.textContent = "";
+            try {
+                const updated = await AdminConfig.saveSettings({
+                    footer: {
+                        tagline: document.getElementById("brand-footer-tagline").value.trim(),
+                        address: document.getElementById("brand-footer-address").value.trim(),
+                        phone: document.getElementById("brand-footer-phone").value.trim(),
+                        email: document.getElementById("brand-footer-email").value.trim(),
+                        hours: document.getElementById("brand-footer-hours").value.trim()
+                    }
+                });
+                if (window.applyBranding) window.applyBranding(updated);
+                if (window.renderFooter) window.renderFooter(updated);
+                ok("Store details saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
     },
 
     async logout() {
