@@ -107,11 +107,20 @@ natural next step - happy to help with that once you've picked a provider.
 
 ## Good next steps (not done yet)
 
-- Real payment verification (see above)
+- Real payment verification (see above) - Razorpay is the target gateway
+  once you have a merchant account and API keys
 - Migrate the remaining `onclick=""` handlers to `addEventListener` so the
   Content-Security-Policy can drop `unsafe-inline` entirely
-- Order history (beyond "most recent") on the customer's home page
-- Low-stock alerts, CSV export of sales - from the original feature list
+- Real multi-currency - the currency symbol is stored in config but not
+  actually threaded through every price display; today it's really
+  "configurable symbol, hardcoded formatting"
+- QR-code order tracking - a customer scans a code at checkout to watch
+  their own order status without logging in, instead of the phone-based
+  guest flow that exists today
+- **SMS/WhatsApp order-ready and low-stock alerts** - currently these only
+  show in-app (staff dashboard, order status widget). Wiring up a real
+  provider (Twilio, MSG91, or Meta's WhatsApp Business API) needs an
+  account/API key only you can set up - happy to help once you've picked one.
 
 ## Admin panel tour (Global Settings / Menu Items / Order History / User Management / Branding)
 
