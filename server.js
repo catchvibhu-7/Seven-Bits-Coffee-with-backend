@@ -4064,6 +4064,9 @@ route("GET", /^\/api\/coupons\/public\/?$/, async (req, res) => {
 route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
   const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
+  if (session.role === "owner") {
+    return sendJson(res, 403, { error: "Owner has read-only access to discounts" });
+  }
   const body = await readBody(req);
   const coupons = readJson(COUPONS_FILE, []);
 
@@ -4120,7 +4123,14 @@ route("PATCH", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
   const coupons = readJson(COUPONS_FILE, []);
   const coupon = coupons.find((c) => c.id === Number(params.id));
   if (!coupon) return sendJson(res, 404, { error: "Coupon not found" });
-  if (coupon.storeId != null && !canManageStore(session, coupon.storeId)) {
+  // Franchise-wide (storeId null) is Global Admin's lane, same as Loyalty -
+  // canManageStore() only gates LOCAL discounts, so a franchise-wide one
+  // needs its own check here.
+  if (coupon.storeId == null) {
+    if (session.role !== "admin" || accessibleStoreIds(session) !== null) {
+      return sendJson(res, 403, { error: "Only a Global Admin can manage a franchise-wide discount" });
+    }
+  } else if (session.role === "owner" || !canManageStore(session, coupon.storeId)) {
     return sendJson(res, 403, { error: "You don't have access to that store's discount" });
   }
 
@@ -4136,7 +4146,11 @@ route("DELETE", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
   const coupons = readJson(COUPONS_FILE, []);
   const idx = coupons.findIndex((c) => c.id === Number(params.id));
   if (idx === -1) return sendJson(res, 404, { error: "Coupon not found" });
-  if (coupons[idx].storeId != null && !canManageStore(session, coupons[idx].storeId)) {
+  if (coupons[idx].storeId == null) {
+    if (session.role !== "admin" || accessibleStoreIds(session) !== null) {
+      return sendJson(res, 403, { error: "Only a Global Admin can manage a franchise-wide discount" });
+    }
+  } else if (session.role === "owner" || !canManageStore(session, coupons[idx].storeId)) {
     return sendJson(res, 403, { error: "You don't have access to that store's discount" });
   }
   coupons.splice(idx, 1);

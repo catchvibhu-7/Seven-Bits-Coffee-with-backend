@@ -2054,37 +2054,53 @@ export const AdminPortal = {
     },
 
     // ------------------------------------------------------------ DISCOUNTS & LOYALTY
+    // Loyalty and franchise-wide coupons are Global-Admin-edit (same lane as
+    // Branding/Payments defaults); a store's own local discounts are edited
+    // by whoever runs that store (canManageStoreSettings()) - a Local
+    // Admin/manager creating one always ties it to their own store.
     async renderDiscountsLoyalty(root) {
         const config = AdminConfig.settings;
         const loyalty = config.loyalty || { enabled: true, pointsPerRupeeSpent: 0.1, rupeeValuePerPoint: 0.5 };
         const couponsRes = await fetch("/api/coupons", { credentials: "include" });
         const coupons = couponsRes.ok ? await couponsRes.json() : [];
+        const franchiseCoupons = coupons.filter((c) => c.storeId == null);
+        const localCoupons = coupons.filter((c) => c.storeId != null);
+        const stores = await PayrollSystem.fetchStores();
+        const storeName = (id) => stores.find((s) => s.id === id)?.name || `Store ${id}`;
+        const canEditLoyalty = this.isGlobalAdmin();
+        // A local discount can be added by a manager (always their own
+        // store), a Local Admin (any store their storeAccess covers), or a
+        // Global Admin (any store) - same set canManageStoreSettings()
+        // already resolves for the per-store settings panel.
+        const localAddableStores = stores.filter((s) => this.canManageStoreSettings(s.id));
+
+        const couponRowHtml = (c, canEdit) => `
+            <tr>
+                <td><strong>${escapeHtmlAttr(c.code)}</strong></td>
+                <td>${c.type === "percent" ? `${c.value}% off` : `${currencySymbol()}${c.value} off`}</td>
+                ${c.storeId != null ? `<td style="font-size:8pt;">${escapeHtmlAttr(storeName(c.storeId))}</td>` : ""}
+                <td style="font-size:8pt; color:var(--color-text-muted);">${c.private ? "PRIVATE" : "PUBLIC"}</td>
+                <td>${c.usedCount} / ${c.usageLimit === null ? "\u221e (until stopped)" : c.usageLimit}</td>
+                <td style="color:${c.active ? "var(--color-success)" : "var(--color-text-muted)"};">${c.active ? "ACTIVE" : "STOPPED"}</td>
+                <td style="text-align:right;">
+                    ${
+                        canEdit
+                            ? `<button class="admin-btn" data-toggle-coupon="${c.id}">${c.active ? "STOP" : "RESUME"}</button>
+                    <button class="admin-btn" data-toggle-private="${c.id}">${c.private ? "MAKE PUBLIC" : "MAKE PRIVATE"}</button>
+                    <button class="admin-btn admin-btn-danger" data-delete-coupon="${c.id}">DELETE</button>`
+                            : ""
+                    }
+                </td>
+            </tr>
+        `;
 
         root.innerHTML = `
-            <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:10px;">LOYALTY PROGRAM</h3>
-            <p class="admin-help-text" style="margin-bottom:14px;">
-                Customers earn points automatically when they check out logged in, and can redeem points for a discount on a later order. Guests don't have a persistent account, so points don't apply to guest checkouts.
-            </p>
-            <div class="config-controls" style="margin-bottom:30px;">
-                <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="loyalty-enabled" ${loyalty.enabled ? "checked" : ""} />
-                    <label style="margin:0;" for="loyalty-enabled">ENABLE LOYALTY PROGRAM</label>
-                </div>
-                <div class="control-group" style="max-width:130px;">
-                    <label>POINTS PER ${currencySymbol()}1 SPENT</label>
-                    <input type="text" id="loyalty-earn-rate" maxlength="8" value="${loyalty.pointsPerRupeeSpent}" />
-                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.1 = 1 point per ${currencySymbol()}10 spent (industry-typical "1 point per ${currencySymbol()}10" rate)</p>
-                </div>
-                <div class="control-group" style="max-width:130px;">
-                    <label>${currencySymbol()} PER POINT REDEEMED</label>
-                    <input type="text" id="loyalty-redeem-rate" maxlength="8" value="${loyalty.rupeeValuePerPoint}" />
-                    <p class="admin-help-text" style="margin-top:4px; max-width:280px;">e.g. 0.5 = each point is worth ${currencySymbol()}0.50 off when redeemed</p>
-                </div>
-                <p id="loyalty-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
-                <button class="admin-btn-primary" id="loyalty-save">SAVE LOYALTY SETTINGS</button>
-            </div>
+            <div id="loyalty-section" style="margin-bottom:30px;"></div>
 
-            <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:10px; border-top:1px solid var(--color-border); padding-top:20px;">COUPONS</h3>
+            <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:10px; border-top:1px solid var(--color-border); padding-top:20px;">FRANCHISE-WIDE COUPONS</h3>
+            ${
+                canEditLoyalty
+                    ? `
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; background:var(--color-bg); padding:12px; border:1px solid var(--color-border);">
                 <div>
                     <label class="admin-field-label" style="display:block; margin-bottom:4px;">CODE</label>
@@ -2111,80 +2127,160 @@ export const AdminPortal = {
                 </label>
                 <button class="admin-btn-primary" id="coupon-add">+ ADD COUPON</button>
             </div>
-            <p id="coupon-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+            <p id="coupon-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>`
+                    : ""
+            }
             <table class="admin-table">
                 <thead><tr><th>CODE</th><th>DISCOUNT</th><th>VISIBILITY</th><th>USAGE</th><th>STATUS</th><th style="text-align:right;">ACTION</th></tr></thead>
                 <tbody>
                     ${
-                        coupons.length
-                            ? coupons
-                                  .map(
-                                      (c) => `
-                        <tr>
-                            <td><strong>${escapeHtmlAttr(c.code)}</strong></td>
-                            <td>${c.type === "percent" ? `${c.value}% off` : `${currencySymbol()}${c.value} off`}</td>
-                            <td style="font-size:8pt; color:var(--color-text-muted);">${c.private ? "PRIVATE" : "PUBLIC"}</td>
-                            <td>${c.usedCount} / ${c.usageLimit === null ? "\u221e (until stopped)" : c.usageLimit}</td>
-                            <td style="color:${c.active ? "var(--color-success)" : "var(--color-text-muted)"};">${c.active ? "ACTIVE" : "STOPPED"}</td>
-                            <td style="text-align:right;">
-                                <button class="admin-btn" data-toggle-coupon="${c.id}">${c.active ? "STOP" : "RESUME"}</button>
-                                <button class="admin-btn" data-toggle-private="${c.id}">${c.private ? "MAKE PUBLIC" : "MAKE PRIVATE"}</button>
-                                <button class="admin-btn admin-btn-danger" data-delete-coupon="${c.id}">DELETE</button>
-                            </td>
-                        </tr>
-                    `
-                                  )
-                                  .join("")
-                            : `<tr><td colspan="6" style="text-align:center; color:var(--color-text-muted); padding:20px;">No coupons yet.</td></tr>`
+                        franchiseCoupons.length
+                            ? franchiseCoupons.map((c) => couponRowHtml(c, canEditLoyalty)).join("")
+                            : `<tr><td colspan="6" style="text-align:center; color:var(--color-text-muted); padding:20px;">No franchise-wide coupons yet.</td></tr>`
+                    }
+                </tbody>
+            </table>
+
+            <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent); margin:25px 0 10px; border-top:1px solid var(--color-border); padding-top:20px;">LOCAL DISCOUNTS</h3>
+            ${
+                localAddableStores.length
+                    ? `
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; background:var(--color-bg); padding:12px; border:1px solid var(--color-border);">
+                ${
+                    localAddableStores.length > 1
+                        ? `
+                <div>
+                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">STORE</label>
+                    <select id="local-coupon-store" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit;">
+                        ${localAddableStores.map((s) => `<option value="${s.id}">${escapeHtmlAttr(s.name)}</option>`).join("")}
+                    </select>
+                </div>`
+                        : ""
+                }
+                <div>
+                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">CODE</label>
+                    <input type="text" id="local-coupon-code" maxlength="24" placeholder="STORE10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:130px;" />
+                </div>
+                <div>
+                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">TYPE</label>
+                    <select id="local-coupon-type" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit;">
+                        <option value="percent">% OFF</option>
+                        <option value="flat">${currencySymbol()} FLAT OFF</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">VALUE</label>
+                    <input type="text" id="local-coupon-value" maxlength="8" placeholder="10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:80px;" />
+                </div>
+                <div>
+                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
+                    <input type="text" id="local-coupon-limit" maxlength="8" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
+                </div>
+                <label style="display:flex; align-items:center; gap:5px; font-size: 8pt; cursor:pointer;">
+                    <input type="checkbox" id="local-coupon-private" />
+                    PRIVATE
+                </label>
+                <button class="admin-btn-primary" id="local-coupon-add">+ ADD LOCAL DISCOUNT</button>
+            </div>
+            <p id="local-coupon-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>`
+                    : ""
+            }
+            <table class="admin-table">
+                <thead><tr><th>CODE</th><th>DISCOUNT</th><th>STORE</th><th>VISIBILITY</th><th>USAGE</th><th>STATUS</th><th style="text-align:right;">ACTION</th></tr></thead>
+                <tbody>
+                    ${
+                        localCoupons.length
+                            ? localCoupons.map((c) => couponRowHtml(c, this.canManageStoreSettings(c.storeId))).join("")
+                            : `<tr><td colspan="7" style="text-align:center; color:var(--color-text-muted); padding:20px;">No local discounts yet.</td></tr>`
                     }
                 </tbody>
             </table>
         `;
 
-        document.getElementById("loyalty-save").addEventListener("click", async () => {
-            const errorEl = document.getElementById("loyalty-error");
-            errorEl.textContent = "";
-            const earnRate = parseFloat(document.getElementById("loyalty-earn-rate").value);
-            const redeemRate = parseFloat(document.getElementById("loyalty-redeem-rate").value);
-            if (!Number.isFinite(earnRate) || earnRate < 0 || !Number.isFinite(redeemRate) || redeemRate < 0) {
-                errorEl.textContent = "Both rates must be zero or positive numbers.";
-                return;
-            }
-            try {
-                await AdminConfig.saveSettings({
-                    loyalty: { enabled: document.getElementById("loyalty-enabled").checked, pointsPerRupeeSpent: earnRate, rupeeValuePerPoint: redeemRate }
-                });
-                ok("Loyalty settings saved");
-            } catch (e) {
-                errorEl.textContent = e.message || "Could not save";
-            }
+        renderReadOnlySection(document.getElementById("loyalty-section"), {
+            title: "LOYALTY PROGRAM",
+            canEdit: canEditLoyalty,
+            fields: [
+                { label: "Enabled", value: loyalty.enabled ? "Yes" : "No" },
+                { label: `Points per ${currencySymbol()}1 spent`, value: String(loyalty.pointsPerRupeeSpent) },
+                { label: `${currencySymbol()} per point redeemed`, value: String(loyalty.rupeeValuePerPoint) }
+            ],
+            emptyNote: "Customers earn points automatically when they check out logged in, and can redeem points for a discount on a later order.",
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT LOYALTY PROGRAM",
+                    fields: [
+                        { id: "loyalty-enabled", label: "Enable loyalty program", value: loyalty.enabled, type: "checkbox" },
+                        { id: "loyalty-earn-rate", label: `Points per ${currencySymbol()}1 spent`, value: loyalty.pointsPerRupeeSpent, type: "number", step: 0.01, min: 0, tooltip: `e.g. 0.1 = 1 point per ${currencySymbol()}10 spent` },
+                        { id: "loyalty-redeem-rate", label: `${currencySymbol()} per point redeemed`, value: loyalty.rupeeValuePerPoint, type: "number", step: 0.01, min: 0, tooltip: `e.g. 0.5 = each point is worth ${currencySymbol()}0.50 off` }
+                    ],
+                    onSave: async (v) => {
+                        const earnRate = parseFloat(v["loyalty-earn-rate"]);
+                        const redeemRate = parseFloat(v["loyalty-redeem-rate"]);
+                        if (!Number.isFinite(earnRate) || earnRate < 0 || !Number.isFinite(redeemRate) || redeemRate < 0) {
+                            throw new Error("Both rates must be zero or positive numbers.");
+                        }
+                        await AdminConfig.saveSettings({ loyalty: { enabled: v["loyalty-enabled"], pointsPerRupeeSpent: earnRate, rupeeValuePerPoint: redeemRate } });
+                        ok("Loyalty settings saved");
+                        this.renderDiscountsLoyalty(root);
+                    }
+                })
         });
 
-        document.getElementById("coupon-add").addEventListener("click", async () => {
-            const errorEl = document.getElementById("coupon-error");
-            errorEl.textContent = "";
-            const code = document.getElementById("coupon-code").value.trim();
-            const type = document.getElementById("coupon-type").value;
-            const value = Number(document.getElementById("coupon-value").value);
-            const limitRaw = document.getElementById("coupon-limit").value.trim();
-            const usageLimit = limitRaw === "" ? null : parseInt(limitRaw, 10);
-            const isPrivate = document.getElementById("coupon-private").checked;
+        if (canEditLoyalty) {
+            document.getElementById("coupon-add").addEventListener("click", async () => {
+                const errorEl = document.getElementById("coupon-error");
+                errorEl.textContent = "";
+                const code = document.getElementById("coupon-code").value.trim();
+                const type = document.getElementById("coupon-type").value;
+                const value = Number(document.getElementById("coupon-value").value);
+                const limitRaw = document.getElementById("coupon-limit").value.trim();
+                const usageLimit = limitRaw === "" ? null : parseInt(limitRaw, 10);
+                const isPrivate = document.getElementById("coupon-private").checked;
+                try {
+                    const res = await fetch("/api/coupons", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ code, type, value, usageLimit, private: isPrivate })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || "Could not add coupon");
+                    await this.renderDiscountsLoyalty(root);
+                    ok("Coupon added");
+                } catch (e) {
+                    errorEl.textContent = e.message;
+                }
+            });
+        }
 
-            try {
-                const res = await fetch("/api/coupons", {
-                    method: "POST",
-                    credentials: "include",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ code, type, value, usageLimit, private: isPrivate })
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || "Could not add coupon");
-                await this.renderDiscountsLoyalty(root);
-                ok("Coupon added");
-            } catch (e) {
-                errorEl.textContent = e.message;
-            }
-        });
+        if (localAddableStores.length) {
+            document.getElementById("local-coupon-add").addEventListener("click", async () => {
+                const errorEl = document.getElementById("local-coupon-error");
+                errorEl.textContent = "";
+                const code = document.getElementById("local-coupon-code").value.trim();
+                const type = document.getElementById("local-coupon-type").value;
+                const value = Number(document.getElementById("local-coupon-value").value);
+                const limitRaw = document.getElementById("local-coupon-limit").value.trim();
+                const usageLimit = limitRaw === "" ? null : parseInt(limitRaw, 10);
+                const isPrivate = document.getElementById("local-coupon-private").checked;
+                const storeId = localAddableStores.length > 1 ? Number(document.getElementById("local-coupon-store").value) : localAddableStores[0].id;
+                try {
+                    const res = await fetch("/api/coupons", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ code, type, value, usageLimit, private: isPrivate, storeId })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || "Could not add local discount");
+                    await this.renderDiscountsLoyalty(root);
+                    ok("Local discount added");
+                } catch (e) {
+                    errorEl.textContent = e.message;
+                }
+            });
+        }
 
         root.querySelectorAll("[data-toggle-coupon]").forEach((btn) =>
             btn.addEventListener("click", async () => {
