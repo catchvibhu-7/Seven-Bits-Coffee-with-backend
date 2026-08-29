@@ -195,6 +195,10 @@ if (!fs.existsSync(CONFIG_FILE)) {
     },
     heroImageUrl: "",
     logoUrl: "",
+    // A single wide image combining wordmark + mark, shown instead of the
+    // separate logo icon + shop-name text in the nav rail/top bar when set -
+    // optional, most shops just use logoUrl + the auto-generated name text.
+    logoWideUrl: "",
     // Font size (pt) + color for the admin sub-tab nav row and the muted
     // helper/description paragraphs in the admin panel - see Branding tab
     // "ADMIN PANEL TEXT" section, and DEFAULT_BRANDING.textStyles below.
@@ -269,6 +273,7 @@ const DEFAULT_BRANDING = {
   },
   heroImageUrl: "",
   logoUrl: "",
+  logoWideUrl: "",
   // Font size (pt) + color for two specific text categories in the admin
   // panel: the sub-tab navigation row (Dashboard/Menu Items/.../Branding),
   // and the small muted helper/description paragraphs under section
@@ -2692,6 +2697,7 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "theme",
     "heroImageUrl",
     "logoUrl",
+    "logoWideUrl",
     "upiVpa",
     "upiPayeeName",
     "tableCount",
@@ -3050,6 +3056,7 @@ route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
   config.colors = { ...DEFAULT_BRANDING.colors };
   config.heroImageUrl = DEFAULT_BRANDING.heroImageUrl;
   config.logoUrl = DEFAULT_BRANDING.logoUrl;
+  config.logoWideUrl = DEFAULT_BRANDING.logoWideUrl;
   config.textStyles = {
     adminTabs: { ...DEFAULT_BRANDING.textStyles.adminTabs },
     adminHelp: { ...DEFAULT_BRANDING.textStyles.adminHelp },
@@ -3079,7 +3086,8 @@ route("POST", /^\/api\/branding-profiles\/?$/, async (req, res) => {
     theme: config.theme,
     colors: config.colors,
     heroImageUrl: config.heroImageUrl,
-    logoUrl: config.logoUrl
+    logoUrl: config.logoUrl,
+    logoWideUrl: config.logoWideUrl
   };
   writeJson(BRANDING_PROFILES_FILE, profiles);
   sendJson(res, 201, profiles);
@@ -3097,6 +3105,7 @@ route("POST", /^\/api\/branding-profiles\/(?<name>[^/]+)\/activate\/?$/, async (
   config.colors = profile.colors;
   config.heroImageUrl = profile.heroImageUrl;
   config.logoUrl = profile.logoUrl;
+  config.logoWideUrl = profile.logoWideUrl;
   writeJson(CONFIG_FILE, config);
   sendJson(res, 200, maskSecrets(config));
 });

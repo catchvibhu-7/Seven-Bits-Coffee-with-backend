@@ -31,19 +31,6 @@ import { AdminConfig } from "../features/config-logic.js";
 
 const LAYOUT_KEY = "sb-staff-nav-layout";
 
-/** Splits the configured shop name into up to 2 stacked words for the rail
- *  logo mark (e.g. "Seven Bits Coffee" -> "SEVEN"/"BITS") - this used to be
- *  hardcoded to this shop's own name regardless of what Branding actually
- *  had configured. AdminConfig.settings is the same singleton app.js
- *  already populates (AdminConfig.loadSettings()), so this reads whatever
- *  is currently live without needing it threaded through show(). */
-function shopWordmarkLines() {
-    const words = String(AdminConfig.settings.shopName || "").trim().split(/\s+/).filter(Boolean);
-    if (words.length === 0) return ["YOUR", "SHOP"];
-    if (words.length === 1) return [words[0].toUpperCase()];
-    return [words[0].toUpperCase(), words[1].toUpperCase()];
-}
-
 /** Short form for the top-bar's compact logo slot (e.g. "SEVEN BITS COFFEE"
  *  -> "SB" from first letters, or the whole word if there's only one). */
 function shopShortForm() {
@@ -51,6 +38,17 @@ function shopShortForm() {
     if (words.length === 0) return "SHOP";
     if (words.length === 1) return words[0].toUpperCase();
     return words.map((w) => w[0]).join("").toUpperCase().slice(0, 4);
+}
+
+/** The rail's own logo-mark text - the full shop/store name whenever it's
+ *  short enough to read on one line next to the logo icon, falling back to
+ *  the same initials as shopShortForm() only once it's too long (direct
+ *  feedback: the abbreviation alone wasn't useful here, the real name is
+ *  what should show by default). */
+function shopDisplayName() {
+    const name = String(AdminConfig.settings.shopName || "").trim();
+    if (!name) return "YOUR SHOP";
+    return name.length <= 18 ? name.toUpperCase() : shopShortForm();
 }
 
 /** The actual uploaded logo image (Branding -> Images -> Logo), shown
@@ -348,17 +346,19 @@ export const StaffShell = {
     renderRail(tabs, identityHtml) {
         const rail = document.getElementById("staff-rail");
         if (!rail) return;
+        const wideLogo = AdminConfig.settings.logoWideUrl;
         rail.innerHTML = `
-            <div class="staff-rail-logo" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                <div style="min-width:0;">
-                    <div class="staff-rail-logo-mark">${shopWordmarkLines().join("<br>")}<span style="color:var(--color-text);">_</span></div>
-                    <div class="staff-rail-sub">${this.isStaffSession() ? "Staff Terminal" : "Order Terminal"}</div>
-                    <div class="staff-rail-status">&#9679; SYS.ONLINE</div>
-                </div>
-                <div style="display:flex; flex-direction:column; align-items:flex-start; gap:6px; flex:none; padding-left:10px;">
-                    ${logoImageHtml(36)}
-                    <span style="font-size:9px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted);">${shopShortForm()}</span>
-                </div>
+            <div class="staff-rail-logo" style="display:flex; flex-direction:column; gap:2px;">
+                ${
+                    wideLogo
+                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="" style="max-width:100%; max-height:40px; object-fit:contain; align-self:flex-start; margin-bottom:6px;" />`
+                        : `<div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                            ${logoImageHtml(28)}
+                            <div class="staff-rail-logo-mark">${shopDisplayName()}<span style="color:var(--color-text);">_</span></div>
+                        </div>`
+                }
+                <div class="staff-rail-sub">${this.isStaffSession() ? "Staff Terminal" : "Order Terminal"}</div>
+                <div class="staff-rail-status">&#9679; SYS.ONLINE</div>
             </div>
             <nav class="staff-nav-list" aria-label="Site navigation">
                 ${this.navButtonsHtml(tabs)}
@@ -383,10 +383,15 @@ export const StaffShell = {
         const nav = document.querySelector(".system-nav");
         if (!nav) return;
         nav.classList.add("staff-topbar");
+        const wideLogo = AdminConfig.settings.logoWideUrl;
         nav.innerHTML = `
             <div class="staff-topbar-logo">
-                ${logoImageHtml(28)}
-                <span style="font-size:17px; font-weight:bold; letter-spacing:2px; color:var(--color-accent);">${shopShortForm()}</span>
+                ${
+                    wideLogo
+                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="" style="max-height:28px; object-fit:contain;" />`
+                        : `${logoImageHtml(28)}
+                           <span style="font-size:17px; font-weight:bold; letter-spacing:2px; color:var(--color-accent);">${shopShortForm()}</span>`
+                }
                 <span style="font-size:9px; letter-spacing:.18em; color:var(--color-text-muted);">${this.isStaffSession() ? "POS" : "ORDER"}</span>
             </div>
             <nav class="staff-topbar-nav" aria-label="Site navigation">

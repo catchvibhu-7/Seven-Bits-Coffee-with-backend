@@ -505,6 +505,13 @@ export const AdminPortal = {
                                 </div>
                             </div>
                             <div class="control-group">
+                                <label>HORIZONTAL LOGO (optional - blank = use global)</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="text" id="store-${s.id}-logo-wide" maxlength="500" value="${escapeHtmlAttr(b.logoWideUrl || "")}" style="flex:1;" />
+                                    <button type="button" class="admin-btn-secondary" data-pick-logo-wide="${s.id}" style="white-space:nowrap;">BROWSE</button>
+                                </div>
+                            </div>
+                            <div class="control-group">
                                 <label>HERO / STOREFRONT IMAGE (blank = use global)</label>
                                 <div style="display:flex; gap:8px;">
                                     <input type="text" id="store-${s.id}-hero" maxlength="500" value="${escapeHtmlAttr(b.heroImageUrl || "")}" style="flex:1;" />
@@ -550,6 +557,12 @@ export const AdminPortal = {
                     renderImagePickerModal({ onSelect: (url) => (document.getElementById(`store-${id}-logo`).value = url) });
                 });
             });
+            root.querySelectorAll("[data-pick-logo-wide]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = btn.dataset.pickLogoWide;
+                    renderImagePickerModal({ onSelect: (url) => (document.getElementById(`store-${id}-logo-wide`).value = url) });
+                });
+            });
             root.querySelectorAll("[data-pick-hero]").forEach((btn) => {
                 btn.addEventListener("click", () => {
                     const id = btn.dataset.pickHero;
@@ -570,6 +583,7 @@ export const AdminPortal = {
                             branding: {
                                 shopName: document.getElementById(`store-${id}-name`).value.trim(),
                                 logoUrl: document.getElementById(`store-${id}-logo`).value.trim(),
+                                logoWideUrl: document.getElementById(`store-${id}-logo-wide`).value.trim(),
                                 heroImageUrl: document.getElementById(`store-${id}-hero`).value.trim(),
                                 colors: {
                                     accent: document.getElementById(`store-${id}-accent`).value,
@@ -735,6 +749,13 @@ export const AdminPortal = {
                     </div>
                 </div>
                 <div class="control-group">
+                    <label>HORIZONTAL LOGO (optional - blank = use global)</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="ts-logo-wide" maxlength="500" value="${escapeHtmlAttr(b.logoWideUrl || "")}" style="flex:1;" />
+                        <button type="button" class="admin-btn-secondary" id="ts-pick-logo-wide" style="white-space:nowrap;">BROWSE</button>
+                    </div>
+                </div>
+                <div class="control-group">
                     <label>HERO / STOREFRONT IMAGE (blank = use global)</label>
                     <div style="display:flex; gap:8px;">
                         <input type="text" id="ts-hero" maxlength="500" value="${escapeHtmlAttr(b.heroImageUrl || "")}" style="flex:1;" />
@@ -756,6 +777,9 @@ export const AdminPortal = {
         });
         document.getElementById("ts-pick-logo").addEventListener("click", () => {
             renderImagePickerModal({ onSelect: (url) => (document.getElementById("ts-logo").value = url) });
+        });
+        document.getElementById("ts-pick-logo-wide").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("ts-logo-wide").value = url) });
         });
         document.getElementById("ts-pick-hero").addEventListener("click", () => {
             renderImagePickerModal({ onSelect: (url) => (document.getElementById("ts-hero").value = url) });
@@ -790,6 +814,7 @@ export const AdminPortal = {
                     branding: {
                         shopName: document.getElementById("ts-name").value.trim(),
                         logoUrl: document.getElementById("ts-logo").value.trim(),
+                        logoWideUrl: document.getElementById("ts-logo-wide").value.trim(),
                         heroImageUrl: document.getElementById("ts-hero").value.trim(),
                         colors: {
                             accent: document.getElementById("ts-accent").value,
@@ -2797,6 +2822,13 @@ export const AdminPortal = {
                                 <button type="button" id="brand-logo-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
                             </div>
                         </div>
+                        <div class="control-group">
+                            <label>HORIZONTAL LOGO (optional - one wide image instead of icon + name)</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="brand-logo-wide" maxlength="500" value="${escapeHtmlAttr(c.logoWideUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
+                                <button type="button" id="brand-logo-wide-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+                            </div>
+                        </div>
                         <p class="admin-help-text">Paste a URL, or BROWSE to upload/pick from the bucket (shared with menu item photos).</p>
                     </div>
                     <div style="flex:1 1 280px; min-width:240px;">
@@ -2862,6 +2894,9 @@ export const AdminPortal = {
         document.getElementById("brand-logo-pick").addEventListener("click", () => {
             renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-logo").value = url) });
         });
+        document.getElementById("brand-logo-wide-pick").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-logo-wide").value = url) });
+        });
         document.getElementById("new-icon-pick").addEventListener("click", () => {
             renderImagePickerModal({ onSelect: (url) => (document.getElementById("new-icon-url").value = url) });
         });
@@ -2874,6 +2909,7 @@ export const AdminPortal = {
                     theme: document.getElementById("brand-theme").value,
                     heroImageUrl: document.getElementById("brand-hero").value.trim(),
                     logoUrl: document.getElementById("brand-logo").value.trim(),
+                    logoWideUrl: document.getElementById("brand-logo-wide").value.trim(),
                     colors: collectColors(),
                     textStyles: {
                         adminTabs: {
