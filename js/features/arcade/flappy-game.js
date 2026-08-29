@@ -1,13 +1,13 @@
 /**
  * SEVEN BITS COFFEE - FLAPPY BIT (arcade)
- * Location: /js/ui/flappy-game.js
+ * Location: /js/features/arcade/flappy-game.js
  *
  * Flappy Bird clone: tap/click/Space to flap, score +1 per pipe cleared.
  * Colors read live from the theme via themeColor() (canvas can't resolve
  * CSS vars itself): bird = accent, pipes = cyan.
  */
-import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../features/game-fx.js";
+import { themeColor } from "../theme-colors.js";
+import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../game-fx.js";
 
 const WIDTH = 300;
 const HEIGHT = 400;

@@ -1,6 +1,6 @@
 /**
  * SEVEN BITS COFFEE - ARCADE TAB LOGIC
- * Location: /js/features/arcade-logic.js
+ * Location: /js/features/arcade/arcade-logic.js
  *
  * In-store only: access is unlocked for a limited window after placing an
  * order (server-enforced in arcadeAccessInfo(), server.js - config.arcade.

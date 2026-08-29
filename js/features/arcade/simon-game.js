@@ -1,13 +1,13 @@
 /**
  * SEVEN BITS COFFEE - SIMON SAYS (arcade)
- * Location: /js/ui/simon-game.js
+ * Location: /js/features/arcade/simon-game.js
  *
  * Watch the growing color sequence, repeat it. Score = rounds correctly
  * reached. Pure DOM, colors via CSS vars directly (accent + cyan + two
  * fixed hues, since a memory game needs 4 clearly distinct pads more than
  * it needs full theme purity).
  */
-import { submitScoreWithCelebration } from "../features/game-fx.js";
+import { submitScoreWithCelebration } from "../game-fx.js";
 
 const PADS = [
     { key: 0, bg: "var(--color-accent)" },

@@ -1,13 +1,13 @@
 /**
  * SEVEN BITS COFFEE - BREAKOUT (arcade)
- * Location: /js/ui/breakout-game.js
+ * Location: /js/features/arcade/breakout-game.js
  *
  * Paddle + ball breaking bricks - a natural sibling to Pong, reusing the
  * same physics style. Colors read live from the theme via themeColor()
  * (canvas can't resolve CSS vars itself): paddle = accent, bricks = cyan.
  */
-import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../features/game-fx.js";
+import { themeColor } from "../theme-colors.js";
+import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../game-fx.js";
 
 const WIDTH = 320;
 const HEIGHT = 400;

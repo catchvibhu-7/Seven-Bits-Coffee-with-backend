@@ -1,6 +1,6 @@
 /**
  * SEVEN BITS COFFEE - SNAKE (arcade)
- * Location: /js/ui/snake-game.js
+ * Location: /js/features/arcade/snake-game.js
  *
  * Single-player, canvas-rendered. Speed ramps up as food is eaten so it
  * stays a quick, casual round rather than dragging on forever - but gently,
@@ -10,8 +10,8 @@
  * is the live theme accent (read via themeColor() since canvas can't
  * resolve CSS vars itself); food uses the secondary/cyan theme color.
  */
-import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../features/game-fx.js";
+import { themeColor } from "../theme-colors.js";
+import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../game-fx.js";
 
 const COLS = 18;
 const ROWS = 18;

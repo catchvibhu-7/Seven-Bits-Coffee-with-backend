@@ -1,6 +1,6 @@
 /**
  * SEVEN BITS COFFEE - CHECKERS (arcade)
- * Location: /js/ui/checkers-game.js
+ * Location: /js/features/arcade/checkers-game.js
  *
  * Online-only (vs another in-store player) - no bot mode. Full American
  * checkers rules (forced captures, multi-jump chains, king promotion) live
@@ -11,8 +11,8 @@
  * legalMoves comes back with every fetch/move response; a piece is
  * selectable only if it appears as a "from" in that list.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
-import { submitScoreWithCelebration } from "../features/game-fx.js";
+import { ArcadeSystem } from "./arcade-logic.js";
+import { submitScoreWithCelebration } from "../game-fx.js";
 
 const SIZE = 8;
 

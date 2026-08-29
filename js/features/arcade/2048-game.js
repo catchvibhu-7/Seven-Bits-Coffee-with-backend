@@ -1,13 +1,13 @@
 /**
  * SEVEN BITS COFFEE - 2048 (arcade)
- * Location: /js/ui/2048-game.js
+ * Location: /js/features/arcade/2048-game.js
  *
  * Every direction is normalized to "slide left" by rotating the grid,
  * sliding, then rotating back - avoids writing four near-duplicate slide
  * implementations. Pure DOM, tile colors ramp from a dim accent tone up to
  * the full accent and then cyan for the highest tiles.
  */
-import { submitScoreWithCelebration } from "../features/game-fx.js";
+import { submitScoreWithCelebration } from "../game-fx.js";
 
 const SIZE = 4;
 const TILE_COLORS = { 2: "#3a2a1a", 4: "#4a3520", 8: "#8a5a20", 16: "#a8691f", 32: "#c77a1f", 64: "#d97706", 128: "#e08a1f", 256: "#e89d2f", 512: "#f0b03f", 1024: "#f8c34f", 2048: "#22d3ee" };

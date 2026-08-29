@@ -1,6 +1,6 @@
 /**
  * SEVEN BITS COFFEE - ARCADE PAGE (in-store games)
- * Location: /js/ui/arcade-page.js
+ * Location: /js/features/arcade/arcade-page.js
  *
  * Gate + card-grid menu for the arcade. Access is server-checked every time
  * this page is opened (ArcadeSystem.checkAccess) - never assumed
@@ -9,7 +9,7 @@
  * (.arcade-play-layout in theme.css handles the side-by-side-on-wide,
  * stacked-on-narrow responsive split).
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
+import { ArcadeSystem } from "./arcade-logic.js";
 import { TicTacToeGame } from "./tictactoe-game.js";
 import { TetrisGame } from "./tetris-game.js";
 import { SnakeGame } from "./snake-game.js";

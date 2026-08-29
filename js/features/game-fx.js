@@ -17,7 +17,7 @@
  *    per-browser in localStorage, for the games where speed/gravity/etc.
  *    genuinely change the difficulty curve.
  */
-import { ArcadeSystem } from "./arcade-logic.js";
+import { ArcadeSystem } from "./arcade/arcade-logic.js";
 
 export function runCountdown(root, onDone) {
     const overlay = document.createElement("div");

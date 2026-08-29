@@ -1,12 +1,12 @@
 /**
  * SEVEN BITS COFFEE - MINESWEEPER (arcade)
- * Location: /js/ui/minesweeper-game.js
+ * Location: /js/features/arcade/minesweeper-game.js
  *
  * Classic 9x9 / 10-mine board. Pure DOM. Score is only submitted on a win
  * (a loss doesn't post to the leaderboard - it's not a meaningful "score"),
  * rewarding speed: 500 minus 5 per second elapsed, floored at 10.
  */
-import { submitScoreWithCelebration } from "../features/game-fx.js";
+import { submitScoreWithCelebration } from "../game-fx.js";
 
 const COLS = 9;
 const ROWS = 9;

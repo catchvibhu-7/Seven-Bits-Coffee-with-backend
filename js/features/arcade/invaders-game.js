@@ -1,6 +1,6 @@
 /**
  * SEVEN BITS COFFEE - SPACE INVADERS (arcade)
- * Location: /js/ui/invaders-game.js
+ * Location: /js/features/arcade/invaders-game.js
  *
  * Single wave, 3 lives. Colors read live from the theme via themeColor()
  * (canvas can't resolve CSS vars itself): player ship = accent, enemies =
@@ -8,8 +8,8 @@
  * read as distinctly "yours" vs "incoming" at a glance more than they
  * need to be on-brand.
  */
-import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
+import { themeColor } from "../theme-colors.js";
+import { runCountdown, submitScoreWithCelebration } from "../game-fx.js";
 
 const WIDTH = 320;
 const HEIGHT = 400;

@@ -1,6 +1,6 @@
 /**
  * SEVEN BITS COFFEE - TIC-TAC-TOE (arcade)
- * Location: /js/ui/tictactoe-game.js
+ * Location: /js/features/arcade/tictactoe-game.js
  *
  * Two modes:
  *  - BOT: fully client-side. Never misses a free win or a block (see
@@ -15,8 +15,8 @@
  *    matched (SSE only fires once someone else queues, not for the wait
  *    itself).
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
-import { submitScoreWithCelebration } from "../features/game-fx.js";
+import { ArcadeSystem } from "./arcade-logic.js";
+import { submitScoreWithCelebration } from "../game-fx.js";
 
 const LINES = [
     [0, 1, 2], [3, 4, 5], [6, 7, 8],

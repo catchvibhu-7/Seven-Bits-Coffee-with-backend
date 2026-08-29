@@ -1,6 +1,6 @@
 /**
  * SEVEN BITS COFFEE - CONNECT FOUR (arcade)
- * Location: /js/ui/connectfour-game.js
+ * Location: /js/features/arcade/connectfour-game.js
  *
  * Two modes, same split as Tic-Tac-Toe:
  *  - BOT: client-side heuristic (win if possible, else block the
@@ -9,8 +9,8 @@
  *  - ONLINE: server-authoritative match against another in-store player,
  *    same shared-arcade-SSE pattern as Tic-Tac-Toe.
  */
-import { ArcadeSystem } from "../features/arcade-logic.js";
-import { submitScoreWithCelebration } from "../features/game-fx.js";
+import { ArcadeSystem } from "./arcade-logic.js";
+import { submitScoreWithCelebration } from "../game-fx.js";
 
 const ROWS = 6;
 const COLS = 7;

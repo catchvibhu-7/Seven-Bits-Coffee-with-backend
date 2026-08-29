@@ -1,6 +1,6 @@
 /**
  * SEVEN BITS COFFEE - PONG (arcade)
- * Location: /js/ui/pong-game.js
+ * Location: /js/features/arcade/pong-game.js
  *
  * Single-player vs a simple AI paddle (deliberately not real-time online -
  * see Tic-Tac-Toe for why that's the one game here with an online mode;
@@ -10,8 +10,8 @@
  * Colors are read live from the theme (themeColor(), since canvas can't
  * resolve CSS vars itself): player paddle = accent, AI paddle = cyan.
  */
-import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../features/game-fx.js";
+import { themeColor } from "../theme-colors.js";
+import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../game-fx.js";
 
 const WIDTH = 400;
 const HEIGHT = 280;

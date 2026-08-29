@@ -1,12 +1,12 @@
 /**
  * SEVEN BITS COFFEE - MEMORY MATCH (arcade)
- * Location: /js/ui/memory-game.js
+ * Location: /js/features/arcade/memory-game.js
  *
  * Flip two cards a turn; a match stays face up, a miss flips back after a
  * beat. Pure DOM (no canvas), so colors just use CSS vars directly. Score
  * rewards fewer moves: 300 minus 10 per move, floored at 10.
  */
-import { submitScoreWithCelebration } from "../features/game-fx.js";
+import { submitScoreWithCelebration } from "../game-fx.js";
 
 const SYMBOLS = ["☕", "🍩", "🥐", "🍪", "🧁", "🍰"]; // 6 pairs = 12 cards
 

@@ -1,6 +1,6 @@
 /**
  * SEVEN BITS COFFEE - TETRIS (arcade)
- * Location: /js/ui/tetris-game.js
+ * Location: /js/features/arcade/tetris-game.js
  *
  * Single-player, fully client-side (score is only submitted to the server
  * on game over, via ArcadeSystem.submitScore - the server sanity-caps it
@@ -15,8 +15,8 @@
  * "on brand". Making every piece the same accent color would look tidy but
  * make the game harder to read.
  */
-import { themeColor } from "../features/theme-colors.js";
-import { runCountdown, submitScoreWithCelebration } from "../features/game-fx.js";
+import { themeColor } from "../theme-colors.js";
+import { runCountdown, submitScoreWithCelebration } from "../game-fx.js";
 
 const COLS = 10;
 const ROWS = 20;

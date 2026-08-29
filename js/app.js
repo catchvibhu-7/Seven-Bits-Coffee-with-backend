@@ -22,7 +22,7 @@ import { NotificationSystem } from "./features/notification-logic.js";
 import { StaffShell } from "./ui/staff-shell.js";
 import { renderStaffHome } from "./ui/staff-home.js";
 import { renderBillingPage, selectBillForOrder } from "./ui/billing-page.js";
-import { ArcadeSystem } from "./features/arcade-logic.js";
+import { ArcadeSystem } from "./features/arcade/arcade-logic.js";
 import { StoreSystem } from "./features/store-logic.js";
 import { renderStorePickerModal } from "./ui/store-picker-modal.js";
 
@@ -709,7 +709,7 @@ async function refreshHomeArcadeButton() {
  */
 let arcadePageModule = null;
 async function ensureArcadePageLoaded() {
-    if (!arcadePageModule) arcadePageModule = await import("./ui/arcade-page.js");
+    if (!arcadePageModule) arcadePageModule = await import("./features/arcade/arcade-page.js");
     return arcadePageModule;
 }
 
