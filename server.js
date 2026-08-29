@@ -235,10 +235,6 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // Admin-added fields beyond the fixed set above (Instagram, GST no,
     // WhatsApp, etc.) - see Content -> Store Details -> "+ ADD FIELD".
     customFooterFields: [],
-    // Number of physical tables the shop has. Table 0 is a reserved label
-    // for "Online / Counter" (no physical table), never an openable tab -
-    // real tabs are numbered 1..tableCount. See /api/table-sessions.
-    tableCount: 10,
     // "rail" or "topbar" - which staff-shell layout a browser sees the
     // first time it visits with nobody logged in yet, before it has its own
     // saved localStorage preference (see StaffShell in staff-shell.js).
@@ -249,15 +245,10 @@ if (!fs.existsSync(CONFIG_FILE)) {
       enabled: true,
       pointsPerRupeeSpent: 0.1, // e.g. 0.1 = 1 point per Rs.10 spent
       rupeeValuePerPoint: 0.5 // e.g. 0.5 = each point is worth Rs.0.50 off
-    },
-    // In-store arcade (ARCADE tab) - a customer/guest unlocks it for
-    // sessionHours after placing an order, admin-editable from Global
-    // Settings. This is deliberately in-store only: there's no reason to
-    // let someone play from home just because they ordered once.
-    arcade: {
-      enabled: true,
-      sessionHours: 2
     }
+    // Table count and arcade settings (Operations) used to live here, but
+    // are now fully per-store - see DEFAULT_STORE_OPERATIONS and each
+    // store's own `operations` field.
   });
 }
 
@@ -275,6 +266,49 @@ if (fs.existsSync(COUPONS_FILE)) {
   }
   if (changed) writeJson(COUPONS_FILE, coupons);
 }
+
+// One-time boot migration: branding is now global-only (Global Admin's
+// lane) - a store no longer owns its own theme/colors/logo/hero/shopName,
+// only contact info (address/phone/lat/lng), a home-page-picks override,
+// a tax/currency override, and its own operations (tables/arcade, now
+// fully per-store instead of a single global setting). Back-fills the new
+// fields from whatever the store/global config already had, then removes
+// the old per-store branding object and the old global tableCount/arcade
+// (values are copied as-is, not re-validated - they were already
+// clamped/sanitized when originally written under the old code path).
+(function migrateStoresToFranchiseModel() {
+  const stores = readJson(STORES_FILE, []);
+  const config = readJson(CONFIG_FILE, {});
+  let storesChanged = false;
+  for (const s of stores) {
+    if (s.phone === undefined) {
+      s.phone = (s.branding && s.branding.footer && s.branding.footer.phone) || "";
+      storesChanged = true;
+    }
+    if (s.operations === undefined) {
+      s.operations = {
+        tableCount: config.tableCount ?? 10,
+        arcade: config.arcade || { enabled: true, sessionHours: 2 }
+      };
+      storesChanged = true;
+    }
+    if (s.payments === undefined) {
+      s.payments = { cgstRate: null, sgstRate: null, serviceChargeRate: null, tipEnabled: null, tipAmount: null, currencySymbol: null, currencyCode: null };
+      storesChanged = true;
+    }
+    if (s.branding !== undefined) {
+      delete s.branding;
+      storesChanged = true;
+    }
+  }
+  if (storesChanged) writeJson(STORES_FILE, stores);
+
+  if (config.tableCount !== undefined || config.arcade !== undefined) {
+    delete config.tableCount;
+    delete config.arcade;
+    writeJson(CONFIG_FILE, config);
+  }
+})();
 
 const DEFAULT_BRANDING = {
   theme: "dark",
@@ -1031,7 +1065,10 @@ function resolveComboLine(requested, menu, combos) {
 
 function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCode = null, redeemPoints = 0, customerId = null, storeId = null } = {}) {
   const menu = readJson(MENU_FILE, { items: [] });
-  const config = readJson(CONFIG_FILE, {});
+  // Tax/currency resolved through the store's own override (if any) on top
+  // of the franchise-wide default - never trust a raw global read here,
+  // this is real money math (see mergeStoreOverrides()).
+  const config = mergeStoreOverrides(readJson(CONFIG_FILE, {}), storeId != null ? readJson(STORES_FILE, []).find((s) => s.id === storeId) : null);
   const combos = readJson(COMBOS_FILE, []);
 
   const resolvedItems = [];
@@ -1719,39 +1756,50 @@ route("POST", /^\/api\/stores\/?$/, async (req, res) => {
   if (!name) return sendJson(res, 400, { error: "Store name is required" });
   const stores = readJson(STORES_FILE, []);
   const nextId = stores.length ? Math.max(...stores.map((s) => s.id)) + 1 : 1;
-  const store = { id: nextId, name, address: String(body.address || "").trim() };
+  const store = {
+    id: nextId,
+    name,
+    address: String(body.address || "").trim(),
+    phone: "",
+    operations: { ...DEFAULT_STORE_OPERATIONS },
+    payments: { cgstRate: null, sgstRate: null, serviceChargeRate: null, tipEnabled: null, tipAmount: null, currencySymbol: null, currencyCode: null }
+  };
   stores.push(store);
   writeJson(STORES_FILE, stores);
   sendJson(res, 201, store);
 });
 
-// Per-store branding override (shopName/logo/hero/colors/footer/etc,
-// anything Branding & Content also sets globally) - fields left unset here
-// fall back to the global config, see configForSession() above. Editable
-// by whoever runs that store (see canManageStore()) - only renaming the
-// store itself is owner-only, since that's more a franchise-structure
-// decision than day-to-day upkeep.
+// A store's own record: contact info (address/phone/lat/lng), an optional
+// homePicks override, a tax/currency override, and its own operations
+// (tables/arcade) - NOT branding/theme (that's global-only now, see
+// mergeStoreOverrides()). Renaming/franchise-structure stays Global-Admin
+// territory (matches POST/DELETE /api/stores); day-to-day contact/
+// picks/payments-override/operations are editable by whoever actually
+// runs that store (canManageStore()) - a manager fixing their own
+// location's address/hours shouldn't need to go through a Global Admin.
+// Owner never writes here at all (read-only outside adding Global Admins).
 route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  // Renaming a store is owner-only (that's more a franchise-structure
-  // decision), but a store's own address/branding override is editable by
-  // anyone who actually runs that store - a manager fixing their own
-  // location's hours/address shouldn't need to go through the owner.
   const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
+  if (session.role === "owner") {
+    return sendJson(res, 403, { error: "Owner has read-only access to store settings" });
+  }
   const stores = readJson(STORES_FILE, []);
   const store = stores.find((s) => s.id === Number(params.id));
   if (!store) return sendJson(res, 404, { error: "Store not found" });
   if (!canManageStore(session, store.id)) {
     return sendJson(res, 403, { error: "You don't have access to that store" });
   }
+  const isGlobalAdmin = session.role === "admin" && accessibleStoreIds(session) === null;
   const body = await readBody(req);
   if (typeof body.name === "string") {
-    if (session.role !== "owner") return sendJson(res, 403, { error: "Only the owner can rename a store" });
+    if (!isGlobalAdmin) return sendJson(res, 403, { error: "Only a Global Admin can rename a store" });
     const name = body.name.trim();
     if (!name) return sendJson(res, 400, { error: "Store name is required" });
     store.name = name.slice(0, 60);
   }
   if (typeof body.address === "string") store.address = body.address.trim().slice(0, 200);
+  if (typeof body.phone === "string") store.phone = body.phone.trim().slice(0, 20);
   // lat/lng: optional coordinates for the store picker's geolocation
   // sort/"X km away" display (see GET /api/stores/public) - not required,
   // the picker falls back to a plain list for any store without them.
@@ -1765,10 +1813,37 @@ route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
   };
   if (body.lat !== undefined) store.lat = parseCoord(body.lat, -90, 90);
   if (body.lng !== undefined) store.lng = parseCoord(body.lng, -180, 180);
-  if (body.branding && typeof body.branding === "object") {
-    store.branding = { ...store.branding, ...body.branding };
-    if (body.branding.colors) store.branding.colors = { ...(store.branding.colors || {}), ...body.branding.colors };
-    if (body.branding.footer) store.branding.footer = { ...(store.branding.footer || {}), ...body.branding.footer };
+  // homePicks: this store's own "This week's picks" override - undefined
+  // input leaves it untouched, an explicit null/empty array clears the
+  // override back to inheriting the franchise-wide default.
+  if (body.homePicks !== undefined) {
+    store.homePicks = body.homePicks === null ? undefined : sanitizeHomePicks(body.homePicks) || [];
+  }
+  // payments: per-field nullable override on top of the franchise-wide
+  // tax/currency defaults (UPI/Razorpay stay global-only, never here).
+  if (body.payments && typeof body.payments === "object") {
+    const p = body.payments;
+    const existing = store.payments || {};
+    const num = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+    store.payments = {
+      cgstRate: "cgstRate" in p ? num(p.cgstRate) : existing.cgstRate ?? null,
+      sgstRate: "sgstRate" in p ? num(p.sgstRate) : existing.sgstRate ?? null,
+      serviceChargeRate: "serviceChargeRate" in p ? num(p.serviceChargeRate) : existing.serviceChargeRate ?? null,
+      tipAmount: "tipAmount" in p ? num(p.tipAmount) : existing.tipAmount ?? null,
+      tipEnabled: "tipEnabled" in p ? (p.tipEnabled === null ? null : Boolean(p.tipEnabled)) : existing.tipEnabled ?? null,
+      currencySymbol: "currencySymbol" in p ? (p.currencySymbol ? String(p.currencySymbol).trim().slice(0, 3) : null) : existing.currencySymbol ?? null,
+      currencyCode: "currencyCode" in p ? (p.currencyCode ? String(p.currencyCode).trim().toUpperCase().slice(0, 3) : null) : existing.currencyCode ?? null
+    };
+  }
+  // operations: fully store-owned (tables/arcade) - no franchise fallback
+  // once a store has this field at all (every store gets one at creation/
+  // migration - see migrateStoresToFranchiseModel() and POST /api/stores).
+  if (body.operations && typeof body.operations === "object") {
+    const existingOps = store.operations || DEFAULT_STORE_OPERATIONS;
+    store.operations = {
+      tableCount: body.operations.tableCount !== undefined ? sanitizeTableCount(body.operations.tableCount, existingOps.tableCount) : existingOps.tableCount,
+      arcade: body.operations.arcade !== undefined ? sanitizeArcade(body.operations.arcade, existingOps.arcade) : existingOps.arcade
+    };
   }
   writeJson(STORES_FILE, stores);
   sendJson(res, 200, store);
@@ -2677,11 +2752,83 @@ route("DELETE", /^\/api\/combos\/(?<id>\d+)\/?$/, async (req, res, params) => {
 });
 
 // --- Config ---
-// Per-store branding is layered on top of the global config when the
-// requester's own session is tied to a store (staff assigned to a
-// location). A customer/guest session has no storeId of its own (they can
-// walk into any location), so `explicitStoreId` lets one be passed in from
-// the client's own chosen store instead (see GET /api/config below) - this
+// Franchise governance: branding/theme/shop-identity/loyalty/footer are all
+// global-only now (Global Admin's lane, consistent everywhere) - a store
+// only owns its own contact info, home-page picks override, tax/currency
+// override, and operations. These three helpers validate/clamp those
+// per-store fields the exact same way the (now-removed) global-only
+// versions used to, shared by PATCH /api/config's franchise-wide defaults
+// and PATCH /api/stores/:id's per-store overrides so the two never drift.
+
+/** Validates a homePicks array against the live menu catalog - shared by
+ *  the franchise-wide default (PATCH /api/config) and a store's own
+ *  override (PATCH /api/stores/:id). Returns undefined (meaning "don't
+ *  touch this field") when the input isn't an array at all. */
+function sanitizeHomePicks(rawPicks) {
+  if (!Array.isArray(rawPicks)) return undefined;
+  const menu = readJson(MENU_FILE, { items: [] });
+  const validItemIds = new Set(menu.items.map((i) => i.id));
+  return rawPicks
+    .filter((p) => p && validItemIds.has(Number(p.itemId)))
+    .slice(0, 3)
+    .map((p) => ({
+      itemId: Number(p.itemId),
+      tag: String(p.tag || "").replace(/[\r\n\t]/g, " ").trim().slice(0, 40)
+    }));
+}
+
+function sanitizeTableCount(value, fallback = 10) {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, 200) : fallback;
+}
+
+function sanitizeArcade(rawArcade, existing) {
+  const merged = { ...existing, ...(rawArcade && typeof rawArcade === "object" ? rawArcade : {}) };
+  merged.enabled = merged.enabled !== false;
+  const hours = Number(merged.sessionHours);
+  merged.sessionHours = Number.isFinite(hours) && hours > 0 ? Math.min(hours, 24) : 2;
+  return merged;
+}
+
+const DEFAULT_STORE_OPERATIONS = { tableCount: 10, arcade: { enabled: true, sessionHours: 2 } };
+
+/** Resolves a store's own settings on top of the franchise-wide config:
+ *  payments/tax fields fall back to the franchise default when the store
+ *  hasn't overridden them (nullable per field); operations (tables/arcade)
+ *  is fully store-owned with no franchise fallback once migrated; homePicks
+ *  falls back to the franchise-wide picks when the store hasn't curated its
+ *  own; contact (address/phone) always wins over the franchise default the
+ *  same way address already did. Shared by configForSession() (client-
+ *  facing reads) and everywhere tax/table-count is actually used for real
+ *  money/logic (computeOrder, billing-settle, table-session routes) so
+ *  those two can never disagree about what a store's effective settings are. */
+function mergeStoreOverrides(config, store) {
+  if (!store) return config;
+  const payments = store.payments || {};
+  const operations = store.operations || DEFAULT_STORE_OPERATIONS;
+  return {
+    ...config,
+    cgstRate: payments.cgstRate ?? config.cgstRate,
+    sgstRate: payments.sgstRate ?? config.sgstRate,
+    serviceChargeRate: payments.serviceChargeRate ?? config.serviceChargeRate,
+    tipEnabled: payments.tipEnabled ?? config.tipEnabled,
+    tipAmount: payments.tipAmount ?? config.tipAmount,
+    currencySymbol: payments.currencySymbol ?? config.currencySymbol,
+    currencyCode: payments.currencyCode ?? config.currencyCode,
+    tableCount: operations.tableCount ?? DEFAULT_STORE_OPERATIONS.tableCount,
+    arcade: operations.arcade || DEFAULT_STORE_OPERATIONS.arcade,
+    homePicks: store.homePicks !== undefined ? store.homePicks : config.homePicks,
+    footer: {
+      ...config.footer,
+      ...(store.address ? { address: store.address } : {}),
+      ...(store.phone ? { phone: store.phone } : {})
+    }
+  };
+}
+
+// A customer/guest session has no storeId of its own (they can walk into
+// any location), so `explicitStoreId` lets one be passed in from the
+// client's own chosen store instead (see GET /api/config below) - this
 // keeps the merge entirely server-side either way: the client's existing
 // applyBranding()/AdminConfig flow doesn't need to know stores exist at
 // all, it just receives whatever's already effective.
@@ -2690,19 +2837,7 @@ function configForSession(session, explicitStoreId = null) {
   const storeId = session && session.storeId != null ? session.storeId : explicitStoreId;
   if (storeId == null) return config;
   const store = readJson(STORES_FILE, []).find((s) => s.id === storeId);
-  if (!store) return config;
-  const branding = store.branding || {};
-  return {
-    ...config,
-    ...branding,
-    colors: { ...config.colors, ...(branding.colors || {}) },
-    // The store's own address (set on the store record itself, not a
-    // branding override - see PATCH /api/stores/:id) always wins over the
-    // global default once a store is in effect, so "Visit us" shows the
-    // right location even for a store nobody's bothered customizing
-    // colors/logo for yet.
-    footer: { ...config.footer, ...(branding.footer || {}), ...(store.address ? { address: store.address } : {}) }
-  };
+  return mergeStoreOverrides(config, store);
 }
 
 // Never send the raw Razorpay key secret to the client - only whether it's
@@ -2754,7 +2889,6 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "logoWideUrl",
     "upiVpa",
     "upiPayeeName",
-    "tableCount",
     "defaultNavLayout",
     "heroCaptionLabel",
     "razorpayEnabled",
@@ -2770,10 +2904,6 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     const val = Number(config.loyalty.rupeeValuePerPoint);
     config.loyalty.pointsPerRupeeSpent = Number.isFinite(per) && per >= 0 ? per : 0.1;
     config.loyalty.rupeeValuePerPoint = Number.isFinite(val) && val >= 0 ? val : 0.5;
-  }
-  if (config.tableCount !== undefined) {
-    const n = parseInt(config.tableCount, 10);
-    config.tableCount = Number.isFinite(n) && n >= 0 ? Math.min(n, 200) : 10;
   }
   if (config.defaultNavLayout !== undefined && config.defaultNavLayout !== "rail" && config.defaultNavLayout !== "topbar") {
     config.defaultNavLayout = "rail";
@@ -2871,33 +3001,14 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   if (body.customIcons && typeof body.customIcons === "object") {
     config.customIcons = { ...config.customIcons, ...body.customIcons };
   }
-  if (body.arcade && typeof body.arcade === "object") {
-    config.arcade = { ...config.arcade, ...body.arcade };
-    config.arcade.enabled = config.arcade.enabled !== false;
-    const hours = Number(config.arcade.sessionHours);
-    config.arcade.sessionHours = Number.isFinite(hours) && hours > 0 ? Math.min(hours, 24) : 2;
-  }
   // Home page "This week's picks" - which items feature there and what tag
   // each shows (e.g. "House favourite"). Replaced wholesale (not merged like
   // colors/footer above) since it's an ordered, curated list, not a bag of
-  // independent keys - a partial update wouldn't make sense here. Falls back
-  // to the original auto-picked-from-first-section behavior on the client
-  // (see renderPopularPicks() in app.js) whenever this is empty/unset, so a
-  // fresh install with no curation yet still shows something.
-  if (Array.isArray(body.homePicks)) {
-    const menu = readJson(MENU_FILE, { items: [] });
-    const validItemIds = new Set(menu.items.map((i) => i.id));
-    config.homePicks = body.homePicks
-      .filter((p) => p && validItemIds.has(Number(p.itemId)))
-      .slice(0, 3)
-      .map((p) => ({
-        itemId: Number(p.itemId),
-        tag: String(p.tag || "")
-          .replace(/[\r\n\t]/g, " ")
-          .trim()
-          .slice(0, 40)
-      }));
-  }
+  // independent keys - a partial update wouldn't make sense here. This is
+  // the franchise-wide DEFAULT - a store overrides it via its own
+  // PATCH /api/stores/:id body.homePicks (see mergeStoreOverrides()).
+  const sanitizedHomePicks = sanitizeHomePicks(body.homePicks);
+  if (sanitizedHomePicks !== undefined) config.homePicks = sanitizedHomePicks;
   // Home page "How we roast" story steps - was a hardcoded array in app.js
   // (renderHomeRoastSteps), same reasoning as homePicks: replaced wholesale
   // since it's an ordered story, not independent keys. Empty/unset falls
@@ -3476,7 +3587,10 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
     // starting from this order's already-locked subtotal/items instead of a
     // live cart, so re-adjusting (or clearing) it repeatedly is always safe.
     if (order.isPaid) return sendJson(res, 400, { error: "This bill is already settled" });
-    const config = readJson(CONFIG_FILE, {});
+    const config = mergeStoreOverrides(
+      readJson(CONFIG_FILE, {}),
+      order.storeId != null ? readJson(STORES_FILE, []).find((s) => s.id === order.storeId) : null
+    );
 
     // Undo this order's CURRENT coupon/loyalty side effects first, so a
     // second adjustment (or removing what was just applied) never double-
@@ -3877,11 +3991,6 @@ function arcadeOwnerKey(session) {
 }
 
 function arcadeAccessInfo(session) {
-  const config = readJson(CONFIG_FILE, {});
-  const arcadeConfig = config.arcade || { enabled: true, sessionHours: 2 };
-  if (!arcadeConfig.enabled) {
-    return { allowed: false, reason: "The arcade isn't available right now." };
-  }
   const orders = readJson(ORDERS_FILE, []);
   let mine = [];
   if (session.role === "customer") mine = orders.filter((o) => o.customerId === session.userId);
@@ -3890,6 +3999,14 @@ function arcadeAccessInfo(session) {
     return { allowed: false, reason: "Place an order to unlock the arcade." };
   }
   const latest = mine.reduce((a, b) => (new Date(a.createdAt) > new Date(b.createdAt) ? a : b));
+  // Arcade is per-store now (see mergeStoreOverrides()) - eligibility is
+  // gated by the arcade settings of the store the qualifying order was
+  // actually placed at, not a franchise-wide default.
+  const store = latest.storeId != null ? readJson(STORES_FILE, []).find((s) => s.id === latest.storeId) : null;
+  const arcadeConfig = mergeStoreOverrides(readJson(CONFIG_FILE, {}), store).arcade;
+  if (!arcadeConfig.enabled) {
+    return { allowed: false, reason: "The arcade isn't available right now." };
+  }
   const expiresAt = new Date(new Date(latest.createdAt).getTime() + arcadeConfig.sessionHours * 3600000);
   const allowed = expiresAt.getTime() > Date.now();
   return {
@@ -4434,11 +4551,21 @@ function computeTableSessionBill(session, allOrders) {
   return { ...session, orderCount: orders.length, items: mergedItems, subtotal, cgst, sgst, serviceCharge, tipAmount, total };
 }
 
+// Table count is now fully per-store (see mergeStoreOverrides()), so table
+// sessions need a storeId to know whose table-count limit and "already
+// open" check applies - previously missing entirely, which meant two
+// stores couldn't both have a "Table 1" open at once.
 route("POST", /^\/api\/table-sessions\/?$/, async (req, res) => {
   const session = requireRole(req, res, KITCHEN_ROLES);
   if (!session) return;
   const body = await readBody(req);
-  const config = readJson(CONFIG_FILE, {});
+  const allStores = readJson(STORES_FILE, []);
+  let effectiveStoreId = session.storeId != null ? session.storeId : null;
+  if (effectiveStoreId == null && body.storeId != null) {
+    const requestedStoreId = Number(body.storeId);
+    if (allStores.some((s) => s.id === requestedStoreId)) effectiveStoreId = requestedStoreId;
+  }
+  const config = mergeStoreOverrides(readJson(CONFIG_FILE, {}), allStores.find((s) => s.id === effectiveStoreId));
   const tableNumber = parseInt(body.tableNumber, 10);
   const tableCount = config.tableCount ?? 10;
   if (!Number.isFinite(tableNumber) || tableNumber < 1 || tableNumber > tableCount) {
@@ -4446,12 +4573,13 @@ route("POST", /^\/api\/table-sessions\/?$/, async (req, res) => {
   }
 
   const sessions = readJson(TABLE_SESSIONS_FILE, []);
-  if (sessions.some((s) => s.tableNumber === tableNumber && s.status === "open")) {
+  if (sessions.some((s) => s.tableNumber === tableNumber && s.status === "open" && s.storeId === effectiveStoreId)) {
     return sendJson(res, 400, { error: `Table ${tableNumber} already has an open tab` });
   }
 
   const tableSession = {
     id: `TBL-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+    storeId: effectiveStoreId,
     tableNumber,
     note: sanitizeNotes(body.note || ""),
     // Optional - lets staff identify a repeat/known customer for discounts,
@@ -4476,19 +4604,22 @@ route("PATCH", /^\/api\/table-sessions\/(?<id>[\w-]+)\/?$/, async (req, res, par
   const session = requireRole(req, res, KITCHEN_ROLES);
   if (!session) return;
   const body = await readBody(req);
-  const config = readJson(CONFIG_FILE, {});
-  const tableCount = config.tableCount ?? 10;
   const sessions = readJson(TABLE_SESSIONS_FILE, []);
   const tableSession = sessions.find((s) => s.id === params.id);
   if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
   if (tableSession.status !== "open") return sendJson(res, 400, { error: "Table is already closed" });
+  const config = mergeStoreOverrides(readJson(CONFIG_FILE, {}), readJson(STORES_FILE, []).find((s) => s.id === tableSession.storeId));
+  const tableCount = config.tableCount ?? 10;
 
   if (body.tableNumber !== undefined) {
     const newNumber = parseInt(body.tableNumber, 10);
     if (!Number.isFinite(newNumber) || newNumber < 1 || newNumber > tableCount) {
       return sendJson(res, 400, { error: `Table number must be between 1 and ${tableCount}` });
     }
-    if (newNumber !== tableSession.tableNumber && sessions.some((s) => s.tableNumber === newNumber && s.status === "open")) {
+    if (
+      newNumber !== tableSession.tableNumber &&
+      sessions.some((s) => s.tableNumber === newNumber && s.status === "open" && s.storeId === tableSession.storeId)
+    ) {
       return sendJson(res, 400, { error: `Table ${newNumber} already has an open tab` });
     }
     tableSession.tableNumber = newNumber;
@@ -4502,8 +4633,13 @@ route("PATCH", /^\/api\/table-sessions\/(?<id>[\w-]+)\/?$/, async (req, res, par
 });
 
 route("GET", /^\/api\/table-sessions\/?$/, async (req, res, params, url) => {
-  if (!requireRole(req, res, KITCHEN_ROLES)) return;
-  const sessions = readJson(TABLE_SESSIONS_FILE, []);
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const allowed = accessibleStoreIds(session);
+  let sessions = readJson(TABLE_SESSIONS_FILE, []);
+  // Older sessions predating this field (storeId undefined) stay visible to
+  // everyone, same "unscoped means visible" fallback orders/KPI already use.
+  if (allowed) sessions = sessions.filter((s) => s.storeId == null || allowed.includes(s.storeId));
   const orders = readJson(ORDERS_FILE, []);
   const statusFilter = url.searchParams.get("status");
   const filtered = statusFilter ? sessions.filter((s) => s.status === statusFilter) : sessions;
