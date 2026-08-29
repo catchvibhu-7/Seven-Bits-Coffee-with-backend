@@ -72,6 +72,14 @@ async function refreshSession() {
     updateNavForSession();
     if (TRACKING_ROLES.includes(session.role)) {
         await FavoritesSystem.load();
+        // Opens the live-updates connection right away rather than only on
+        // certain page visits (home/kitchen/billing/admin/arcade) - a
+        // customer who checks out and stays on the menu page (the normal
+        // post-checkout flow) was never getting a connection at all, so
+        // staff marking their order done produced no chime/live update
+        // until they happened to reload or navigate somewhere that opened
+        // the stream as a side effect.
+        ensureOrdersStream();
     } else {
         FavoritesSystem.ids = [];
     }
@@ -723,15 +731,16 @@ function ensureOrdersStream() {
                 await KitchenSystem.fetchOrders();
                 renderKitchen();
             }
-            const homePage = document.getElementById("page-home");
-            if (homePage && homePage.classList.contains("active")) {
+            // The order-status widget lives in the nav rail/topbar, not the
+            // home page body (see refreshOrderStatusWidget()'s own comment)
+            // - it (and the ready chime inside it) needs to refresh no
+            // matter which page is showing, not just while home is active.
+            if (TRACKING_ROLES.includes(session.role)) {
                 await refreshOrderStatusWidget();
             }
-            // The staff nav's "Orders" badge (StaffShell.setBadge) needs a
-            // fresh count regardless of which page is showing, unlike the
-            // two blocks above which only bother re-rendering a page the
-            // person is actually looking at - re-fetching here only if the
-            // Kitchen page didn't already just do it above.
+            // The staff nav's "Orders" badge (StaffShell.setBadge) also needs
+            // a fresh count regardless of which page is showing - re-fetching
+            // here only if the Kitchen page didn't already just do it above.
             if (KITCHEN_ROLES.includes(session.role)) {
                 if (!kitchenActive) await KitchenSystem.fetchOrders();
                 const awaitingFire = KitchenSystem.orders.filter((o) => !o.items.every((i) => i.isDone)).length;
