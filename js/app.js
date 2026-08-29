@@ -2175,11 +2175,19 @@ document.addEventListener("click", (event) => {
  * settings. Sections with nothing filled in are simply omitted rather than
  * showing empty labels.
  */
+function footerFieldValueHtml(c) {
+    const text = escapeHtml(c.value || c.label);
+    return c.url ? `<a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer" style="color:inherit;">${text}</a>` : text;
+}
+
 window.renderFooter = (config) => {
     const root = document.getElementById("site-footer");
     if (!root) return;
     const f = config.footer || {};
-    const customFields = (config.customFooterFields || []).filter((c) => c.value);
+    const customFields = (config.customFooterFields || []).filter((c) => c.value || c.label);
+    const socialFields = customFields.filter((c) => c.type === "social");
+    const careerFields = customFields.filter((c) => c.type === "career");
+    const otherFields = customFields.filter((c) => c.type !== "social" && c.type !== "career");
     const hasAnyDetail = f.address || f.phone || f.email || f.hours || customFields.length > 0;
 
     if (!hasAnyDetail && !f.tagline) {
@@ -2206,8 +2214,18 @@ window.renderFooter = (config) => {
                         ? `<div><div class="footer-col-title">Hours</div><div class="footer-line">${f.hours}</div></div>`
                         : ""
                 }
-                ${customFields
-                    .map((c) => `<div><div class="footer-col-title">${escapeHtml(c.label)}</div><div class="footer-line">${escapeHtml(c.value)}</div></div>`)
+                ${
+                    socialFields.length
+                        ? `<div><div class="footer-col-title">Social</div>${socialFields.map((c) => `<div class="footer-line">${footerFieldValueHtml(c)}</div>`).join("")}</div>`
+                        : ""
+                }
+                ${
+                    careerFields.length
+                        ? `<div><div class="footer-col-title">Careers</div>${careerFields.map((c) => `<div class="footer-line">${footerFieldValueHtml(c)}</div>`).join("")}</div>`
+                        : ""
+                }
+                ${otherFields
+                    .map((c) => `<div><div class="footer-col-title">${escapeHtml(c.label)}</div><div class="footer-line">${footerFieldValueHtml(c)}</div></div>`)
                     .join("")}
             </div>
         </div>

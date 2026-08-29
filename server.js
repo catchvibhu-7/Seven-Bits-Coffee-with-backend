@@ -1332,6 +1332,20 @@ function accessibleStoreIds(session) {
   return null;
 }
 
+/** Whether this session may edit a given store's own record (address,
+ *  branding override) - distinct from accessibleStoreIds()'s "can see"
+ *  since a manager should be able to fix their own store's details even
+ *  though most of the app already scopes them to it implicitly. */
+function canManageStore(session, storeId) {
+  if (session.role === "owner") return true;
+  if (session.role === "admin") {
+    const allowed = accessibleStoreIds(session);
+    return !allowed || allowed.includes(storeId);
+  }
+  if (session.role === "manager") return session.storeId === storeId;
+  return false;
+}
+
 function canManageTarget(session, targetUser) {
   if (!targetUser) return false;
   if (session.role === "owner") return true;
@@ -1578,12 +1592,21 @@ route("POST", /^\/api\/stores\/?$/, async (req, res) => {
 // same as opening a new store - this is a business-structure change, not
 // day-to-day config a manager should be able to touch.
 route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, ["owner"])) return;
+  // Renaming a store is owner-only (that's more a franchise-structure
+  // decision), but a store's own address/branding override is editable by
+  // anyone who actually runs that store - a manager fixing their own
+  // location's hours/address shouldn't need to go through the owner.
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
   const stores = readJson(STORES_FILE, []);
   const store = stores.find((s) => s.id === Number(params.id));
   if (!store) return sendJson(res, 404, { error: "Store not found" });
+  if (!canManageStore(session, store.id)) {
+    return sendJson(res, 403, { error: "You don't have access to that store" });
+  }
   const body = await readBody(req);
   if (typeof body.name === "string") {
+    if (session.role !== "owner") return sendJson(res, 403, { error: "Only the owner can rename a store" });
     const name = body.name.trim();
     if (!name) return sendJson(res, 400, { error: "Store name is required" });
     store.name = name.slice(0, 60);
@@ -2066,6 +2089,25 @@ route("GET", /^\/api\/kpi\/?$/, async (req, res, params, url) => {
     .slice(0, 5)
     .map(([name, quantity]) => ({ name, quantity }));
 
+  // Cross-store comparison for the Franchise Dashboard - only meaningful
+  // (and only ever requested) when this session can see more than one
+  // store; still computed from the same already-scoped `orders` array, so
+  // a restricted admin never sees a store outside their storeAccess here
+  // either. Orders with no storeId (see the comment above) aren't
+  // attributed to any one store, so they're left out of this breakdown
+  // rather than muddying a specific store's numbers.
+  const storeIdsInView = allowed || readJson(STORES_FILE, []).map((s) => s.id);
+  const storeNames = Object.fromEntries(readJson(STORES_FILE, []).map((s) => [s.id, s.name]));
+  const byStore = storeIdsInView.map((id) => {
+    const storeOrders = orders.filter((o) => o.storeId === id);
+    return {
+      storeId: id,
+      storeName: storeNames[id] || `Store ${id}`,
+      today: { orders: storeOrders.filter((o) => inRange(o, startOfToday)).length, revenue: sumRevenue(storeOrders.filter((o) => inRange(o, startOfToday))) },
+      allTime: { orders: storeOrders.length, revenue: sumRevenue(storeOrders) }
+    };
+  });
+
   sendJson(res, 200, {
     today: { orders: todayOrders.length, revenue: sumRevenue(todayOrders) },
     week: { orders: weekOrders.length, revenue: sumRevenue(weekOrders) },
@@ -2073,7 +2115,8 @@ route("GET", /^\/api\/kpi\/?$/, async (req, res, params, url) => {
     allTime: { orders: orders.length, revenue: sumRevenue(orders) },
     range,
     chart,
-    bestSellers
+    bestSellers,
+    byStore
   });
 });
 
@@ -2147,7 +2190,13 @@ route("GET", /^\/api\/menu\/?$/, async (req, res, params, url) => {
   // availability, same as before this existed.
   const session = currentSession(req);
   let effectiveStoreId = session && session.storeId != null ? session.storeId : null;
-  if (effectiveStoreId == null && url.searchParams.has("storeId")) {
+  // ?storeId= only ever comes from a customer/guest/anonymous visitor's own
+  // chosen store - NOT honored for owner/admin (their storeId is also null,
+  // but because they're unrestricted, not because they're a customer
+  // picking a location; without this check, a customer's local store pick
+  // on the same browser would leak into their own admin view).
+  const isTrackingOrAnonymous = !session || TRACKING_ROLES.includes(session.role);
+  if (effectiveStoreId == null && isTrackingOrAnonymous && url.searchParams.has("storeId")) {
     const requestedStoreId = Number(url.searchParams.get("storeId"));
     if (Number.isFinite(requestedStoreId)) effectiveStoreId = requestedStoreId;
   }
@@ -2437,12 +2486,18 @@ function configForSession(session, explicitStoreId = null) {
   const storeId = session && session.storeId != null ? session.storeId : explicitStoreId;
   if (storeId == null) return config;
   const store = readJson(STORES_FILE, []).find((s) => s.id === storeId);
-  if (!store || !store.branding) return config;
+  if (!store) return config;
+  const branding = store.branding || {};
   return {
     ...config,
-    ...store.branding,
-    colors: { ...config.colors, ...(store.branding.colors || {}) },
-    footer: { ...config.footer, ...(store.branding.footer || {}) }
+    ...branding,
+    colors: { ...config.colors, ...(branding.colors || {}) },
+    // The store's own address (set on the store record itself, not a
+    // branding override - see PATCH /api/stores/:id) always wins over the
+    // global default once a store is in effect, so "Visit us" shows the
+    // right location even for a store nobody's bothered customizing
+    // colors/logo for yet.
+    footer: { ...config.footer, ...(branding.footer || {}), ...(store.address ? { address: store.address } : {}) }
   };
 }
 
@@ -2458,10 +2513,14 @@ function maskSecrets(config) {
 route("GET", /^\/api\/config\/?$/, async (req, res, params, url) => {
   const session = currentSession(req);
   // A session already tied to a store (staff) always wins - the ?storeId=
-  // param only matters for a customer/guest/anonymous visitor picking
-  // their own store client-side.
+  // param only matters for a customer/guest/anonymous visitor picking their
+  // own store client-side. NOT honored for owner/admin: their storeId is
+  // also null, but because they're unrestricted, not because they're a
+  // customer - without this role check, a customer's local store pick on
+  // the same browser would leak into their own admin view.
+  const isTrackingOrAnonymous = !session || TRACKING_ROLES.includes(session.role);
   let explicitStoreId = null;
-  if ((!session || session.storeId == null) && url.searchParams.has("storeId")) {
+  if (session?.storeId == null && isTrackingOrAnonymous && url.searchParams.has("storeId")) {
     const requestedStoreId = Number(url.searchParams.get("storeId"));
     if (Number.isFinite(requestedStoreId)) explicitStoreId = requestedStoreId;
   }
@@ -2584,10 +2643,25 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     config.customFooterFields = body.customFooterFields
       .filter((f) => f && (f.label || f.value))
       .slice(0, 6)
-      .map((f) => ({
-        label: String(f.label || "").trim().slice(0, 30),
-        value: String(f.value || "").trim().slice(0, 100)
-      }));
+      .map((f) => {
+        // url: only accepted as an actual http(s) link - anything else
+        // (javascript:, empty, malformed) just renders as plain text
+        // instead, same as before this field existed.
+        const rawUrl = String(f.url || "").trim();
+        let url = "";
+        try {
+          const parsed = new URL(rawUrl);
+          if (parsed.protocol === "http:" || parsed.protocol === "https:") url = rawUrl.slice(0, 300);
+        } catch (e) {
+          // not a valid absolute URL - leave url blank
+        }
+        return {
+          label: String(f.label || "").trim().slice(0, 30),
+          value: String(f.value || "").trim().slice(0, 100),
+          url,
+          type: ["social", "career"].includes(f.type) ? f.type : "other"
+        };
+      });
   }
   if (body.customIcons && typeof body.customIcons === "object") {
     config.customIcons = { ...config.customIcons, ...body.customIcons };

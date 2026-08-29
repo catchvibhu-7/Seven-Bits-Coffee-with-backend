@@ -26,10 +26,19 @@ import { renderImagePickerModal } from "./image-picker-modal.js";
 // job: content owners look in BRANDING & CONTENT, money/tax people look in
 // PAYMENTS, day-to-day operational toggles are in OPERATIONS, and
 // business-structure/data tools (locations, backup) are in STORE SETUP.
-function tabGroupsForRole(role) {
+function tabGroupsForRole(session) {
+    const role = session.role;
     const isManagerOnly = role === "manager";
+    // A manager is always locked to their own single store - no cross-store
+    // view makes sense for them. Owner always gets one; a scoped admin only
+    // if their storeAccess actually spans more than one store (or is
+    // unrestricted, i.e. null).
+    const hasFranchiseView = role === "owner" || (role === "admin" && (!session.storeAccess || session.storeAccess.length > 1));
     const groups = [
-        { label: "OVERVIEW", tabs: [{ id: "kpi", label: "Dashboard" }] },
+        {
+            label: "OVERVIEW",
+            tabs: [{ id: "kpi", label: "Dashboard" }, ...(hasFranchiseView ? [{ id: "franchise", label: "Franchise Dashboard" }] : [])]
+        },
         {
             label: "MENU",
             tabs: [
@@ -82,6 +91,13 @@ function tabGroupsForRole(role) {
                       { id: "stores", label: "Locations" },
                       { id: "data", label: "Data & Backup" }
                   ]
+        },
+        // A manager doesn't get the owner/admin "Locations" list (every
+        // store, plus add/remove) - just their own store's own details,
+        // which they should be able to fix without asking the owner.
+        {
+            label: "THIS STORE",
+            tabs: isManagerOnly ? [{ id: "this-store", label: "This Store" }] : []
         }
     ];
     return groups.filter((g) => g.tabs.length > 0);
@@ -118,7 +134,7 @@ export const AdminPortal = {
         // A manager landing on a tab they no longer have access to (e.g.
         // Global Settings, remembered from a previous admin session in the
         // same browser) falls back to the dashboard instead of a blank tab.
-        if (!tabGroupsForRole(this.session.role).some((g) => g.tabs.some((t) => t.id === this.activeTab))) {
+        if (!tabGroupsForRole(this.session).some((g) => g.tabs.some((t) => t.id === this.activeTab))) {
             this.activeTab = "kpi";
         }
         this.renderTabs();
@@ -143,7 +159,7 @@ export const AdminPortal = {
     renderTabs() {
         const root = document.getElementById("admin-tabs");
         if (!root) return;
-        const groups = tabGroupsForRole(this.session.role);
+        const groups = tabGroupsForRole(this.session);
         // A single-tab section (Dashboard, Payments, Operations) IS its page -
         // the top row shows its one tab's own label, and clicking it goes
         // straight there. A multi-tab section shows the group name on top,
@@ -190,9 +206,11 @@ export const AdminPortal = {
         const root = document.getElementById("admin-tab-content");
         if (!root) return;
         if (this.activeTab === "kpi") return this.renderKpiDashboard(root);
+        if (this.activeTab === "franchise") return this.renderFranchiseDashboard(root);
         if (this.activeTab === "payments") return this.renderPayments(root);
         if (this.activeTab === "operations") return this.renderOperations(root);
         if (this.activeTab === "stores") return this.renderStores(root);
+        if (this.activeTab === "this-store") return this.renderThisStore(root);
         if (this.activeTab === "data") return this.renderDataBackup(root);
         if (this.activeTab === "reports") return this.renderReportsExport(root);
         if (this.activeTab === "menu") {
@@ -397,12 +415,20 @@ export const AdminPortal = {
     // business-structure tools in Store Setup.
     expandedStoreBranding: {},
 
+    /** Owner always; a scoped admin only for stores their storeAccess
+     *  actually covers (or unrestricted, i.e. storeAccess not set). */
+    canEditStoreBranding(storeId) {
+        if (this.session.role === "owner") return true;
+        if (this.session.role === "admin") return !this.session.storeAccess || this.session.storeAccess.includes(storeId);
+        return false;
+    },
+
     async renderStores(root) {
         const isOwner = this.session.role === "owner";
         root.innerHTML = `
             <div class="config-controls">
                 <h3 style="margin-top:0;">STORES</h3>
-                <p class="admin-help-text">Every store sells the same menu - use "EDIT BRANDING" to give a store its own name, logo, colors, hero image, and hours (staff assigned to that store will see it instead of the global default). Leave a field blank to fall back to the global setting.</p>
+                <p class="admin-help-text">Every store sells the same menu - use "EDIT BRANDING" to give a store its own name, address, phone, logo, colors, hero image, and hours (staff assigned to that store will see it instead of the global default). Leave a field blank to fall back to the global setting.</p>
                 <div id="stores-list" style="margin-bottom:10px;"></div>
                 ${
                     isOwner
@@ -432,19 +458,28 @@ export const AdminPortal = {
                     const colors = b.colors || {};
                     const footer = b.footer || {};
                     const expanded = !!this.expandedStoreBranding[s.id];
+                    const canEdit = this.canEditStoreBranding(s.id);
                     return `
                     <div style="border-bottom:1px solid var(--color-border); padding:8px 0;">
                         <div style="display:flex; align-items:center; gap:10px; font-size:8pt;">
                             <span style="flex:1;">${escapeHtmlAttr(s.name)}${s.address ? ` — ${escapeHtmlAttr(s.address)}` : ""}</span>
-                            ${isOwner ? `<button class="admin-btn-secondary" data-toggle-branding="${s.id}" style="padding:4px 8px; font-size:7pt;">${expanded ? "CLOSE" : "EDIT BRANDING"}</button>` : ""}
+                            ${canEdit ? `<button class="admin-btn-secondary" data-toggle-branding="${s.id}" style="padding:4px 8px; font-size:7pt;">${expanded ? "CLOSE" : "EDIT BRANDING"}</button>` : ""}
                         </div>
                         ${
-                            expanded
+                            expanded && canEdit
                                 ? `
                         <div style="margin-top:10px; padding:12px; border:1px solid var(--color-border); background:var(--color-bg);">
                             <div class="control-group">
                                 <label>STORE-SPECIFIC SHOP NAME (blank = use global)</label>
                                 <input type="text" id="store-${s.id}-name" maxlength="60" value="${escapeHtmlAttr(b.shopName || "")}" />
+                            </div>
+                            <div class="control-group">
+                                <label>ADDRESS (shown on the home page "Visit us" widget)</label>
+                                <input type="text" id="store-${s.id}-address" maxlength="200" value="${escapeHtmlAttr(s.address || "")}" />
+                            </div>
+                            <div class="control-group">
+                                <label>PHONE (blank = use global)</label>
+                                <input type="text" id="store-${s.id}-phone" maxlength="20" value="${escapeHtmlAttr(footer.phone || "")}" />
                             </div>
                             <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
                                 ${colorField(`store-${s.id}-accent`, "ACCENT", colors.accent || "#d97706")}
@@ -482,8 +517,6 @@ export const AdminPortal = {
                 `;
                 })
                 .join("");
-
-            if (!isOwner) return;
 
             root.querySelectorAll("[data-toggle-branding]").forEach((btn) => {
                 btn.addEventListener("click", () => {
@@ -523,6 +556,7 @@ export const AdminPortal = {
                     errorEl.textContent = "";
                     try {
                         await PayrollSystem.updateStore(id, {
+                            address: document.getElementById(`store-${id}-address`).value.trim(),
                             branding: {
                                 shopName: document.getElementById(`store-${id}-name`).value.trim(),
                                 logoUrl: document.getElementById(`store-${id}-logo`).value.trim(),
@@ -534,7 +568,10 @@ export const AdminPortal = {
                                     text: document.getElementById(`store-${id}-text`).value,
                                     secondary: document.getElementById(`store-${id}-secondary`).value
                                 },
-                                footer: { hours: document.getElementById(`store-${id}-hours`).value.trim() }
+                                footer: {
+                                    hours: document.getElementById(`store-${id}-hours`).value.trim(),
+                                    phone: document.getElementById(`store-${id}-phone`).value.trim()
+                                }
                             }
                         });
                         ok("Store branding saved");
@@ -563,6 +600,116 @@ export const AdminPortal = {
                 }
             });
         }
+    },
+
+    // ---------------------------------------------------------------- THIS STORE (manager-only)
+    // A manager's own version of Store Setup's per-store branding editor -
+    // just their own store, always expanded, no list of other locations and
+    // no add/remove (that stays owner-only, see renderStores()).
+    async renderThisStore(root) {
+        const stores = await PayrollSystem.fetchStores();
+        const store = stores.find((s) => s.id === this.session.storeId);
+        if (!store) {
+            root.innerHTML = `<p class="admin-help-text">Your account isn't assigned to a store yet - ask the owner to fix this from Staff Accounts.</p>`;
+            return;
+        }
+        const b = store.branding || {};
+        const colors = b.colors || {};
+        const footer = b.footer || {};
+        const colorField = (id, label, value) => `
+            <div class="control-group" style="flex:0 0 auto;">
+                <label>${label}</label>
+                <input type="color" id="${id}" value="${value}" />
+            </div>
+        `;
+
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">${escapeHtmlAttr(store.name)}</h3>
+                <p class="admin-help-text">Your store's own name, address, phone, logo, colors, hero image, and hours - shown to customers at this location instead of the shop-wide default. Leave a field blank to fall back to the global setting.</p>
+
+                <div class="control-group">
+                    <label>STORE-SPECIFIC SHOP NAME (blank = use global)</label>
+                    <input type="text" id="ts-name" maxlength="60" value="${escapeHtmlAttr(b.shopName || "")}" />
+                </div>
+                <div class="control-group">
+                    <label>ADDRESS (shown on the home page "Visit us" widget)</label>
+                    <input type="text" id="ts-address" maxlength="200" value="${escapeHtmlAttr(store.address || "")}" />
+                </div>
+                <div class="control-group">
+                    <label>PHONE (blank = use global)</label>
+                    <input type="text" id="ts-phone" maxlength="20" value="${escapeHtmlAttr(footer.phone || "")}" />
+                </div>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+                    ${colorField("ts-accent", "ACCENT", colors.accent || "#d97706")}
+                    ${colorField("ts-background", "BACKGROUND", colors.background || "#0a0a0a")}
+                    ${colorField("ts-surface", "SURFACE", colors.surface || "#111111")}
+                    ${colorField("ts-text", "TEXT", colors.text || "#f9fafb")}
+                    ${colorField("ts-secondary", "SECONDARY", colors.secondary || "#22d3ee")}
+                    <button type="button" class="admin-btn-secondary" id="ts-reset-colors" style="padding:6px 10px; font-size:7pt;">USE GLOBAL COLORS</button>
+                </div>
+                <div class="control-group" style="margin-top:10px;">
+                    <label>LOGO IMAGE (blank = use global)</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="ts-logo" maxlength="500" value="${escapeHtmlAttr(b.logoUrl || "")}" style="flex:1;" />
+                        <button type="button" class="admin-btn-secondary" id="ts-pick-logo" style="white-space:nowrap;">BROWSE</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>HERO / STOREFRONT IMAGE (blank = use global)</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="ts-hero" maxlength="500" value="${escapeHtmlAttr(b.heroImageUrl || "")}" style="flex:1;" />
+                        <button type="button" class="admin-btn-secondary" id="ts-pick-hero" style="white-space:nowrap;">BROWSE</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>HOURS (blank = use global)</label>
+                    <input type="text" id="ts-hours" maxlength="60" value="${escapeHtmlAttr(footer.hours || "")}" placeholder="Mon-Sat: 8am - 8pm" />
+                </div>
+                <p id="ts-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:6px;"></p>
+                <button class="admin-btn-primary" id="ts-save">SAVE</button>
+            </div>
+        `;
+
+        document.getElementById("ts-reset-colors").addEventListener("click", () => {
+            const preset = { accent: "#d97706", background: "#0a0a0a", surface: "#111111", text: "#f9fafb", secondary: "#22d3ee" };
+            Object.entries(preset).forEach(([k, v]) => (document.getElementById(`ts-${k}`).value = v));
+        });
+        document.getElementById("ts-pick-logo").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("ts-logo").value = url) });
+        });
+        document.getElementById("ts-pick-hero").addEventListener("click", () => {
+            renderImagePickerModal({ onSelect: (url) => (document.getElementById("ts-hero").value = url) });
+        });
+        document.getElementById("ts-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("ts-error");
+            errorEl.textContent = "";
+            try {
+                await PayrollSystem.updateStore(store.id, {
+                    address: document.getElementById("ts-address").value.trim(),
+                    branding: {
+                        shopName: document.getElementById("ts-name").value.trim(),
+                        logoUrl: document.getElementById("ts-logo").value.trim(),
+                        heroImageUrl: document.getElementById("ts-hero").value.trim(),
+                        colors: {
+                            accent: document.getElementById("ts-accent").value,
+                            background: document.getElementById("ts-background").value,
+                            surface: document.getElementById("ts-surface").value,
+                            text: document.getElementById("ts-text").value,
+                            secondary: document.getElementById("ts-secondary").value
+                        },
+                        footer: {
+                            hours: document.getElementById("ts-hours").value.trim(),
+                            phone: document.getElementById("ts-phone").value.trim()
+                        }
+                    }
+                });
+                ok("Store details saved");
+            } catch (e) {
+                errorEl.textContent = e.message;
+                fail(e.message);
+            }
+        });
     },
 
     // ---------------------------------------------------------------- DATA & BACKUP
@@ -871,6 +1018,50 @@ export const AdminPortal = {
                 }
             });
         });
+    },
+
+    // ---------------------------------------------------------------- FRANCHISE DASHBOARD
+    // Cross-store comparison, separate from the single-store Dashboard above
+    // (which now only ever reflects the session's own store/storeAccess) -
+    // owner always sees it; a scoped admin only when their storeAccess
+    // actually spans more than one store (see tabGroupsForRole()).
+    async renderFranchiseDashboard(root) {
+        const kpi = await PayrollSystem.fetchKpi("7d");
+        if (!kpi) {
+            root.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">Could not load dashboard data.</p>`;
+            return;
+        }
+        const byStore = kpi.byStore || [];
+        const maxAllTimeRevenue = Math.max(1, ...byStore.map((s) => s.allTime.revenue));
+
+        root.innerHTML = `
+            <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:4px;">COMBINED (EVERY STORE YOU CAN SEE)</h3>
+            <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom:26px;">
+                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.month.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.allTime.orders} orders</div></div>
+            </div>
+
+            <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">STORE VS STORE (ALL TIME)</h3>
+            ${
+                byStore.length === 0
+                    ? `<p class="admin-help-text">No stores to compare yet.</p>`
+                    : byStore
+                          .map(
+                              (s) => `
+                <div style="margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:9pt; margin-bottom:5px;">
+                        <span style="font-weight:bold;">${escapeHtmlAttr(s.storeName)}</span>
+                        <span style="color:var(--color-text-muted);">${currencySymbol()}${s.allTime.revenue.toFixed(0)} &middot; ${s.allTime.orders} orders all-time &middot; ${currencySymbol()}${s.today.revenue.toFixed(0)} today</span>
+                    </div>
+                    <div style="height:10px; background:var(--color-border);"><div style="height:100%; width:${(s.allTime.revenue / maxAllTimeRevenue) * 100}%; background:var(--color-accent);"></div></div>
+                </div>
+            `
+                          )
+                          .join("")
+            }
+        `;
     },
 
     // ---------------------------------------------------------------- PAYROLL
@@ -3073,13 +3264,23 @@ export const AdminPortal = {
         const MAX_CUSTOM_FOOTER_FIELDS = 6;
         const footerFieldsEditor = document.getElementById("footer-custom-fields-editor");
 
+        const FOOTER_FIELD_TYPES = [
+            { value: "other", label: "OTHER" },
+            { value: "social", label: "SOCIAL" },
+            { value: "career", label: "CAREERS" }
+        ];
+
         function renderFooterFieldsEditor(fields) {
             footerFieldsEditor.innerHTML = fields
                 .map(
                     (f, i) => `
-                <div class="footer-field-row" style="display:flex; gap:8px; align-items:center;">
-                    <input type="text" class="footer-field-label" placeholder="Field name (e.g. Instagram)" maxlength="30" value="${escapeHtmlAttr(f.label || "")}" style="flex:0 0 180px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" class="footer-field-value" placeholder="Value" maxlength="100" value="${escapeHtmlAttr(f.value || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                <div class="footer-field-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" class="footer-field-label" placeholder="Field name (e.g. Instagram)" maxlength="30" value="${escapeHtmlAttr(f.label || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="footer-field-value" placeholder="Display text" maxlength="100" value="${escapeHtmlAttr(f.value || "")}" style="flex:1 1 120px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="footer-field-url" placeholder="Link URL (optional)" maxlength="300" value="${escapeHtmlAttr(f.url || "")}" style="flex:1 1 160px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <select class="footer-field-type" style="flex:0 0 100px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 4px; font-family:inherit; font-size:8pt;">
+                        ${FOOTER_FIELD_TYPES.map((t) => `<option value="${t.value}" ${(f.type || "other") === t.value ? "selected" : ""}>${t.label}</option>`).join("")}
+                    </select>
                     <button type="button" class="footer-field-remove admin-btn-secondary" data-index="${i}" style="flex:none; padding:4px 8px;">&times;</button>
                 </div>
             `
@@ -3098,7 +3299,7 @@ export const AdminPortal = {
 
         document.getElementById("footer-custom-field-add").addEventListener("click", () => {
             if (customFooterFields.length >= MAX_CUSTOM_FOOTER_FIELDS) return fail(`Up to ${MAX_CUSTOM_FOOTER_FIELDS} custom fields`);
-            customFooterFields.push({ label: "", value: "" });
+            customFooterFields.push({ label: "", value: "", url: "", type: "other" });
             renderFooterFieldsEditor(customFooterFields);
         });
 
@@ -3108,7 +3309,9 @@ export const AdminPortal = {
             const finalCustomFields = Array.from(footerFieldsEditor.querySelectorAll(".footer-field-row"))
                 .map((row) => ({
                     label: row.querySelector(".footer-field-label").value.trim(),
-                    value: row.querySelector(".footer-field-value").value.trim()
+                    value: row.querySelector(".footer-field-value").value.trim(),
+                    url: row.querySelector(".footer-field-url").value.trim(),
+                    type: row.querySelector(".footer-field-type").value
                 }))
                 .filter((f) => f.label || f.value);
             try {
