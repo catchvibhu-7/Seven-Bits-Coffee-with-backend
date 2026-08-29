@@ -102,11 +102,11 @@ export async function renderBillingPage() {
         totalPages > 1
             ? `
         <div class="menu-pager" style="margin-top:auto;">
-            <button type="button" class="admin-pg-btn" data-page="1" ${billingPage <= 1 ? "disabled" : ""} title="First page">«</button>
-            <button type="button" class="admin-pg-btn" data-page="${billingPage - 1}" ${billingPage <= 1 ? "disabled" : ""} title="Previous page">‹</button>
+            <button type="button" class="admin-pg-btn" data-page="1" ${billingPage <= 1 ? "disabled" : ""} title="First page" aria-label="First page">«</button>
+            <button type="button" class="admin-pg-btn" data-page="${billingPage - 1}" ${billingPage <= 1 ? "disabled" : ""} title="Previous page" aria-label="Previous page">‹</button>
             <span class="menu-pager-label">${pageStart + 1}-${Math.min(pageStart + BILLING_PAGE_SIZE, openBills.length)} of ${openBills.length}</span>
-            <button type="button" class="admin-pg-btn" data-page="${billingPage + 1}" ${billingPage >= totalPages ? "disabled" : ""} title="Next page">›</button>
-            <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${billingPage >= totalPages ? "disabled" : ""} title="Last page">»</button>
+            <button type="button" class="admin-pg-btn" data-page="${billingPage + 1}" ${billingPage >= totalPages ? "disabled" : ""} title="Next page" aria-label="Next page">›</button>
+            <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${billingPage >= totalPages ? "disabled" : ""} title="Last page" aria-label="Last page">»</button>
         </div>`
             : "";
 
@@ -131,14 +131,15 @@ export async function renderBillingPage() {
                             pageBills.length === 0
                                 ? `<p style="color:var(--color-text-muted); font-size:9pt;">Nothing open right now.</p>`
                                 : pageBills
-                                      .map(
-                                          (b) => `
-                            <button type="button" class="billing-list-item${selectedBill && selectedBill.kind === b.kind && selectedBill.id === b.id ? " active" : ""}" data-kind="${b.kind}" data-id="${escapeHtml(String(b.id))}">
+                                      .map((b) => {
+                                          const isActive = !!(selectedBill && selectedBill.kind === b.kind && selectedBill.id === b.id);
+                                          return `
+                            <button type="button" class="billing-list-item${isActive ? " active" : ""}" aria-current="${isActive ? "true" : "false"}" data-kind="${b.kind}" data-id="${escapeHtml(String(b.id))}">
                                 <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(b.label)} <span style="color:var(--color-text-muted); font-weight:normal;">&middot; ${escapeHtml(b.sub)}</span></span>
                                 <span style="flex:none; font-weight:bold;">${money(b.total)}</span>
                             </button>
-                        `
-                                      )
+                        `;
+                                      })
                                       .join("")
                         }
                     </div>
@@ -241,7 +242,7 @@ async function renderBillDetail() {
             </div>
             <div style="flex:0 1 220px;">
                 <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Phone / Username</label>
-                <input id="billing-tag-phone" type="text" maxlength="60" value="${escapeHtml(order.customerPhone || order.customerName || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
+                <input id="billing-tag-phone" type="text" maxlength="60" value="${escapeHtml(order.customerPhone || order.customerName || "")}" autocomplete="off" spellcheck="false" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
             </div>
         </div>`
         : "";
@@ -275,7 +276,7 @@ async function renderBillDetail() {
             <div style="display:flex; gap:8px; align-items:flex-end; margin-top:13px;">
                 <div style="flex:1;">
                     <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Coupon code</label>
-                    <input id="billing-adjust-coupon" type="text" maxlength="24" value="${escapeHtml(order.couponCode || "")}" placeholder="OPTIONAL" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px; text-transform:uppercase;" />
+                    <input id="billing-adjust-coupon" type="text" maxlength="24" value="${escapeHtml(order.couponCode || "")}" placeholder="OPTIONAL" autocomplete="off" spellcheck="false" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px; text-transform:uppercase;" />
                 </div>
                 ${
                     order.customerId
@@ -341,6 +342,20 @@ async function renderBillDetail() {
         </div>
     `;
 
+    // Enter in either field applies the same update as clicking the button -
+    // neither field has its own save action, and there's no surrounding
+    // <form> here (this whole detail panel is a div tree) to submit on Enter
+    // for free. Deliberately not wired for the table/phone fields above,
+    // since those sit next to Settle - an accidental Enter there should not
+    // risk settling a payment.
+    detail.querySelectorAll("#billing-adjust-coupon, #billing-adjust-points").forEach((el) => {
+        el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                detail.querySelector("#billing-adjust-apply")?.click();
+            }
+        });
+    });
     detail.querySelector("#billing-adjust-apply")?.addEventListener("click", async () => {
         const btn = detail.querySelector("#billing-adjust-apply");
         const errorEl = detail.querySelector("#billing-adjust-error");
@@ -380,8 +395,8 @@ async function renderBillDetail() {
             // of settling - no separate save step for a standalone order.
             if (order) {
                 await KitchenSystem.tagOrderInfo(order.id, {
-                    contact: detail.querySelector("#billing-tag-phone").value,
-                    tableNumber: detail.querySelector("#billing-tag-table").value
+                    contact: detail.querySelector("#billing-tag-phone").value.trim(),
+                    tableNumber: detail.querySelector("#billing-tag-table").value.trim()
                 });
             }
             if (selectedBill.kind === "table") {

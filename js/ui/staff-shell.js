@@ -351,7 +351,7 @@ export const StaffShell = {
             <div class="staff-rail-logo" style="display:flex; flex-direction:column; gap:2px;">
                 ${
                     wideLogo
-                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="" style="max-width:100%; max-height:40px; object-fit:contain; align-self:flex-start; margin-bottom:6px;" />`
+                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="${escapeHtml(shopDisplayName())}" style="max-width:100%; max-height:40px; object-fit:contain; align-self:flex-start; margin-bottom:6px;" />`
                         : `<div style="display:flex; align-items:center; gap:8px; min-width:0;">
                             ${logoImageHtml(28)}
                             <div class="staff-rail-logo-mark">${shopDisplayName()}<span style="color:var(--color-text);">_</span></div>
@@ -388,7 +388,7 @@ export const StaffShell = {
             <div class="staff-topbar-logo">
                 ${
                     wideLogo
-                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="" style="max-height:28px; object-fit:contain;" />`
+                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="${escapeHtml(shopDisplayName())}" style="max-height:28px; object-fit:contain;" />`
                         : `${logoImageHtml(28)}
                            <span style="font-size:17px; font-weight:bold; letter-spacing:2px; color:var(--color-accent);">${shopShortForm()}</span>`
                 }

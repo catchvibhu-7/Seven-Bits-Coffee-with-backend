@@ -216,7 +216,7 @@ export const ArcadePage = {
                 ${Object.entries(GAME_DEFS)
                     .map(
                         ([key, def]) => `
-                    <div class="arcade-card" data-game="${key}">
+                    <div class="arcade-card" data-game="${key}" role="button" tabindex="0" aria-label="${escapeHtml(def.name)}">
                         ${THUMBS[key]}
                         <div class="arcade-card-name">${def.name}</div>
                     </div>
@@ -226,7 +226,18 @@ export const ArcadePage = {
             </div>
         `;
         this.root.querySelectorAll(".arcade-card").forEach((card) => {
-            card.addEventListener("click", () => this.launchGame(card.dataset.game));
+            const open = () => this.launchGame(card.dataset.game);
+            card.addEventListener("click", open);
+            // Cards are <div>s, not <a>/<button> (they mount a game in place
+            // rather than navigating a URL) - role="button" + tabindex above
+            // makes them focusable, this makes them keyboard-operable
+            // (Enter/Space) instead of mouse/touch-only.
+            card.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    open();
+                }
+            });
         });
     },
 
