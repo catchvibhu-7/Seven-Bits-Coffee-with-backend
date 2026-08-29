@@ -2283,16 +2283,22 @@ export const AdminPortal = {
                     ${staff
                         .map((u) => {
                             const isSelf = u.id === myUserId;
+                            const adminScopeAllows =
+                                !this.session.storeAccess || !["employee", "manager"].includes(u.role) || this.session.storeAccess.includes(u.storeId);
                             const canManage =
                                 !isSelf &&
                                 (isOwner ||
-                                    (this.session.role === "admin" && ["employee", "manager"].includes(u.role)) ||
+                                    (this.session.role === "admin" && ["employee", "manager"].includes(u.role) && adminScopeAllows) ||
                                     (isManager && u.role === "employee" && u.storeId === this.session.storeId));
+                            const storeAccessNote =
+                                u.role === "admin"
+                                    ? `<div style="font-size:6.5pt; color:var(--color-text-muted);">${u.storeAccess && u.storeAccess.length ? `${u.storeAccess.length} store(s)` : "All stores"}</div>`
+                                    : "";
                             return `
                         <tr>
                             <td>${u.username}${isSelf ? ' <span style="color:var(--color-text-muted); font-size:7pt;">(you)</span>' : ""}</td>
                             <td>${u.name}</td>
-                            <td style="color: var(--color-accent);">${u.role.toUpperCase()}</td>
+                            <td style="color: var(--color-accent);">${u.role.toUpperCase()}${storeAccessNote}</td>
                             <td style="font-size:8pt; color:var(--color-text-muted);">${u.tag || "\u2014"}</td>
                             <td style="font-size:8pt;">${u.payRateType ? `${currencySymbol()}${u.payRate}/${u.payRateType === "hourly" ? "hr" : u.payRateType === "weekly" ? "wk" : "mo"}` : "\u2014"}</td>
                             <td style="text-align:right;">
@@ -2351,7 +2357,7 @@ export const AdminPortal = {
     /** Edit an existing staff member's tag and pay rate via a proper modal (not a browser prompt). */
     async editStaffDetails(userId, staffList) {
         const user = staffList.find((u) => u.id === userId);
-        renderEditStaffModal(user, async () => {
+        renderEditStaffModal(user, this.session.role, async () => {
             await this.renderActiveTab();
             ok("Staff details updated");
         });

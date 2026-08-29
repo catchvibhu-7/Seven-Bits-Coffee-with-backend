@@ -51,10 +51,31 @@ export async function renderAddStaffModal(currentRole, onCreated) {
             ${
                 stores.length > 1
                     ? `
-            <label style="font-size: 7pt; color: var(--color-text-muted);">STORE</label>
-            <select id="sm-store" style="${fieldStyle}">
-                ${stores.map((s) => `<option value="${s.id}">${s.name}</option>`).join("")}
-            </select>`
+            <div id="sm-store-field">
+                <label style="font-size: 7pt; color: var(--color-text-muted);">STORE</label>
+                <select id="sm-store" style="${fieldStyle}">
+                    ${stores.map((s) => `<option value="${s.id}">${s.name}</option>`).join("")}
+                </select>
+            </div>`
+                    : ""
+            }
+
+            ${
+                roleOptions.includes("admin") && stores.length > 1
+                    ? `
+            <div id="sm-store-access-field" style="display:none;">
+                <label style="font-size: 7pt; color: var(--color-text-muted);">STORE ACCESS (leave all unchecked = every store)</label>
+                <div style="display:flex; flex-direction:column; gap:5px; margin: 4px 0 10px; padding:8px; border:1px solid var(--color-border);">
+                    ${stores
+                        .map(
+                            (s) => `
+                    <label style="display:flex; align-items:center; gap:6px; font-size:8pt; cursor:pointer;">
+                        <input type="checkbox" class="sm-store-access-cb" value="${s.id}" /> ${s.name}
+                    </label>`
+                        )
+                        .join("")}
+                </div>
+            </div>`
                     : ""
             }
 
@@ -104,6 +125,20 @@ export async function renderAddStaffModal(currentRole, onCreated) {
         if (!payTypeField.value) payRateField.value = "";
     });
 
+    // STORE (single, for employee/manager) and STORE ACCESS (multi, for
+    // admin) are mutually exclusive - which one's relevant depends on the
+    // role currently picked.
+    const roleField = document.getElementById("sm-role");
+    const storeField = document.getElementById("sm-store-field");
+    const storeAccessField = document.getElementById("sm-store-access-field");
+    const syncStoreFieldsToRole = () => {
+        const role = roleField.value;
+        if (storeField) storeField.style.display = ["employee", "manager"].includes(role) ? "" : "none";
+        if (storeAccessField) storeAccessField.style.display = role === "admin" ? "" : "none";
+    };
+    roleField.addEventListener("change", syncStoreFieldsToRole);
+    syncStoreFieldsToRole();
+
     usernameField.addEventListener("input", () => {
         clearTimeout(usernameCheckTimer);
         const value = usernameField.value.trim();
@@ -148,6 +183,8 @@ export async function renderAddStaffModal(currentRole, onCreated) {
         const payRateType = payTypeField.value || null;
         const payRate = payRateType ? Number(payRateField.value) : null;
         const storeId = document.getElementById("sm-store")?.value;
+        const storeAccess =
+            role === "admin" ? [...document.querySelectorAll(".sm-store-access-cb:checked")].map((cb) => Number(cb.value)) : undefined;
 
         if (!name) return (errorEl.textContent = "Enter a name.");
         if (username.length < 3) return (errorEl.textContent = "Username must be at least 3 characters.");
@@ -157,7 +194,17 @@ export async function renderAddStaffModal(currentRole, onCreated) {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, username, password, role, tag, payRateType, payRate, storeId: storeId ? Number(storeId) : undefined })
+            body: JSON.stringify({
+                name,
+                username,
+                password,
+                role,
+                tag,
+                payRateType,
+                payRate,
+                storeId: storeId ? Number(storeId) : undefined,
+                storeAccess
+            })
         });
         const data = await res.json();
         if (!res.ok) {
@@ -173,17 +220,21 @@ export async function renderAddStaffModal(currentRole, onCreated) {
 /**
  * Edit an existing staff member's tag and pay rate (role and password have
  * their own dedicated, more tightly-guarded flows, so they're not editable
- * here).
+ * here). An owner editing an admin account also gets that admin's store
+ * access here - only the owner may grant/restrict it (server-enforced too).
  */
-export function renderEditStaffModal(user, onSaved) {
+export async function renderEditStaffModal(user, currentRole, onSaved) {
     document.getElementById("staff-modal-overlay")?.remove();
+
+    const canEditStoreAccess = currentRole === "owner" && user.role === "admin";
+    const stores = canEditStoreAccess ? await PayrollSystem.fetchStores() : [];
 
     const overlay = document.createElement("div");
     overlay.id = "staff-modal-overlay";
     overlay.className = "modal-overlay";
     overlay.style.zIndex = "5000";
     overlay.innerHTML = `
-        <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 340px; font-family: 'Courier New', monospace;">
+        <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 340px; font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">EDIT ${user.name}</h2>
             <p id="esm-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
 
@@ -201,6 +252,23 @@ export function renderEditStaffModal(user, onSaved) {
                 <input id="esm-pay-rate" type="number" min="0" step="0.01" value="${user.payRate ?? ""}" placeholder="${currencySymbol()} amount" ${!user.payRateType ? "disabled" : ""}
                     style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
             </div>
+
+            ${
+                canEditStoreAccess && stores.length > 1
+                    ? `
+            <label style="font-size: 7pt; color: var(--color-text-muted);">STORE ACCESS (leave all unchecked = every store)</label>
+            <div style="display:flex; flex-direction:column; gap:5px; margin: 4px 0 10px; padding:8px; border:1px solid var(--color-border);">
+                ${stores
+                    .map(
+                        (s) => `
+                <label style="display:flex; align-items:center; gap:6px; font-size:8pt; cursor:pointer;">
+                    <input type="checkbox" class="esm-store-access-cb" value="${s.id}" ${(user.storeAccess || []).includes(s.id) ? "checked" : ""} /> ${s.name}
+                </label>`
+                    )
+                    .join("")}
+            </div>`
+                    : ""
+            }
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">
                 <button id="esm-save" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">SAVE CHANGES</button>
@@ -225,12 +293,15 @@ export function renderEditStaffModal(user, onSaved) {
         const payRateType = payTypeField.value || null;
         const payRate = payRateType ? Number(payRateField.value) : null;
         if (payRateType && !(payRate >= 0)) return (errorEl.textContent = "Enter a valid pay rate.");
+        const storeAccess = canEditStoreAccess
+            ? [...document.querySelectorAll(".esm-store-access-cb:checked")].map((cb) => Number(cb.value))
+            : undefined;
 
         const res = await fetch(`/api/users/${user.id}`, {
             method: "PATCH",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tag, payRateType, payRate })
+            body: JSON.stringify({ tag, payRateType, payRate, storeAccess })
         });
         const data = await res.json();
         if (!res.ok) {

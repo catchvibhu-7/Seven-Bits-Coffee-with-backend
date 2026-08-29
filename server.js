@@ -388,6 +388,7 @@ function createUser({
   phone,
   mustChangePassword = false,
   storeId = 1,
+  storeAccess = null,
   tag = "",
   payRateType = null,
   payRate = null
@@ -411,6 +412,11 @@ function createUser({
     // tied to one store (they see everything), so storeId is mostly
     // meaningful for employee/manager.
     storeId: ["employee", "manager"].includes(role) ? storeId : null,
+    // storeAccess: for an admin only - which stores they can see/manage.
+    // null/absent means unrestricted (every store) - the default, matching
+    // this app's original single-tier admin behavior. Owner sets this
+    // explicitly (PATCH /api/users/:id) to scope a specific admin down.
+    storeAccess: role === "admin" && Array.isArray(storeAccess) && storeAccess.length ? storeAccess : null,
     // tag: free-text responsibility label an admin/manager sets, e.g.
     // "Barista", "Cashier" - shown in the staff table, not used for
     // permissions (that's what role is for).
@@ -1184,7 +1190,7 @@ route("POST", /^\/api\/auth\/login\/?$/, async (req, res) => {
   }
 
   recordAuthSuccess(ip);
-  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId });
+  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId, storeAccess: user.storeAccess || null });
   setSessionCookie(res, token);
   sendJson(res, 200, { role: user.role, name: user.name, phone: user.phone, storeId: user.storeId, mustChangePassword: !!user.mustChangePassword });
 });
@@ -1227,7 +1233,7 @@ route("POST", /^\/api\/auth\/change-password\/?$/, async (req, res) => {
 
   setUserPassword(user.id, body.newPassword, { mustChangePassword: false });
   clearSessionCookie(res);
-  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId });
+  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId, storeAccess: user.storeAccess || null });
   setSessionCookie(res, token);
   sendJson(res, 200, { ok: true });
 });
@@ -1301,6 +1307,7 @@ route("GET", /^\/api\/auth\/session\/?$/, async (req, res) => {
     phone: session.phone,
     userId: session.userId,
     storeId: session.storeId,
+    storeAccess: session.storeAccess || null,
     mustChangePassword: !!(user && user.mustChangePassword),
     loyaltyPoints: user ? user.loyaltyPoints || 0 : 0
   });
@@ -1314,10 +1321,25 @@ function allowedRolesToCreate(session) {
   return [];
 }
 
+/** Which stores a session may see/act on - null means "unrestricted" (owner,
+ *  or an admin nobody has scoped down yet, which is today's existing
+ *  behavior preserved as the default). Everyone else gets a concrete list:
+ *  a scoped admin's storeAccess, or a manager/employee's own single store. */
+function accessibleStoreIds(session) {
+  if (session.role === "owner") return null;
+  if (session.role === "admin") return Array.isArray(session.storeAccess) && session.storeAccess.length ? session.storeAccess : null;
+  if (session.role === "manager" || session.role === "employee") return session.storeId != null ? [session.storeId] : null;
+  return null;
+}
+
 function canManageTarget(session, targetUser) {
   if (!targetUser) return false;
   if (session.role === "owner") return true;
-  if (session.role === "admin") return ["employee", "manager"].includes(targetUser.role);
+  if (session.role === "admin") {
+    if (!["employee", "manager"].includes(targetUser.role)) return false;
+    const allowed = accessibleStoreIds(session);
+    return !allowed || allowed.includes(targetUser.storeId);
+  }
   if (session.role === "manager") return targetUser.role === "employee" && targetUser.storeId === session.storeId;
   return false;
 }
@@ -1380,6 +1402,13 @@ route("GET", /^\/api\/users\/?$/, async (req, res) => {
   if (session.role === "manager") {
     users = users.filter((u) => u.id === session.userId || (u.role === "employee" && u.storeId === session.storeId));
   }
+  // A scoped admin (storeAccess set) only sees employee/manager accounts at
+  // their accessible stores - other admin/owner accounts stay visible
+  // regardless, since those aren't "at" any one store.
+  const allowed = accessibleStoreIds(session);
+  if (session.role === "admin" && allowed) {
+    users = users.filter((u) => !["employee", "manager"].includes(u.role) || allowed.includes(u.storeId));
+  }
   sendJson(res, 200, users.map(publicUser));
 });
 
@@ -1398,6 +1427,17 @@ route("POST", /^\/api\/users\/?$/, async (req, res) => {
   // A manager can only create employees for their OWN store - they can't
   // even choose a different store id.
   const storeId = session.role === "manager" ? session.storeId : Number(body.storeId) || 1;
+  // A scoped admin can only place a new employee/manager at a store they
+  // themselves can access - an unrestricted admin (or owner) can pick any.
+  const allowedStores = accessibleStoreIds(session);
+  if (session.role === "admin" && allowedStores && !allowedStores.includes(storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store" });
+  }
+  // storeAccess: only owner may set this (matches allowedRolesToCreate -
+  // only owner can create an "admin" account in the first place), and only
+  // applies when the new account's role is actually admin.
+  const storeAccess =
+    session.role === "owner" && role === "admin" && Array.isArray(body.storeAccess) ? body.storeAccess.map(Number).filter(Number.isFinite) : null;
 
   if (username.length < 3) return sendJson(res, 400, { error: "Username must be at least 3 characters" });
   const pwIssues = passwordIssues(password);
@@ -1411,7 +1451,7 @@ route("POST", /^\/api\/users\/?$/, async (req, res) => {
   try {
     // Staff accounts start with mustChangePassword so the temp password an
     // admin hands over only works once before the new hire sets their own.
-    const user = createUser({ username, password, role, name, mustChangePassword: true, storeId, tag, payRateType, payRate });
+    const user = createUser({ username, password, role, name, mustChangePassword: true, storeId, storeAccess, tag, payRateType, payRate });
     sendJson(res, 201, publicUser(user));
   } catch (e) {
     sendJson(res, 400, { error: e.message });
@@ -1440,6 +1480,16 @@ route("PATCH", /^\/api\/users\/(?<id>\d+)\/?$/, async (req, res, params) => {
   if (body.payRate !== undefined) {
     const rate = Number(body.payRate);
     user.payRate = Number.isFinite(rate) && rate >= 0 ? rate : null;
+  }
+  // storeAccess: which stores an admin can see/manage - only the owner may
+  // grant/restrict this, and only for an admin account. An empty array or
+  // omitting the field entirely both mean "unrestricted" going forward.
+  if (body.storeAccess !== undefined && user.role === "admin") {
+    if (session.role !== "owner") {
+      return sendJson(res, 403, { error: "Only the owner can change an admin's store access" });
+    }
+    const storeAccess = Array.isArray(body.storeAccess) ? body.storeAccess.map(Number).filter(Number.isFinite) : [];
+    user.storeAccess = storeAccess.length ? storeAccess : null;
   }
   writeJson(USERS_FILE, users);
   sendJson(res, 200, publicUser(user));
@@ -1925,8 +1975,25 @@ route("GET", /^\/api\/stats\/public\/?$/, async (req, res) => {
 });
 
 route("GET", /^\/api\/kpi\/?$/, async (req, res, params, url) => {
-  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
-  const orders = readJson(ORDERS_FILE, []);
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  let orders = readJson(ORDERS_FILE, []);
+  // Scoped to whichever stores this session can see (null = unrestricted -
+  // owner, or an admin nobody has scoped down). An order with no storeId at
+  // all (e.g. a customer order placed before store selection existed, or in
+  // a still-single-store deployment) isn't hidden from anyone by this -
+  // only orders explicitly tagged to a DIFFERENT store are filtered out.
+  // An admin/owner can drill into one specific store with ?storeId=;
+  // ignored for manager/employee, who are already locked to their own
+  // single store.
+  const allowed = accessibleStoreIds(session);
+  if (allowed) orders = orders.filter((o) => o.storeId == null || allowed.includes(o.storeId));
+  if (url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId) && (!allowed || allowed.includes(requestedStoreId))) {
+      orders = orders.filter((o) => o.storeId === requestedStoreId);
+    }
+  }
   const requestedRange = url.searchParams.get("range");
   const range = ["7d", "1m", "1y"].includes(requestedRange) ? requestedRange : "7d";
 
@@ -2797,10 +2864,30 @@ route("DELETE", /^\/api\/branding-profiles\/(?<name>[^/]+)\/?$/, async (req, res
 });
 
 // --- Orders ---
-route("GET", /^\/api\/orders\/?$/, async (req, res) => {
-  // Full order list is for staff running the register/kitchen/admin views only.
-  if (!requireRole(req, res, KITCHEN_ROLES)) return;
-  sendJson(res, 200, readJson(ORDERS_FILE, []));
+route("GET", /^\/api\/orders\/?$/, async (req, res, params, url) => {
+  // Full order list is for staff running the register/kitchen/admin views
+  // (this one endpoint backs both the live Kitchen board and the admin
+  // Order History screen) - scoped to whichever stores this session can
+  // see (accessibleStoreIds() - null means unrestricted, e.g. owner). A
+  // customer isn't tied to one store (they can walk into any location), so
+  // customer/guest orders commonly have no storeId until Phase 2's store
+  // picker sets one - those stay visible everywhere rather than nowhere.
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  let orders = readJson(ORDERS_FILE, []);
+  const allowed = accessibleStoreIds(session);
+  if (allowed) orders = orders.filter((o) => o.storeId == null || allowed.includes(o.storeId));
+  // Order History's optional store drill-down (?storeId=) for an
+  // admin/owner who can see more than one store - ignored (has no further
+  // effect) for a manager/employee, whose `allowed` above is already just
+  // their own single store.
+  if (url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId) && (!allowed || allowed.includes(requestedStoreId))) {
+      orders = orders.filter((o) => o.storeId === requestedStoreId);
+    }
+  }
+  sendJson(res, 200, orders);
 });
 
 route("GET", /^\/api\/orders\/mine\/?$/, async (req, res) => {
