@@ -44,11 +44,14 @@ function shopShortForm() {
  *  short enough to read on one line next to the logo icon, falling back to
  *  the same initials as shopShortForm() only once it's too long (direct
  *  feedback: the abbreviation alone wasn't useful here, the real name is
- *  what should show by default). */
+ *  what should show by default). The 12-char cutoff is deliberately
+ *  conservative - the rail is only 246px wide and already spends ~36px of
+ *  that on the logo icon, so anything longer was clipping mid-word behind
+ *  the CSS ellipsis instead of ever reaching the fallback. */
 function shopDisplayName() {
     const name = String(AdminConfig.settings.shopName || "").trim();
     if (!name) return "YOUR SHOP";
-    return name.length <= 18 ? name.toUpperCase() : shopShortForm();
+    return name.length <= 12 ? name.toUpperCase() : shopShortForm();
 }
 
 /** The actual uploaded logo image (Branding -> Images -> Logo), shown
@@ -325,12 +328,14 @@ export const StaffShell = {
         const s = this.session || {};
         if (!s.role) {
             // window.storeIndicatorHtml() (app.js) adds a compact "pick your
-            // store" pill alongside LOGIN for a fully anonymous visitor -
-            // empty string when there's only one store, so this is a no-op
-            // for a single-location deployment.
+            // store" pill above LOGIN for a fully anonymous visitor - empty
+            // string when there's only one store, so this is a no-op for a
+            // single-location deployment. Ordered first since choosing a
+            // store is the thing a new visitor needs to do before an
+            // account even matters.
             return `
-                <button type="button" id="staff-account-btn" class="staff-auth-identity"><span class="staff-auth-name">LOGIN</span></button>
                 ${window.storeIndicatorHtml?.() || ""}
+                <button type="button" id="staff-account-btn" class="staff-auth-identity"><span class="staff-auth-name">LOGIN</span></button>
             `;
         }
         const name = s.name || s.role.toUpperCase();

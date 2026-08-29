@@ -550,7 +550,7 @@ window.showPage = async (pageId) => {
 window.storeIndicatorHtml = () => {
     if (!StoreSystem.hasMultipleStores()) return "";
     const store = StoreSystem.getSelectedStore();
-    return `<button type="button" id="anon-store-indicator" class="staff-auth-identity" style="border-left:none;"><span class="staff-auth-name">${store ? escapeHtml(store.name.toUpperCase()) : "SELECT STORE"}</span></button>`;
+    return `<button type="button" id="anon-store-indicator" class="staff-auth-identity"><span class="staff-auth-name">${store ? escapeHtml(store.name.toUpperCase()) : "SELECT STORE"}</span></button>`;
 };
 
 window.openStorePicker = () => {
