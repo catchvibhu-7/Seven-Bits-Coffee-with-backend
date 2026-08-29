@@ -41,16 +41,16 @@ mover.addEventListener('animationiteration', (event) => {
 });
 
 // cat.css's move-and-tumble keyframes cover the walk-right leg
-// (0%-35% of the loop) over a distance of (stage width - 50px) -
+// (0%-37% of the loop) over a distance of (stage width - 50px) -
 // see .kitty-mover's left:-70px -> left:calc(100% - 120px). With
-// a single fixed 15s loop duration, that same 35%-of-15s time
+// a single fixed loop duration, that same 37%-of-loop time
 // budget has to cover far more ground on a wide desktop hero
 // than on a phone, so the cat visibly sprints on big screens.
 // Scaling the loop duration by the stage's actual width keeps
 // the walking speed - not the loop's wall-clock length -
 // constant, so it reads as the same casual pace everywhere.
 const CASUAL_WALK_PX_PER_SEC = 80;
-const WALK_RIGHT_FRACTION = 0.35; // matches the 0%-35% keyframe span
+const WALK_RIGHT_FRACTION = 0.37; // matches the 0%-37% keyframe span in cat.css's move-and-tumble
 const MIN_LOOP_SECONDS = 8; // guards against a near-zero duration on a tiny/hidden stage
 
 function applyCasualWalkPace() {
