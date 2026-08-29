@@ -2,11 +2,45 @@
   {
     "id": 1,
     "name": "Main Store",
-    "address": ""
+    "address": "",
+    "phone": "",
+    "operations": {
+      "tableCount": 10,
+      "arcade": {
+        "enabled": true,
+        "sessionHours": 2
+      }
+    },
+    "payments": {
+      "cgstRate": null,
+      "sgstRate": null,
+      "serviceChargeRate": null,
+      "tipEnabled": null,
+      "tipAmount": null,
+      "currencySymbol": null,
+      "currencyCode": null
+    }
   },
   {
     "id": 2,
     "name": "SBC",
-    "address": "Anandpuri"
+    "address": "Anandpuri",
+    "phone": "",
+    "operations": {
+      "tableCount": 10,
+      "arcade": {
+        "enabled": true,
+        "sessionHours": 2
+      }
+    },
+    "payments": {
+      "cgstRate": null,
+      "sgstRate": null,
+      "serviceChargeRate": null,
+      "tipEnabled": null,
+      "tipAmount": null,
+      "currencySymbol": null,
+      "currencyCode": null
+    }
   }
 ]

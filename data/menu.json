@@ -36,7 +36,9 @@
       "story": "Our signature ginger-honey latte. The crowd favorite..",
       "imageUrl": "/uploads/187d7f863398b281.jpg",
       "stockCount": null,
-      "promoDiscount": null
+      "promoDiscount": null,
+      "available": true,
+      "disableRequests": []
     },
     {
       "id": 102,
