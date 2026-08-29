@@ -11,6 +11,16 @@
  */
 import { currencySymbol } from "../features/config-logic.js";
 
+const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
+
+/** A live status pill for an order that hasn't been picked up yet - rating
+ *  only makes sense once it has, so this replaces starsHtml() for those
+ *  rather than showing both. */
+function statusPillHtml(order) {
+    const color = STATUS_COLORS[order.status] || "var(--color-accent)";
+    return `<div style="margin-top:8px; font-size:8pt; font-weight:bold; letter-spacing:0.05em; color:${color};">${escapeHtml(order.status)}</div>`;
+}
+
 function starsHtml(order) {
     if (order.rating) {
         return `
@@ -52,7 +62,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
                 </div>
                 <div style="font-size:8pt; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
                 <button class="mo-reorder-btn" data-order-id="${order.id}" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 6px 12px; font-size: 7pt; cursor: pointer; text-transform: uppercase; font-family: inherit;">REORDER</button>
-                ${starsHtml(order)}
+                ${order.status && order.status !== "SERVED" ? statusPillHtml(order) : starsHtml(order)}
             </div>
         `
               )

@@ -621,43 +621,61 @@ async function refreshOrderStatusWidget() {
     // that's been true for a while, or once there's simply no order, this
     // falls back to "Previous order" instead of showing a stale card forever.
     const READY_VISIBLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-    const activeOrder = orders.find((o) => {
+    const activeOrders = orders.filter((o) => {
         if (o.status !== "READY" && o.status !== "SERVED") return true;
         return Date.now() - new Date(o.createdAt).getTime() < READY_VISIBLE_WINDOW_MS;
     });
-    if (!activeOrder) {
+    if (activeOrders.length === 0) {
         renderFallback();
         return;
     }
 
-    const order = activeOrder;
+    // A customer with two orders running at once (e.g. dine-in + a top-up
+    // takeaway) previously only ever saw whichever one .find() happened to
+    // land on - the other's status change (including its ready chime) was
+    // silently invisible until they reloaded. Check every active order for
+    // a chime-worthy transition, not just whichever one gets the compact
+    // slot, and always surface an "ALL ORDERS" link so the rest are never
+    // more than one tap away.
+    for (const o of activeOrders) {
+        const previousStatus = lastSeenOrderStatuses[o.id];
+        if (o.status === "READY" && previousStatus && previousStatus !== "READY") {
+            SoundSystem.playReadyChime();
+            NotificationSystem.notifyOrderReady(o);
+        }
+        lastSeenOrderStatuses[o.id] = o.status;
+    }
+
+    // Pick the single order the compact slot shows inline - READY beats
+    // still-cooking (most actionable), ties broken by most recent.
+    const STATUS_RANK = { READY: 0, PREPARING: 1, RECEIVED: 1, SERVED: 2 };
+    const order = activeOrders.slice().sort((a, b) => {
+        const rankDiff = (STATUS_RANK[a.status] ?? 1) - (STATUS_RANK[b.status] ?? 1);
+        return rankDiff !== 0 ? rankDiff : new Date(b.createdAt) - new Date(a.createdAt);
+    })[0];
     activeOrderForPopup = order;
     const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
     const statusColor = STATUS_COLORS[order.status] || "var(--color-accent)";
-
-    // Only chime on the moment an order becomes READY (not on every poll
-    // while it stays READY, and not for an order that was already READY the
-    // first time we ever saw it - e.g. a page refresh after pickup was
-    // already announced).
-    const previousStatus = lastSeenOrderStatuses[order.id];
-    if (order.status === "READY" && previousStatus && previousStatus !== "READY") {
-        SoundSystem.playReadyChime();
-        NotificationSystem.notifyOrderReady(order);
-    }
-    lastSeenOrderStatuses[order.id] = order.status;
+    const extraCount = activeOrders.length - 1;
 
     // Minimal by design - order number, live status color, that's it. Full
     // detail (items, paid/pending, notification/sound toggles) is one click
-    // away in the popup - see window.openOrderStatusPopup().
+    // away in the popup - see window.openOrderStatusPopup(). "ALL ORDERS" is
+    // its own always-present link (not just a no-active-order fallback) so a
+    // second/third concurrent order is never hidden behind this one.
     const compactHtml = `
-        <button type="button" class="nav-order-widget-btn">
-            <span class="nav-order-widget-num">#${escapeHtml(String(order.orderNumber || order.id))}</span>
-            <span class="nav-order-widget-status" style="color:${statusColor};">${escapeHtml(order.status)}</span>
-        </button>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <button type="button" class="nav-order-widget-btn" style="flex:1;">
+                <span class="nav-order-widget-num">#${escapeHtml(String(order.orderNumber || order.id))}${extraCount > 0 ? ` <span style="opacity:0.7;">+${extraCount}</span>` : ""}</span>
+                <span class="nav-order-widget-status" style="color:${statusColor};">${escapeHtml(order.status)}</span>
+            </button>
+            <button type="button" class="nav-order-widget-all-btn" title="See all your orders" aria-label="See all your orders" style="flex:none; background:none; border:1px solid var(--color-border); color:var(--color-text-muted); font-size:7pt; letter-spacing:0.05em; padding:0 8px; height:100%; min-height:40px; cursor:pointer; font-family:inherit; text-transform:uppercase;">ALL</button>
+        </div>
     `;
     targets.forEach((el) => {
         el.innerHTML = compactHtml;
-        el.querySelector("button").addEventListener("click", () => window.openOrderStatusPopup());
+        el.querySelector(".nav-order-widget-btn").addEventListener("click", () => window.openOrderStatusPopup());
+        el.querySelector(".nav-order-widget-all-btn").addEventListener("click", () => window.openMyOrders());
     });
 }
 
@@ -802,6 +820,20 @@ function defaultCartKey(itemId) {
     return CustomizationSystem.lineKey(itemId, { size: "regular", milk: "regular", extras: [], notes: "" });
 }
 
+/** renderMenu() tears down and rebuilds #menu-root's whole innerHTML, which
+ *  loses scroll position on mobile Safari (iPad, confirmed) even though the
+ *  visible item set hasn't actually changed - just one button's state. Every
+ *  cart-quantity change (ADD BIT, the +/- stepper, ADD COMBO) re-renders the
+ *  menu this way, so wrap those specific call sites to restore the scroll
+ *  position afterward. Filter/category/store-switch re-renders deliberately
+ *  keep calling renderMenu() directly instead - scrolling back to the top
+ *  when the item set itself changes is expected there. */
+function renderMenuKeepScroll() {
+    const y = window.scrollY;
+    renderMenu();
+    window.scrollTo(0, y);
+}
+
 window.quickAdd = (itemId) => {
     const product = menuData.items.find((i) => i.id === itemId);
     if (!product) return;
@@ -815,7 +847,7 @@ window.quickRemove = (itemId) => {
     line.quantity -= 1;
     if (line.quantity <= 0) cart = cart.filter((c) => c.cartKey !== cartKey);
     updateCartUI();
-    renderMenu();
+    renderMenuKeepScroll();
     if (document.getElementById("modal-overlay")) {
         if (cart.length === 0) window.closeModal();
         else renderCheckoutModal(cart, serviceChargeActive, tipApplied);
@@ -852,7 +884,7 @@ function addCartLine(product, custom) {
         });
     }
     updateCartUI();
-    renderMenu();
+    renderMenuKeepScroll();
 }
 
 window.adjustCartLine = (cartKey, delta) => {
@@ -861,7 +893,7 @@ window.adjustCartLine = (cartKey, delta) => {
     item.quantity += delta;
     if (item.quantity <= 0) cart = cart.filter((c) => c.cartKey !== cartKey);
     updateCartUI();
-    renderMenu();
+    renderMenuKeepScroll();
     if (document.getElementById("modal-overlay")) {
         if (cart.length === 0) window.closeModal();
         else renderCheckoutModal(cart, serviceChargeActive, tipApplied);
@@ -871,7 +903,7 @@ window.adjustCartLine = (cartKey, delta) => {
 window.removeCartLine = (cartKey) => {
     cart = cart.filter((c) => c.cartKey !== cartKey);
     updateCartUI();
-    renderMenu();
+    renderMenuKeepScroll();
     if (document.getElementById("modal-overlay")) {
         if (cart.length === 0) window.closeModal();
         else renderCheckoutModal(cart, serviceChargeActive, tipApplied);
@@ -899,7 +931,7 @@ window.addCombo = (comboId) => {
         });
     }
     updateCartUI();
-    renderMenu();
+    renderMenuKeepScroll();
     if (document.getElementById("modal-overlay")) renderCheckoutModal(cart, serviceChargeActive, tipApplied);
 };
 
@@ -913,7 +945,7 @@ window.comboRemove = (comboId) => {
     line.quantity -= 1;
     if (line.quantity <= 0) cart = cart.filter((c) => c.cartKey !== cartKey);
     updateCartUI();
-    renderMenu();
+    renderMenuKeepScroll();
     if (document.getElementById("modal-overlay")) {
         if (cart.length === 0) window.closeModal();
         else renderCheckoutModal(cart, serviceChargeActive, tipApplied);
@@ -980,6 +1012,15 @@ window.printBill = (order) => {
             <div class="row total">TOTAL: <span>${currencySymbol()}${order.total.toFixed(2)}</span></div>
             <div class="hr"></div>
             <p class="center" style="font-size: 8pt;">${escapeHtml(siteConfig.receiptFooterText || "Thank you for visiting!")}</p>
+            ${
+                order.trackingToken
+                    ? `<div class="hr"></div>
+            <div class="center">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${location.origin}${location.pathname}?track=${order.trackingToken}`)}" width="100" height="100" alt="Track order QR" />
+                <p style="font-size: 7pt; margin-top: 4px;">SCAN TO TRACK THIS ORDER</p>
+            </div>`
+                    : ""
+            }
         </body>
         </html>
     `);
@@ -2480,8 +2521,17 @@ function wireStaticControls() {
     // A scanned tracking QR (?track=<token>) is an explicit deep link - takes
     // priority over the normal landing page even for a signed-in session.
     if (new URLSearchParams(window.location.search).get("track")) {
-        window.showPage("track");
+        await window.showPage("track");
     } else {
-        window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home");
+        await window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home");
     }
-})();
+    // Only now - after the role-appropriate page is actually showing - is it
+    // safe to reveal what was underneath (see the overlay's own comment in
+    // index.html for why it's there at all).
+    document.getElementById("boot-loading-overlay")?.remove();
+})().catch(() => {
+    // However boot failed, a customer stuck staring at "LOADING..." forever
+    // is worse than seeing the plain static homepage - reveal it rather than
+    // hide the failure behind an overlay with no way through.
+    document.getElementById("boot-loading-overlay")?.remove();
+});

@@ -40,6 +40,17 @@
         <title>Seven Bits Coffee // Hazaribagh</title>
     </head>
     <body>
+        <!-- Covers the static #page-home markup below until app.js's boot
+             sequence knows who's actually signed in and has picked the right
+             landing page (staff-home vs. home vs. a tracking deep link) -
+             without this, a reloading staff session (or anyone signed in at
+             all) briefly saw the generic anonymous homepage flash before the
+             swap, since refreshSession() is an async round trip. Removed by
+             app.js right after window.showPage() resolves for the very
+             first time. -->
+        <div id="boot-loading-overlay" style="position:fixed; inset:0; z-index:9999; background:var(--color-bg); color:var(--color-accent); display:flex; align-items:center; justify-content:center; font-family:'Courier New', monospace; font-size:12px; letter-spacing:0.14em; text-transform:uppercase;">
+            LOADING<span class="staff-blink-cursor">_</span>
+        </div>
         <!-- APP SHELL: for a customer/guest (or anyone logged out), #staff-rail
              stays display:none below and this wrapper is visually a no-op -
              the customer experience is byte-for-byte what it was before this
