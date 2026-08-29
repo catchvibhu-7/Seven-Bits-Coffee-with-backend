@@ -3187,9 +3187,11 @@ route("GET", /^\/api\/admin\/backup\/?$/, async (req, res) => {
   res.end(body);
 });
 
+// Whole-instance restore is the single most destructive route in the app -
+// tightened to Global Admin only (owner keeps read/download above, but
+// never writes here, matching read-only-outside-adding-Global-Admins).
 route("POST", /^\/api\/admin\/restore\/?$/, async (req, res) => {
-  const session = requireRole(req, res, ["owner"]);
-  if (!session) return;
+  if (!requireGlobalAdmin(req, res)) return;
   let body;
   try {
     body = await readBody(req, 20 * 1024 * 1024); // backups can be a few MB with enough order history
@@ -3210,6 +3212,187 @@ route("POST", /^\/api\/admin\/restore\/?$/, async (req, res) => {
     }
   }
   sendJson(res, 200, { ok: true, restoredCount });
+});
+
+// ---------------------------------------------------------------------------
+// Per-store backup/restore - same flat JSON files as the whole-instance
+// backup above (no physical per-store split, see the Phase 6 design notes),
+// filtered/restored to just one store's own records via each entity's own
+// storeId (or, for payroll/attendance/overtime which don't carry storeId
+// directly, a join on the record's userId -> users.json[].storeId).
+// ---------------------------------------------------------------------------
+
+// Entities that carry their own storeId field directly.
+const STORE_SCOPED_DIRECT_FILES = {
+  "orders.json": ORDERS_FILE,
+  "table-sessions.json": TABLE_SESSIONS_FILE,
+  "timeclock.json": TIMECLOCK_FILE
+};
+
+// Entities scoped via a join on userId (they predate storeId entirely, and
+// adding it retroactively would mean re-attributing history no differently
+// than this join already does).
+const STORE_SCOPED_VIA_USER_FILES = {
+  "payroll.json": PAYROLL_FILE,
+  "attendance.json": ATTENDANCE_FILE,
+  "overtime-approvals.json": OVERTIME_APPROVALS_FILE
+};
+
+function scopedBackupForStore(storeId) {
+  const stores = readJson(STORES_FILE, []);
+  const store = stores.find((s) => s.id === storeId);
+  if (!store) return null;
+
+  const files = {};
+  for (const [name, filePath] of Object.entries(STORE_SCOPED_DIRECT_FILES)) {
+    files[name] = readJson(filePath, []).filter((r) => r.storeId === storeId);
+  }
+  // Only this store's own local discounts - a franchise-wide coupon
+  // (storeId null) belongs to the whole-instance backup, not here.
+  files["coupons.json"] = readJson(COUPONS_FILE, []).filter((c) => c.storeId === storeId);
+
+  const users = readJson(USERS_FILE, []);
+  const staffIdsAtStore = new Set(users.filter((u) => u.storeId === storeId).map((u) => u.id));
+  for (const [name, filePath] of Object.entries(STORE_SCOPED_VIA_USER_FILES)) {
+    files[name] = readJson(filePath, []).filter((r) => staffIdsAtStore.has(r.userId));
+  }
+
+  return {
+    exportedAt: new Date().toISOString(),
+    storeId,
+    storeName: store.name,
+    store: {
+      address: store.address || "",
+      phone: store.phone || "",
+      lat: store.lat ?? null,
+      lng: store.lng ?? null,
+      homePicks: store.homePicks,
+      payments: store.payments || null,
+      operations: store.operations || null
+    },
+    files
+  };
+}
+
+/** Reassigns any incoming record's id that collides with a record already
+ *  belonging to a DIFFERENT store (ids are shared global counters/random
+ *  strings today, not per-store) - and force-stamps storeId on every
+ *  incoming record regardless of what the file itself claims, so a doctored
+ *  backup can never restore itself into a different store than the URL
+ *  says. idStyle picks the right id shape to generate on collision: this
+ *  app's own id formats (see POST /api/orders, /api/table-sessions,
+ *  /api/coupons, timeclock's clock-in handler). */
+function reassignStoreScopedIds(otherStoreRecords, incomingRecords, storeId, idStyle) {
+  const usedIds = new Set(otherStoreRecords.map((r) => r.id));
+  let nextNumericId = usedIds.size ? Math.max(0, ...[...usedIds].filter((id) => typeof id === "number")) + 1 : 1;
+  const genId = () => (idStyle === "numeric" ? nextNumericId++ : `${idStyle}${crypto.randomBytes(3).toString("hex").toUpperCase()}`);
+  return incomingRecords.map((r) => {
+    let id = r.id;
+    if (id === undefined || usedIds.has(id)) id = genId();
+    usedIds.add(id);
+    return { ...r, id, storeId };
+  });
+}
+
+route("GET", /^\/api\/admin\/backup\/store\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const storeId = Number(params.id);
+  if (!canManageStore(session, storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store" });
+  }
+  const backup = scopedBackupForStore(storeId);
+  if (!backup) return sendJson(res, 404, { error: "Store not found" });
+  const body = JSON.stringify(backup, null, 2);
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Disposition": `attachment; filename="backup-store-${storeId}-${new Date().toISOString().slice(0, 10)}.json"`
+  });
+  res.end(body);
+});
+
+route("POST", /^\/api\/admin\/restore\/store\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  if (session.role === "owner") {
+    return sendJson(res, 403, { error: "Owner has read-only access to store data" });
+  }
+  const storeId = Number(params.id);
+  if (!canManageStore(session, storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store" });
+  }
+  const stores = readJson(STORES_FILE, []);
+  const store = stores.find((s) => s.id === storeId);
+  if (!store) return sendJson(res, 404, { error: "Store not found" });
+
+  let body;
+  try {
+    body = await readBody(req, 20 * 1024 * 1024);
+  } catch (e) {
+    return sendJson(res, 413, { error: "Backup file too large" });
+  }
+  if (!body.confirmYes) return sendJson(res, 400, { error: "Missing confirmation" });
+  if (!body.files || typeof body.files !== "object") {
+    return sendJson(res, 400, { error: "That doesn't look like a store backup file" });
+  }
+
+  const users = readJson(USERS_FILE, []);
+  const staffIdsAtStore = new Set(users.filter((u) => u.storeId === storeId).map((u) => u.id));
+  const warnings = [];
+  let restoredCount = 0;
+
+  const idStyles = { "orders.json": "SB-", "table-sessions.json": "TBL-", "timeclock.json": "numeric" };
+  for (const [name, filePath] of Object.entries(STORE_SCOPED_DIRECT_FILES)) {
+    if (!Array.isArray(body.files[name])) continue;
+    const existing = readJson(filePath, []);
+    const otherStoreRecords = existing.filter((r) => r.storeId !== storeId);
+    const incoming = reassignStoreScopedIds(otherStoreRecords, body.files[name], storeId, idStyles[name]);
+    writeJson(filePath, [...otherStoreRecords, ...incoming]);
+    restoredCount += incoming.length;
+  }
+
+  if (Array.isArray(body.files["coupons.json"])) {
+    const existingCoupons = readJson(COUPONS_FILE, []);
+    const otherCoupons = existingCoupons.filter((c) => c.storeId !== storeId);
+    const incoming = reassignStoreScopedIds(otherCoupons, body.files["coupons.json"], storeId, "numeric");
+    writeJson(COUPONS_FILE, [...otherCoupons, ...incoming]);
+    restoredCount += incoming.length;
+  }
+
+  // Payroll/attendance/overtime: a record whose user no longer exists (or
+  // has since moved to a different store) can't be safely re-attributed -
+  // dropped with a warning rather than guessed at, since this can only ever
+  // be restored correctly onto the same users.json state it was backed up
+  // against.
+  for (const [name, filePath] of Object.entries(STORE_SCOPED_VIA_USER_FILES)) {
+    if (!Array.isArray(body.files[name])) continue;
+    const existing = readJson(filePath, []);
+    const keep = existing.filter((r) => !staffIdsAtStore.has(r.userId));
+    const incoming = [];
+    for (const r of body.files[name]) {
+      if (!staffIdsAtStore.has(r.userId)) {
+        warnings.push(`${name}: skipped a record for a user no longer at this store (userId ${r.userId})`);
+        continue;
+      }
+      incoming.push(r);
+    }
+    writeJson(filePath, [...keep, ...incoming]);
+    restoredCount += incoming.length;
+  }
+
+  if (body.store && typeof body.store === "object") {
+    const s = body.store;
+    if (typeof s.address === "string") store.address = s.address.slice(0, 200);
+    if (typeof s.phone === "string") store.phone = s.phone.slice(0, 20);
+    if (s.lat !== undefined) store.lat = s.lat;
+    if (s.lng !== undefined) store.lng = s.lng;
+    if (s.homePicks !== undefined) store.homePicks = sanitizeHomePicks(s.homePicks);
+    if (s.payments && typeof s.payments === "object") store.payments = { ...store.payments, ...s.payments };
+    if (s.operations && typeof s.operations === "object") store.operations = { ...store.operations, ...s.operations };
+    writeJson(STORES_FILE, stores);
+  }
+
+  sendJson(res, 200, { ok: true, restoredCount, warnings });
 });
 
 route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
