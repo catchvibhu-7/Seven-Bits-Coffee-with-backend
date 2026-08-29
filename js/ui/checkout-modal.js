@@ -14,6 +14,8 @@ import { AdminConfig, currencySymbol } from "../features/config-logic.js";
 import { AuthSystem } from "../features/auth-logic.js";
 import { CustomizationSystem } from "../features/customization-logic.js";
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
+import { SoundSystem } from "../features/sound-logic.js";
+import { NotificationSystem } from "../features/notification-logic.js";
 
 // Mirrors app.js's KITCHEN_ROLES - inlined rather than imported since app.js
 // isn't set up as a module other files pull constants from (same pattern
@@ -521,6 +523,11 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
                         : `<p style="font-family: 'Courier New', monospace; color: var(--color-accent); font-size: 9pt; margin: 0 0 20px;">
                     APPROX. WAIT TIME: ${waitLow}-${waitHigh} MINS
                 </p>
+                ${
+                    NotificationSystem.permission() === "default"
+                        ? `<button type="button" id="btn-enable-ready-alert" style="background: none; border: 1px dashed var(--color-accent); color: var(--color-accent); padding: 8px 12px; margin: 0 0 20px; cursor: pointer; font-family: 'Courier New', monospace; font-size: 8pt; letter-spacing: 0.05em;">\u{1F514} NOTIFY + CHIME WHEN READY</button>`
+                        : ""
+                }
                 <p style="font-family: 'Courier New', monospace; color: var(--color-text); font-size: 9pt; margin: 20px 0;">
                     Thank you for visiting! Have a great day.
                 </p>
@@ -543,6 +550,22 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
         } else {
             document.getElementById("btn-confirm-close")?.addEventListener("click", () => window.finalizeOrder(false));
         }
+        // Both the ready-chime (needs an AudioContext-unlocking gesture) and
+        // the browser Notification prompt (needs Notification.requestPermission
+        // to originate from one too) are otherwise left to chance - relying on
+        // some unrelated earlier click, or a bell icon buried in a popup the
+        // customer might never open. This is the one moment guaranteed to be
+        // both a real click and squarely about waiting for the order, so ask
+        // here instead.
+        document.getElementById("btn-enable-ready-alert")?.addEventListener("click", async (e) => {
+            SoundSystem.unlock();
+            await NotificationSystem.requestPermission();
+            const btn = e.currentTarget;
+            btn.textContent = "✓ WE'LL LET YOU KNOW";
+            btn.disabled = true;
+            btn.style.opacity = "0.6";
+            btn.style.cursor = "default";
+        });
         return;
     }
 

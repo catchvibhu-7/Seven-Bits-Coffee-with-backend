@@ -636,6 +636,19 @@ function broadcastOrdersChanged() {
   }
 }
 
+// Reverse proxies/tunnels (e.g. Cloudflare) sitting in front of this server
+// can buffer or idle-timeout a long-lived streaming response that goes quiet
+// for too long - a real order can easily sit PREPARING for many minutes with
+// nothing to broadcast. A small comment-only ping every 20s keeps the
+// connection actively flushing so a stall shows up as a fast reconnect
+// instead of a silently stuck stream a client only notices once something
+// else (a tab switch, a refetch) happens to paper over it.
+setInterval(() => {
+  for (const res of sseClients) {
+    res.write(": ping\n\n");
+  }
+}, 20000).unref();
+
 // ---------------------------------------------------------------------------
 // Small HTTP helpers
 // ---------------------------------------------------------------------------
@@ -4924,7 +4937,13 @@ route("GET", /^\/api\/orders\/stream\/?$/, async (req, res) => {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
-    Connection: "keep-alive"
+    Connection: "keep-alive",
+    // Tells nginx-style reverse proxies not to buffer this streaming
+    // response; Cloudflare's tunnel/edge honors the same signal. Without it
+    // a proxy can hold the whole connection's output until its own buffer
+    // fills or the connection closes, which for a low-traffic SSE stream can
+    // mean "never" in practice.
+    "X-Accel-Buffering": "no"
   });
   res.write("retry: 3000\n\n");
   sseClients.add(res);

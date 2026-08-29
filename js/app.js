@@ -37,6 +37,7 @@ let menuData = { sections: [], items: [] };
 let siteConfig = {}; // last-loaded config (colors/customIcons/etc.) for icon rendering + branding
 let pendingOrder = null; // order returned by the server, waiting to be printed
 let ordersStream = null; // SSE connection, opened once after the first authenticated view
+let orderStatusPollTimer = null; // fallback poll for customer/guest order status, see ensureOrderStatusPolling()
 let session = { authenticated: false, role: null, name: null, phone: null }; // current login state
 let favoritesFilterActive = false;
 let comboData = [];
@@ -80,6 +81,7 @@ async function refreshSession() {
         // until they happened to reload or navigate somewhere that opened
         // the stream as a side effect.
         ensureOrdersStream();
+        ensureOrderStatusPolling();
     } else {
         FavoritesSystem.ids = [];
     }
@@ -754,6 +756,24 @@ function ensureOrdersStream() {
             }
         }
     );
+}
+
+/**
+ * Belt-and-suspenders fallback for customer/guest order status: SSE
+ * (ensureOrdersStream) is instant when it works, but a long-lived streaming
+ * connection can silently sit buffered/stalled behind a reverse proxy or
+ * tunnel that doesn't flush it (confirmed happening through a Cloudflare
+ * quick tunnel specifically - the same request streams immediately on a
+ * direct connection). A plain periodic re-fetch can't be blocked that way
+ * since it's just a normal request/response each time, so this guarantees
+ * the widget (and its ready chime) self-corrects within one interval even
+ * if the SSE push never arrives at all.
+ */
+function ensureOrderStatusPolling() {
+    if (orderStatusPollTimer) return;
+    orderStatusPollTimer = setInterval(() => {
+        if (TRACKING_ROLES.includes(session.role)) refreshOrderStatusWidget();
+    }, 15000);
 }
 
 /**
