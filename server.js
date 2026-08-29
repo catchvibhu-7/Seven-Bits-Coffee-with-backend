@@ -3415,8 +3415,12 @@ route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
 });
 
 // --- Branding profiles ("holiday themes" the admin can save and switch between) ---
+// Viewing the saved-profiles list is not itself a franchise-wide-settings
+// WRITE - anyone reaching the admin panel can see what's saved (matches
+// GET /api/config, already universally readable); only activating/saving/
+// deleting a profile is Global-Admin-only (see below).
 route("GET", /^\/api\/branding-profiles\/?$/, async (req, res) => {
-  if (!requireGlobalAdmin(req, res)) return;
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
   sendJson(res, 200, readJson(BRANDING_PROFILES_FILE, {}));
 });
 

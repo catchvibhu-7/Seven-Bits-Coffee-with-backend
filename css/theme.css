@@ -1609,6 +1609,110 @@ input[type="checkbox"]:disabled {
     color: var(--admin-help-color, var(--color-text-muted));
 }
 
+/* Read-only Field: Value sections (see js/ui/admin-section.js) - one per
+   logical settings group, each with its own EDIT button rather than one
+   big editable form per tab. */
+.readonly-section {
+    margin-bottom: 22px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+.readonly-section:last-child {
+    border-bottom: none;
+}
+.readonly-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.readonly-field-row {
+    display: flex;
+    gap: 14px;
+    padding: 5px 0;
+    font-size: 8.5pt;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+.readonly-field-label {
+    flex: 0 0 220px;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    font-size: 7.5pt;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.readonly-field-value {
+    flex: 1;
+    color: var(--color-text);
+    min-width: 0;
+    word-break: break-word;
+}
+@media (max-width: 600px) {
+    .readonly-field-row {
+        flex-direction: column;
+        gap: 2px;
+    }
+    .readonly-field-label {
+        flex: none;
+    }
+}
+
+/* Small (i) hint glyph next to a field label/name - hover/focus reveals
+   extra context via a CSS-only popover (see tooltipHtml() in
+   admin-section.js). Keyboard-focusable (tabindex on the span itself), not
+   just mouse-hover, so the same information reaches keyboard users. */
+.field-tooltip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    height: 13px;
+    flex: none;
+    border-radius: 50%;
+    border: 1px solid var(--color-text-muted);
+    color: var(--color-text-muted);
+    font-size: 7.5pt;
+    font-style: italic;
+    font-family: Georgia, "Times New Roman", serif;
+    cursor: help;
+}
+.field-tooltip:hover,
+.field-tooltip:focus-visible {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+/* Keyboard focus gets a real ring, not just the hover state's subtle
+   border-color tint - a 13px circle needs a stronger cue than color alone
+   to read as "focused" for a keyboard user tabbing through the page. */
+.field-tooltip:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+.field-tooltip:hover::after,
+.field-tooltip:focus-visible::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: 130%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-surface);
+    border: 1px solid var(--color-accent);
+    color: var(--color-text);
+    padding: 6px 8px;
+    font-size: 7.5pt;
+    font-style: normal;
+    font-family: "Courier New", monospace;
+    white-space: normal;
+    width: 200px;
+    z-index: 20;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
 /* Admin data tables (menu items, staff accounts) - was previously an
    unstyled default HTML <table>, which is why it looked like a plain
    browser form instead of matching the rest of the app. */
@@ -1715,6 +1819,10 @@ input[type="checkbox"]:disabled {
     cursor: pointer;
     font-family: inherit;
     text-transform: uppercase;
+}
+.admin-btn-secondary:hover {
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
 }
 .admin-toolbar {
     display: flex;

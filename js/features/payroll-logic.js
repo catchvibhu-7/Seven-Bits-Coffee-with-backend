@@ -150,5 +150,24 @@ export const PayrollSystem = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not change role");
         return data;
+    },
+
+    /** Triggers a real file download of one store's own scoped backup - a
+     *  plain navigation (not fetch+blob), same reasoning as the
+     *  whole-instance backup download. */
+    downloadStoreBackup(id) {
+        window.open(`/api/admin/backup/store/${encodeURIComponent(id)}`, "_blank");
+    },
+
+    async restoreStoreBackup(id, backupPayload) {
+        const res = await fetch(`/api/admin/restore/store/${encodeURIComponent(id)}`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...backupPayload, confirmYes: true })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not restore store backup");
+        return data;
     }
 };

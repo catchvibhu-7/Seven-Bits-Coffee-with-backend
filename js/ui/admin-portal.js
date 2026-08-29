@@ -17,23 +17,30 @@ import { renderItemModal } from "./item-modal.js";
 import { renderComboModal } from "./combo-modal.js";
 import { renderAccountSettingsModal } from "./account-settings-modal.js";
 import { renderImagePickerModal } from "./image-picker-modal.js";
+import { renderReadOnlySection, renderSectionEditModal } from "./admin-section.js";
 
-// Reorganized from the original 5 groups, which had grown into two
-// unrelated grab-bags: "Global Settings" mixed shop-identity copy
-// (name/badge/about text) with tax rates, UPI, AND arcade config, while
-// "Branding" mixed colors/images with multi-location store management
-// that has nothing to do with branding. Each group below now has one clear
-// job: content owners look in BRANDING & CONTENT, money/tax people look in
-// PAYMENTS, day-to-day operational toggles are in OPERATIONS, and
-// business-structure/data tools (locations, backup) are in STORE SETUP.
+// Franchise governance: every role now sees the SAME tab groups (nothing is
+// hidden from a manager the way it used to be) - what differs per role is
+// whether each SECTION within a tab shows an EDIT button (see the
+// per-section canEdit checks inside each render* method below) and, for
+// OVERVIEW/STORE SETUP specifically, which variant of that tab a role gets
+// (cross-store views for an unrestricted session, single-store views for a
+// scoped one). "Global Admin" = role:"admin" with no storeAccess
+// restriction; "Local Admin" = role:"admin" with storeAccess set - see
+// accessibleStoreIds()/requireGlobalAdmin() in server.js for the same
+// distinction enforced server-side.
 function tabGroupsForRole(session) {
     const role = session.role;
-    const isManagerOnly = role === "manager";
     // A manager is always locked to their own single store - no cross-store
     // view makes sense for them. Owner always gets one; a scoped admin only
     // if their storeAccess actually spans more than one store (or is
     // unrestricted, i.e. null).
     const hasFranchiseView = role === "owner" || (role === "admin" && (!session.storeAccess || session.storeAccess.length > 1));
+    // Strictly "no storeAccess restriction at all" (owner, or an unscoped
+    // admin) - distinct from hasFranchiseView above, since franchise-
+    // structure actions (opening/closing a store) are Global-Admin-only
+    // even for an admin whose storeAccess happens to span multiple stores.
+    const isUnrestricted = role === "owner" || (role === "admin" && !session.storeAccess);
     const groups = [
         {
             label: "OVERVIEW",
@@ -64,40 +71,36 @@ function tabGroupsForRole(session) {
             ]
         },
         {
-            // Everything here is shop-wide/business-critical, so owner/admin
-            // only - not part of what a manager gets. Group disappears
-            // entirely for a manager.
             label: "BRANDING & CONTENT",
-            tabs: isManagerOnly
-                ? []
-                : [
-                      { id: "branding", label: "Branding" },
-                      { id: "content", label: "Content" }
-                  ]
+            tabs: [
+                { id: "branding", label: "Branding" },
+                { id: "content", label: "Content" }
+            ]
         },
         {
             label: "PAYMENTS",
-            tabs: isManagerOnly ? [] : [{ id: "payments", label: "Payments & Tax" }]
+            tabs: [{ id: "payments", label: "Payments & Tax" }]
         },
         {
+            // Fully per-store now - a scoped role edits their own store's
+            // Operations from Store Setup/This Store instead; this tab is
+            // just the cross-store read-only summary, so it doesn't exist
+            // for a scoped session at all.
             label: "OPERATIONS",
-            tabs: isManagerOnly ? [] : [{ id: "operations", label: "Operations" }]
+            tabs: isUnrestricted ? [{ id: "operations", label: "Operations" }] : []
         },
         {
+            // Unrestricted: the full Locations list (add/remove stores) plus
+            // whole-instance Data & Backup. Scoped: just their own store's
+            // page (contact/picks/payments-override/operations/backup all
+            // live together there - see renderThisStore()).
             label: "STORE SETUP",
-            tabs: isManagerOnly
-                ? []
-                : [
+            tabs: isUnrestricted
+                ? [
                       { id: "stores", label: "Locations" },
                       { id: "data", label: "Data & Backup" }
                   ]
-        },
-        // A manager doesn't get the owner/admin "Locations" list (every
-        // store, plus add/remove) - just their own store's own details,
-        // which they should be able to fix without asking the owner.
-        {
-            label: "THIS STORE",
-            tabs: isManagerOnly ? [{ id: "this-store", label: "This Store" }] : []
+                : [{ id: "this-store", label: "This Store" }]
         }
     ];
     return groups.filter((g) => g.tabs.length > 0);
@@ -230,223 +233,221 @@ export const AdminPortal = {
 
     // ---------------------------------------------------------------- GLOBAL
     // ---------------------------------------------------------------- PAYMENTS & TAX
+    // These are the franchise-wide DEFAULTS - Global-Admin-edit only. A
+    // store can override the tax/currency fields (not UPI/Razorpay, which
+    // stay global-only) from its own Store Setup/This Store page.
+    isGlobalAdmin() {
+        return this.session.role === "admin" && !this.session.storeAccess;
+    },
+
     async renderPayments(root) {
         const c = AdminConfig.settings;
+        const canEdit = this.isGlobalAdmin();
 
         root.innerHTML = `
             <div class="config-controls">
-                <h3 style="margin-top:0;">CURRENCY</h3>
-                <div style="display:flex; gap: 15px; flex-wrap:wrap;">
-                    <div class="control-group" style="flex:0 0 110px;">
-                        <label>SYMBOL</label>
-                        <input type="text" id="cfg-currency-symbol" maxlength="3" value="${escapeHtmlAttr(c.currencySymbol || "₹")}" />
-                    </div>
-                    <div class="control-group" style="flex:0 0 140px;">
-                        <label>ISO CODE (for Razorpay)</label>
-                        <input type="text" id="cfg-currency-code" maxlength="3" value="${escapeHtmlAttr(c.currencyCode || "INR")}" placeholder="INR" style="text-transform:uppercase;" />
-                    </div>
-                </div>
-                <p class="admin-help-text" style="margin-top:-4px;">The symbol shows on every price throughout the app (menu, cart, checkout, billing, receipts). The ISO code is only sent to Razorpay - check Razorpay supports it for your account before changing it.</p>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">TAX &amp; GST (INDIAN SUBCONTINENT)</h3>
-                <div class="control-group" style="max-width:280px;">
-                    <label>GST NUMBER (GSTIN) - printed on bills when set. Leave blank if not GST-registered.</label>
-                    <input type="text" id="cfg-gst-number" maxlength="20" value="${escapeHtmlAttr(c.gstNumber || "")}" placeholder="22AAAAA0000A1Z5" />
-                </div>
-                <div style="display:flex; gap: 15px; flex-wrap:wrap;">
-                    <div class="control-group" style="flex:0 0 130px;">
-                        <label>CGST RATE (%)</label>
-                        <input type="text" id="cfg-cgst" maxlength="6" value="${(c.cgstRate * 100).toFixed(2)}" />
-                    </div>
-                    <div class="control-group" style="flex:0 0 130px;">
-                        <label>SGST RATE (%)</label>
-                        <input type="text" id="cfg-sgst" maxlength="6" value="${(c.sgstRate * 100).toFixed(2)}" />
-                    </div>
-                    <div class="control-group" style="flex:0 0 160px;">
-                        <label>SERVICE CHARGE RATE (%)</label>
-                        <input type="text" id="cfg-service-charge" maxlength="6" value="${(c.serviceChargeRate * 100).toFixed(2)}" />
-                    </div>
-                    <div class="control-group" style="flex:0 0 130px;">
-                        <label>TIP AMOUNT (${currencySymbol()})</label>
-                        <input type="text" id="cfg-tip-amount" maxlength="6" value="${c.tipAmount ?? 0}" />
-                    </div>
-                </div>
-                <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="cfg-tip-enabled" ${c.tipEnabled ? "checked" : ""} />
-                    <label style="margin:0;" for="cfg-tip-enabled">ENABLE GINGER TIP</label>
-                </div>
-                <p class="admin-help-text">Tax, service charge, and tip are calculated and shown at checkout, on the Billing page, and on the printed bill - not while someone's still browsing/adding to their cart.</p>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">UPI PAYMENT</h3>
-                <div class="control-group" style="max-width:320px;">
-                    <label>UPI ID (VPA) - shown as a QR code for "Pay Online" orders. Leave blank to disable online payment and show "pay at counter" instead.</label>
-                    <input type="text" id="cfg-upi-vpa" maxlength="80" value="${c.upiVpa || ""}" placeholder="yourshop@upi" />
-                </div>
-                <div class="control-group" style="max-width:320px;">
-                    <label>PAYEE NAME (shown to the customer in their UPI app)</label>
-                    <input type="text" id="cfg-upi-payee-name" maxlength="60" value="${c.upiPayeeName || ""}" placeholder="${c.shopName || "Your Shop"}" />
-                </div>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">RAZORPAY (VERIFIED ONLINE PAYMENTS)</h3>
-                <p class="admin-help-text" style="margin-top:-4px;">When enabled, "Pay Online" opens a real Razorpay checkout and an order is only marked paid after Razorpay confirms the payment - instead of the UPI QR code, which trusts the customer's word.</p>
-                <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="cfg-razorpay-enabled" ${c.razorpayEnabled ? "checked" : ""} />
-                    <label style="margin:0;" for="cfg-razorpay-enabled">ENABLE RAZORPAY</label>
-                </div>
-                <div class="control-group" style="max-width:320px;">
-                    <label>KEY ID</label>
-                    <input type="text" id="cfg-razorpay-key-id" maxlength="100" value="${escapeHtmlAttr(c.razorpayKeyId || "")}" placeholder="rzp_test_xxxxxxxxxxxx" />
-                </div>
-                <div class="control-group" style="max-width:320px;">
-                    <label>KEY SECRET</label>
-                    <input type="password" id="cfg-razorpay-key-secret" maxlength="200" placeholder="${c.razorpaySecretConfigured ? "•••••••• (saved - leave blank to keep)" : "Enter your Razorpay key secret"}" />
-                </div>
-                <p class="admin-help-text" style="margin-top:-4px;">Get these from your Razorpay Dashboard under Settings &gt; API Keys. The secret is never shown back here once saved.</p>
-
-                <p id="payments-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
-                <button class="admin-btn-primary" id="cfg-save">SAVE SETTINGS</button>
+                <div id="payments-currency-section"></div>
+                <div id="payments-tax-section"></div>
+                <div id="payments-upi-section"></div>
+                <div id="payments-razorpay-section"></div>
             </div>
         `;
 
-        document.getElementById("cfg-save").addEventListener("click", async () => {
-            const errorEl = document.getElementById("payments-error");
-            errorEl.textContent = "";
-            const cgst = parseFloat(document.getElementById("cfg-cgst").value) / 100;
-            const sgst = parseFloat(document.getElementById("cfg-sgst").value) / 100;
-            const serviceCharge = parseFloat(document.getElementById("cfg-service-charge").value) / 100;
-            const tipAmount = parseFloat(document.getElementById("cfg-tip-amount").value);
+        renderReadOnlySection(document.getElementById("payments-currency-section"), {
+            title: "CURRENCY",
+            canEdit,
+            fields: [
+                { label: "Symbol", value: c.currencySymbol || "₹" },
+                { label: "ISO code", value: c.currencyCode || "INR", tooltip: "Only sent to Razorpay - confirm your account supports it before changing." }
+            ],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT CURRENCY",
+                    fields: [
+                        { id: "pf-currency-symbol", label: "Symbol", value: c.currencySymbol || "₹", maxlength: 3 },
+                        { id: "pf-currency-code", label: "ISO code", value: c.currencyCode || "INR", maxlength: 3, tooltip: "Only sent to Razorpay - confirm your account supports it." }
+                    ],
+                    onSave: async (v) => {
+                        await AdminConfig.saveSettings({ currencySymbol: v["pf-currency-symbol"].trim(), currencyCode: v["pf-currency-code"].trim() });
+                        if (window.applyBranding) window.applyBranding(AdminConfig.settings);
+                        ok("Currency saved");
+                        this.renderPayments(root);
+                    }
+                })
+        });
 
-            if ([cgst, sgst, serviceCharge, tipAmount].some((n) => !Number.isFinite(n) || n < 0)) {
-                errorEl.textContent = "Rates and amounts must be positive numbers.";
-                return;
-            }
+        renderReadOnlySection(document.getElementById("payments-tax-section"), {
+            title: "TAX & GST (FRANCHISE DEFAULT)",
+            canEdit,
+            fields: [
+                { label: "GST number", value: c.gstNumber || "" },
+                { label: "CGST rate", value: `${(c.cgstRate * 100).toFixed(2)}%` },
+                { label: "SGST rate", value: `${(c.sgstRate * 100).toFixed(2)}%` },
+                { label: "Service charge rate", value: `${(c.serviceChargeRate * 100).toFixed(2)}%` },
+                { label: "Tip amount", value: `${currencySymbol()}${c.tipAmount ?? 0}` },
+                { label: "Tip enabled", value: c.tipEnabled ? "Yes" : "No" }
+            ],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT TAX & GST",
+                    fields: [
+                        { id: "pf-gst-number", label: "GST number (GSTIN)", value: c.gstNumber || "", maxlength: 20, placeholder: "22AAAAA0000A1Z5" },
+                        { id: "pf-cgst", label: "CGST rate (%)", value: (c.cgstRate * 100).toFixed(2), type: "number", step: 0.01, min: 0 },
+                        { id: "pf-sgst", label: "SGST rate (%)", value: (c.sgstRate * 100).toFixed(2), type: "number", step: 0.01, min: 0 },
+                        { id: "pf-service-charge", label: "Service charge rate (%)", value: (c.serviceChargeRate * 100).toFixed(2), type: "number", step: 0.01, min: 0 },
+                        { id: "pf-tip-amount", label: `Tip amount (${currencySymbol()})`, value: c.tipAmount ?? 0, type: "number", step: 0.01, min: 0 },
+                        { id: "pf-tip-enabled", label: "Enable Ginger tip", value: !!c.tipEnabled, type: "checkbox" }
+                    ],
+                    onSave: async (v) => {
+                        const cgst = parseFloat(v["pf-cgst"]) / 100;
+                        const sgst = parseFloat(v["pf-sgst"]) / 100;
+                        const serviceCharge = parseFloat(v["pf-service-charge"]) / 100;
+                        const tipAmount = parseFloat(v["pf-tip-amount"]);
+                        if ([cgst, sgst, serviceCharge, tipAmount].some((n) => !Number.isFinite(n) || n < 0)) {
+                            throw new Error("Rates and amounts must be positive numbers.");
+                        }
+                        await AdminConfig.saveSettings({
+                            gstNumber: v["pf-gst-number"],
+                            cgstRate: cgst,
+                            sgstRate: sgst,
+                            serviceChargeRate: serviceCharge,
+                            tipAmount,
+                            tipEnabled: v["pf-tip-enabled"]
+                        });
+                        ok("Tax & GST saved");
+                        this.renderPayments(root);
+                    }
+                })
+        });
 
-            const razorpayKeySecret = document.getElementById("cfg-razorpay-key-secret").value.trim();
-            try {
-                await AdminConfig.saveSettings({
-                    currencySymbol: document.getElementById("cfg-currency-symbol").value.trim(),
-                    currencyCode: document.getElementById("cfg-currency-code").value.trim(),
-                    gstNumber: document.getElementById("cfg-gst-number").value,
-                    tipEnabled: document.getElementById("cfg-tip-enabled").checked,
-                    tipAmount,
-                    cgstRate: cgst,
-                    sgstRate: sgst,
-                    serviceChargeRate: serviceCharge,
-                    upiVpa: document.getElementById("cfg-upi-vpa").value.trim(),
-                    upiPayeeName: document.getElementById("cfg-upi-payee-name").value.trim(),
-                    razorpayEnabled: document.getElementById("cfg-razorpay-enabled").checked,
-                    razorpayKeyId: document.getElementById("cfg-razorpay-key-id").value.trim(),
-                    ...(razorpayKeySecret ? { razorpayKeySecret } : {})
-                });
-                if (window.applyBranding) window.applyBranding(AdminConfig.settings);
-                ok("Settings saved");
-                this.renderPayments(root);
-            } catch (e) {
-                errorEl.textContent = e.message;
-                fail(e.message);
-            }
+        renderReadOnlySection(document.getElementById("payments-upi-section"), {
+            title: "UPI PAYMENT",
+            canEdit,
+            fields: [
+                { label: "UPI ID (VPA)", value: c.upiVpa || "" },
+                { label: "Payee name", value: c.upiPayeeName || "" }
+            ],
+            emptyNote: "No UPI ID set - online payment shows \"pay at counter\" instead.",
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT UPI PAYMENT",
+                    fields: [
+                        { id: "pf-upi-vpa", label: "UPI ID (VPA)", value: c.upiVpa || "", maxlength: 80, placeholder: "yourshop@upi", tooltip: "Shown as a QR code for Pay Online orders. Leave blank to disable online payment." },
+                        { id: "pf-upi-payee", label: "Payee name", value: c.upiPayeeName || "", maxlength: 60, placeholder: c.shopName || "Your Shop" }
+                    ],
+                    onSave: async (v) => {
+                        await AdminConfig.saveSettings({ upiVpa: v["pf-upi-vpa"].trim(), upiPayeeName: v["pf-upi-payee"].trim() });
+                        ok("UPI settings saved");
+                        this.renderPayments(root);
+                    }
+                })
+        });
+
+        renderReadOnlySection(document.getElementById("payments-razorpay-section"), {
+            title: "RAZORPAY (VERIFIED ONLINE PAYMENTS)",
+            canEdit,
+            fields: [
+                { label: "Enabled", value: c.razorpayEnabled ? "Yes" : "No" },
+                { label: "Key ID", value: c.razorpayKeyId || "" },
+                { label: "Key secret", value: c.razorpaySecretConfigured ? "Configured" : "Not configured" }
+            ],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT RAZORPAY",
+                    fields: [
+                        { id: "pf-razorpay-enabled", label: "Enable Razorpay", value: !!c.razorpayEnabled, type: "checkbox" },
+                        { id: "pf-razorpay-key-id", label: "Key ID", value: c.razorpayKeyId || "", maxlength: 100, placeholder: "rzp_test_xxxxxxxxxxxx" },
+                        {
+                            id: "pf-razorpay-key-secret",
+                            label: "Key secret",
+                            value: "",
+                            type: "password",
+                            maxlength: 200,
+                            placeholder: c.razorpaySecretConfigured ? "•••••••• (saved - leave blank to keep)" : "Enter your Razorpay key secret",
+                            tooltip: "Never shown back once saved - leave blank to keep the current one."
+                        }
+                    ],
+                    onSave: async (v) => {
+                        const razorpayKeySecret = v["pf-razorpay-key-secret"].trim();
+                        await AdminConfig.saveSettings({
+                            razorpayEnabled: v["pf-razorpay-enabled"],
+                            razorpayKeyId: v["pf-razorpay-key-id"].trim(),
+                            ...(razorpayKeySecret ? { razorpayKeySecret } : {})
+                        });
+                        ok("Razorpay settings saved");
+                        this.renderPayments(root);
+                    }
+                })
         });
     },
 
     // ---------------------------------------------------------------- OPERATIONS
+    // Fully per-store now (see server.js's mergeStoreOverrides()) - this tab
+    // is a read-only cross-store summary for an unrestricted session only;
+    // the real editable Tables/Arcade settings live on each store's own
+    // Store Setup/This Store page.
     async renderOperations(root) {
-        const c = AdminConfig.settings;
-
+        const stores = await PayrollSystem.fetchStores();
         root.innerHTML = `
             <div class="config-controls">
-                <h3 style="margin-top:0;">TABLES</h3>
-                <div class="control-group" style="max-width:130px;">
-                    <label>NUMBER OF TABLES</label>
-                    <input type="text" id="cfg-table-count" maxlength="4" value="${c.tableCount ?? 10}" />
-                </div>
-                <p class="admin-help-text" style="margin-top:-4px;">0 = only Online/Counter, no physical tabs. Staff can open a tab for tables numbered 1 through this count.</p>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">ARCADE (GAMES TAB)</h3>
-                <p class="admin-help-text" style="margin-bottom:10px;">In-store only: a customer/guest unlocks the arcade for the session length below, starting from their most recent order.</p>
-                <div class="control-group" style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="cfg-arcade-enabled" ${(c.arcade?.enabled ?? true) ? "checked" : ""} />
-                    <label style="margin:0;" for="cfg-arcade-enabled">ENABLE ARCADE</label>
-                </div>
-                <div class="control-group" style="max-width:130px;">
-                    <label>SESSION LENGTH (hours)</label>
-                    <input type="text" id="cfg-arcade-hours" maxlength="4" value="${c.arcade?.sessionHours ?? 2}" />
-                </div>
-
-                <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">NOTIFICATIONS</h3>
-                <p class="admin-help-text">Order-ready and low-stock alerts currently only show in-app (staff dashboard, order status widget). SMS/WhatsApp delivery is planned but not built yet - see README-BACKEND.md for the tracked feature request once you're ready to wire up a provider (e.g. Twilio, MSG91, or Meta's WhatsApp Business API).</p>
-
-                <p id="operations-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
-                <button class="admin-btn-primary" id="cfg-save">SAVE SETTINGS</button>
+                <h3 style="margin-top:0;">OPERATIONS BY STORE</h3>
+                <p class="admin-help-text">Table count and arcade settings are per-store - edit a store's own Operations from Store Setup.</p>
+                <table class="admin-table">
+                    <thead><tr><th>STORE</th><th>TABLES</th><th>ARCADE</th></tr></thead>
+                    <tbody>
+                        ${stores
+                            .map((s) => {
+                                const opsField = s.operations || { tableCount: 10, arcade: { enabled: true, sessionHours: 2 } };
+                                return `<tr>
+                                    <td>${escapeHtmlAttr(s.name)}</td>
+                                    <td>${opsField.tableCount}</td>
+                                    <td>${opsField.arcade.enabled ? `Enabled - ${opsField.arcade.sessionHours}h session` : "Disabled"}</td>
+                                </tr>`;
+                            })
+                            .join("")}
+                    </tbody>
+                </table>
             </div>
         `;
-
-        document.getElementById("cfg-save").addEventListener("click", async () => {
-            const errorEl = document.getElementById("operations-error");
-            errorEl.textContent = "";
-            const tableCount = parseInt(document.getElementById("cfg-table-count").value, 10);
-            const arcadeHours = parseFloat(document.getElementById("cfg-arcade-hours").value);
-
-            if (!Number.isFinite(tableCount) || tableCount < 0) {
-                errorEl.textContent = "Number of tables must be zero or a positive whole number.";
-                return;
-            }
-            if (!Number.isFinite(arcadeHours) || arcadeHours <= 0) {
-                errorEl.textContent = "Arcade session length must be a positive number of hours.";
-                return;
-            }
-
-            try {
-                await AdminConfig.saveSettings({
-                    tableCount,
-                    arcade: { enabled: document.getElementById("cfg-arcade-enabled").checked, sessionHours: arcadeHours }
-                });
-                if (window.applyBranding) window.applyBranding(AdminConfig.settings);
-                ok("Settings saved");
-            } catch (e) {
-                errorEl.textContent = e.message;
-                fail(e.message);
-            }
-        });
     },
 
     // ---------------------------------------------------------------- LOCATIONS (STORES)
     // Pulled out of the Branding tab, where it had nothing to do with
     // colors/copy - multi-location structure belongs with the other
-    // business-structure tools in Store Setup.
+    // business-structure tools in Store Setup. Branding itself is global-
+    // only now (see server.js's mergeStoreOverrides()) - a store's own
+    // editable surface is contact info, home-page picks, a payments/tax
+    // override, and its own operations (see renderStoreSettingsPanel()).
     expandedStoreBranding: {},
 
-    /** Owner always; a scoped admin only for stores their storeAccess
-     *  actually covers (or unrestricted, i.e. storeAccess not set). */
-    canEditStoreBranding(storeId) {
-        if (this.session.role === "owner") return true;
+    /** A store's day-to-day settings (contact/picks/payments-override/
+     *  operations/backup) - a scoped admin for stores their storeAccess
+     *  covers (or unrestricted), a manager for their own store. Owner is
+     *  read-only everywhere here, matching PATCH /api/stores/:id's
+     *  server-side owner-exclusion. */
+    canManageStoreSettings(storeId) {
         if (this.session.role === "admin") return !this.session.storeAccess || this.session.storeAccess.includes(storeId);
+        if (this.session.role === "manager") return this.session.storeId === storeId;
         return false;
     },
 
     async renderStores(root) {
-        const isOwner = this.session.role === "owner";
+        const isGlobalAdmin = this.isGlobalAdmin();
         root.innerHTML = `
             <div class="config-controls">
-                <h3 style="margin-top:0;">STORES</h3>
-                <p class="admin-help-text">Every store sells the same menu - use "EDIT BRANDING" to give a store its own name, address, phone, logo, colors, hero image, and hours (staff assigned to that store will see it instead of the global default). Leave a field blank to fall back to the global setting.</p>
+                <h3 style="margin-top:0;">LOCATIONS</h3>
+                <p class="admin-help-text">Every store sells the same menu and shares the same franchise branding - EDIT here covers a store's own contact info, home-page picks, tax/currency override, and operations.</p>
                 <div id="stores-list" style="margin-bottom:10px;"></div>
                 ${
-                    isOwner
+                    isGlobalAdmin
                         ? `
                 <div style="display:flex; gap:8px;">
                     <input type="text" id="new-store-name" maxlength="60" placeholder="Store name" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
                     <input type="text" id="new-store-address" maxlength="200" placeholder="Address (optional)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
                     <button class="admin-btn" id="add-store">ADD STORE</button>
                 </div>`
-                        : `<p class="admin-help-text">Only the owner can add stores.</p>`
+                        : `<p class="admin-help-text">Only a Global Admin can add stores.</p>`
                 }
-            </div>
-        `;
-
-        const colorField = (id, label, value) => `
-            <div class="control-group" style="flex:0 0 auto;">
-                <label>${label}</label>
-                <input type="color" id="${id}" value="${value}" />
             </div>
         `;
 
@@ -454,154 +455,29 @@ export const AdminPortal = {
             const stores = await PayrollSystem.fetchStores();
             document.getElementById("stores-list").innerHTML = stores
                 .map((s) => {
-                    const b = s.branding || {};
-                    const colors = b.colors || {};
-                    const footer = b.footer || {};
                     const expanded = !!this.expandedStoreBranding[s.id];
-                    const canEdit = this.canEditStoreBranding(s.id);
+                    const canEdit = this.canManageStoreSettings(s.id);
                     return `
                     <div style="border-bottom:1px solid var(--color-border); padding:8px 0;">
                         <div style="display:flex; align-items:center; gap:10px; font-size:8pt;">
                             <span style="flex:1;">${escapeHtmlAttr(s.name)}${s.address ? ` — ${escapeHtmlAttr(s.address)}` : ""}</span>
-                            ${canEdit ? `<button class="admin-btn-secondary" data-toggle-branding="${s.id}" style="padding:4px 8px; font-size:7pt;">${expanded ? "CLOSE" : "EDIT BRANDING"}</button>` : ""}
-                            ${isOwner && stores.length > 1 ? `<button class="admin-btn-danger" data-remove-store="${s.id}" data-name="${escapeHtmlAttr(s.name)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>` : ""}
+                            <button class="admin-btn-secondary" data-toggle-panel="${s.id}" style="padding:4px 8px; font-size:7pt;">${expanded ? "CLOSE" : canEdit ? "EDIT" : "VIEW"}</button>
+                            ${isGlobalAdmin && stores.length > 1 ? `<button class="admin-btn-danger" data-remove-store="${s.id}" data-name="${escapeHtmlAttr(s.name)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>` : ""}
                         </div>
-                        ${
-                            expanded && canEdit
-                                ? `
-                        <div style="margin-top:10px; padding:12px; border:1px solid var(--color-border); background:var(--color-bg);">
-                            <div class="control-group">
-                                <label>STORE-SPECIFIC SHOP NAME (blank = use global)</label>
-                                <input type="text" id="store-${s.id}-name" maxlength="60" value="${escapeHtmlAttr(b.shopName || "")}" />
-                            </div>
-                            <div class="control-group">
-                                <label>ADDRESS (shown on the home page "Visit us" widget)</label>
-                                <input type="text" id="store-${s.id}-address" maxlength="200" value="${escapeHtmlAttr(s.address || "")}" />
-                            </div>
-                            <div class="control-group">
-                                <label>COORDINATES (lets the customer store picker sort by nearest - optional)</label>
-                                <div style="display:flex; gap:8px; align-items:center;">
-                                    <input type="text" id="store-${s.id}-lat" placeholder="Latitude" value="${s.lat ?? ""}" style="flex:1;" />
-                                    <input type="text" id="store-${s.id}-lng" placeholder="Longitude" value="${s.lng ?? ""}" style="flex:1;" />
-                                </div>
-                            </div>
-                            <div class="control-group">
-                                <label>PHONE (blank = use global)</label>
-                                <input type="text" id="store-${s.id}-phone" maxlength="20" value="${escapeHtmlAttr(footer.phone || "")}" />
-                            </div>
-                            <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
-                                ${colorField(`store-${s.id}-accent`, "ACCENT", colors.accent || "#d97706")}
-                                ${colorField(`store-${s.id}-background`, "BACKGROUND", colors.background || "#0a0a0a")}
-                                ${colorField(`store-${s.id}-surface`, "SURFACE", colors.surface || "#111111")}
-                                ${colorField(`store-${s.id}-text`, "TEXT", colors.text || "#f9fafb")}
-                                ${colorField(`store-${s.id}-secondary`, "SECONDARY", colors.secondary || "#22d3ee")}
-                                <button type="button" class="admin-btn-secondary" data-reset-colors="${s.id}" style="padding:6px 10px; font-size:7pt;">USE GLOBAL COLORS</button>
-                            </div>
-                            <div class="control-group" style="margin-top:10px;">
-                                <label>LOGO IMAGE (blank = use global)</label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="text" id="store-${s.id}-logo" maxlength="500" value="${escapeHtmlAttr(b.logoUrl || "")}" style="flex:1;" />
-                                    <button type="button" class="admin-btn-secondary" data-pick-logo="${s.id}" style="white-space:nowrap;">BROWSE</button>
-                                </div>
-                            </div>
-                            <div class="control-group">
-                                <label>HORIZONTAL LOGO (optional - blank = use global)</label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="text" id="store-${s.id}-logo-wide" maxlength="500" value="${escapeHtmlAttr(b.logoWideUrl || "")}" style="flex:1;" />
-                                    <button type="button" class="admin-btn-secondary" data-pick-logo-wide="${s.id}" style="white-space:nowrap;">BROWSE</button>
-                                </div>
-                            </div>
-                            <div class="control-group">
-                                <label>HERO / STOREFRONT IMAGE (blank = use global)</label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="text" id="store-${s.id}-hero" maxlength="500" value="${escapeHtmlAttr(b.heroImageUrl || "")}" style="flex:1;" />
-                                    <button type="button" class="admin-btn-secondary" data-pick-hero="${s.id}" style="white-space:nowrap;">BROWSE</button>
-                                </div>
-                            </div>
-                            <div class="control-group">
-                                <label>HOURS (blank = use global)</label>
-                                <input type="text" id="store-${s.id}-hours" maxlength="60" value="${escapeHtmlAttr(footer.hours || "")}" placeholder="Mon-Sat: 8am - 8pm" />
-                            </div>
-                            <p id="store-${s.id}-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:6px;"></p>
-                            <button class="admin-btn-primary" data-save-branding="${s.id}">SAVE STORE BRANDING</button>
-                        </div>
-                        `
-                                : ""
-                        }
+                        ${expanded ? `<div id="store-panel-${s.id}" style="margin-top:10px; padding:12px; border:1px solid var(--color-border); background:var(--color-bg);"></div>` : ""}
                     </div>
                 `;
                 })
                 .join("");
 
-            root.querySelectorAll("[data-toggle-branding]").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    const id = Number(btn.dataset.toggleBranding);
-                    this.expandedStoreBranding[id] = !this.expandedStoreBranding[id];
-                    renderStoresList();
-                });
-            });
-
-            root.querySelectorAll("[data-reset-colors]").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    const id = btn.dataset.resetColors;
-                    ["accent", "background", "surface", "text", "secondary"].forEach((k) => {
-                        const preset = { accent: "#d97706", background: "#0a0a0a", surface: "#111111", text: "#f9fafb", secondary: "#22d3ee" };
-                        document.getElementById(`store-${id}-${k}`).value = preset[k];
-                    });
-                });
-            });
-
-            root.querySelectorAll("[data-pick-logo]").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    const id = btn.dataset.pickLogo;
-                    renderImagePickerModal({ onSelect: (url) => (document.getElementById(`store-${id}-logo`).value = url) });
-                });
-            });
-            root.querySelectorAll("[data-pick-logo-wide]").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    const id = btn.dataset.pickLogoWide;
-                    renderImagePickerModal({ onSelect: (url) => (document.getElementById(`store-${id}-logo-wide`).value = url) });
-                });
-            });
-            root.querySelectorAll("[data-pick-hero]").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    const id = btn.dataset.pickHero;
-                    renderImagePickerModal({ onSelect: (url) => (document.getElementById(`store-${id}-hero`).value = url) });
-                });
-            });
-
-            root.querySelectorAll("[data-save-branding]").forEach((btn) => {
+            root.querySelectorAll("[data-toggle-panel]").forEach((btn) => {
                 btn.addEventListener("click", async () => {
-                    const id = btn.dataset.saveBranding;
-                    const errorEl = document.getElementById(`store-${id}-error`);
-                    errorEl.textContent = "";
-                    try {
-                        await PayrollSystem.updateStore(id, {
-                            address: document.getElementById(`store-${id}-address`).value.trim(),
-                            lat: document.getElementById(`store-${id}-lat`).value.trim() || null,
-                            lng: document.getElementById(`store-${id}-lng`).value.trim() || null,
-                            branding: {
-                                shopName: document.getElementById(`store-${id}-name`).value.trim(),
-                                logoUrl: document.getElementById(`store-${id}-logo`).value.trim(),
-                                logoWideUrl: document.getElementById(`store-${id}-logo-wide`).value.trim(),
-                                heroImageUrl: document.getElementById(`store-${id}-hero`).value.trim(),
-                                colors: {
-                                    accent: document.getElementById(`store-${id}-accent`).value,
-                                    background: document.getElementById(`store-${id}-background`).value,
-                                    surface: document.getElementById(`store-${id}-surface`).value,
-                                    text: document.getElementById(`store-${id}-text`).value,
-                                    secondary: document.getElementById(`store-${id}-secondary`).value
-                                },
-                                footer: {
-                                    hours: document.getElementById(`store-${id}-hours`).value.trim(),
-                                    phone: document.getElementById(`store-${id}-phone`).value.trim()
-                                }
-                            }
-                        });
-                        ok("Store branding saved");
-                    } catch (e) {
-                        errorEl.textContent = e.message;
-                        fail(e.message);
+                    const id = Number(btn.dataset.togglePanel);
+                    this.expandedStoreBranding[id] = !this.expandedStoreBranding[id];
+                    await renderStoresList();
+                    if (this.expandedStoreBranding[id]) {
+                        const store = stores.find((s) => s.id === id);
+                        this.renderStoreSettingsPanel(document.getElementById(`store-panel-${id}`), store, this.canManageStoreSettings(id), renderStoresList);
                     }
                 });
             });
@@ -630,7 +506,7 @@ export const AdminPortal = {
         };
         await renderStoresList();
 
-        if (isOwner) {
+        if (isGlobalAdmin) {
             document.getElementById("add-store").addEventListener("click", async () => {
                 const name = document.getElementById("new-store-name").value.trim();
                 const address = document.getElementById("new-store-address").value.trim();
@@ -686,168 +562,285 @@ export const AdminPortal = {
         });
     },
 
-    // ---------------------------------------------------------------- THIS STORE (manager-only)
-    // A manager's own version of Store Setup's per-store branding editor -
+    // ---------------------------------------------------------------- THIS STORE (scoped roles)
+    // A Local Admin/manager's own version of Store Setup's per-store panel -
     // just their own store, always expanded, no list of other locations and
-    // no add/remove (that stays owner-only, see renderStores()).
+    // no add/remove (that stays Global-Admin-only, see renderStores()).
     async renderThisStore(root) {
         const stores = await PayrollSystem.fetchStores();
         const store = stores.find((s) => s.id === this.session.storeId);
         if (!store) {
-            root.innerHTML = `<p class="admin-help-text">Your account isn't assigned to a store yet - ask the owner to fix this from Staff Accounts.</p>`;
+            root.innerHTML = `<p class="admin-help-text">Your account isn't assigned to a store yet - ask an admin to fix this from Staff Accounts.</p>`;
             return;
         }
-        const b = store.branding || {};
-        const colors = b.colors || {};
-        const footer = b.footer || {};
-        const colorField = (id, label, value) => `
-            <div class="control-group" style="flex:0 0 auto;">
-                <label>${label}</label>
-                <input type="color" id="${id}" value="${value}" />
-            </div>
+        root.innerHTML = `<div class="config-controls"><h3 style="margin-top:0;">${escapeHtmlAttr(store.name)}</h3></div>`;
+        this.renderStoreSettingsPanel(root.querySelector(".config-controls"), store, this.canManageStoreSettings(store.id), () => this.renderThisStore(root));
+    },
+
+    /** Shared per-store settings surface - used both by This Store (scoped
+     *  roles, always expanded) and Locations' per-store expand (unrestricted
+     *  roles). CONTACT/HOME PAGE PICKS/PAYMENTS OVERRIDE/OPERATIONS are the
+     *  franchise-governance-redesign replacement for the old per-store
+     *  branding editor (branding is global-only now); DATA & BACKUP is this
+     *  store's own scoped backup/restore. */
+    renderStoreSettingsPanel(container, store, canEdit, onSaved) {
+        const footer = AdminConfig.settings.footer || {};
+        container.innerHTML = `
+            <div id="sp-contact"></div>
+            <div id="sp-picks"></div>
+            <div id="sp-payments"></div>
+            <div id="sp-operations"></div>
+            <div id="sp-backup"></div>
         `;
 
-        root.innerHTML = `
-            <div class="config-controls">
-                <h3 style="margin-top:0;">${escapeHtmlAttr(store.name)}</h3>
-                <p class="admin-help-text">Your store's own name, address, phone, logo, colors, hero image, and hours - shown to customers at this location instead of the shop-wide default. Leave a field blank to fall back to the global setting.</p>
+        renderReadOnlySection(container.querySelector("#sp-contact"), {
+            title: "CONTACT",
+            canEdit,
+            fields: [
+                { label: "Address", value: store.address || "" },
+                { label: "Phone", value: store.phone || "", tooltip: "Blank uses the franchise-wide default phone number." },
+                { label: "Coordinates", value: store.lat != null && store.lng != null ? `${store.lat}, ${store.lng}` : "", tooltip: "Used to sort the customer store picker by distance - optional." }
+            ],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT CONTACT",
+                    fields: [
+                        { id: "sp-address", label: "Address (shown on the home page “Visit us” widget)", value: store.address || "", maxlength: 200 },
+                        { id: "sp-phone", label: "Phone (blank = use franchise default)", value: store.phone || "", maxlength: 20 },
+                        { id: "sp-lat", label: "Latitude", value: store.lat ?? "", placeholder: "Optional" },
+                        { id: "sp-lng", label: "Longitude", value: store.lng ?? "", placeholder: "Optional" }
+                    ],
+                    onSave: async (v) => {
+                        await PayrollSystem.updateStore(store.id, {
+                            address: v["sp-address"].trim(),
+                            phone: v["sp-phone"].trim(),
+                            lat: v["sp-lat"].trim() || null,
+                            lng: v["sp-lng"].trim() || null
+                        });
+                        ok("Contact info saved");
+                        onSaved();
+                    }
+                })
+        });
 
-                <div class="control-group">
-                    <label>STORE-SPECIFIC SHOP NAME (blank = use global)</label>
-                    <input type="text" id="ts-name" maxlength="60" value="${escapeHtmlAttr(b.shopName || "")}" />
-                </div>
-                <div class="control-group">
-                    <label>ADDRESS (shown on the home page "Visit us" widget)</label>
-                    <input type="text" id="ts-address" maxlength="200" value="${escapeHtmlAttr(store.address || "")}" />
-                </div>
-                <div class="control-group">
-                    <label>PHONE (blank = use global)</label>
-                    <input type="text" id="ts-phone" maxlength="20" value="${escapeHtmlAttr(footer.phone || "")}" />
-                </div>
-                <div class="control-group">
-                    <label>COORDINATES (lets the customer store picker show distance/sort by nearest - optional)</label>
-                    <div style="display:flex; gap:8px; align-items:center;">
-                        <input type="text" id="ts-lat" placeholder="Latitude" value="${store.lat ?? ""}" style="flex:1;" />
-                        <input type="text" id="ts-lng" placeholder="Longitude" value="${store.lng ?? ""}" style="flex:1;" />
-                        <button type="button" class="admin-btn-secondary" id="ts-use-location" style="white-space:nowrap;">USE MY LOCATION</button>
-                    </div>
-                    <p id="ts-location-status" style="font-size:7pt; color:var(--color-text-muted); min-height:10px; margin-top:4px;"></p>
-                </div>
-                <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
-                    ${colorField("ts-accent", "ACCENT", colors.accent || "#d97706")}
-                    ${colorField("ts-background", "BACKGROUND", colors.background || "#0a0a0a")}
-                    ${colorField("ts-surface", "SURFACE", colors.surface || "#111111")}
-                    ${colorField("ts-text", "TEXT", colors.text || "#f9fafb")}
-                    ${colorField("ts-secondary", "SECONDARY", colors.secondary || "#22d3ee")}
-                    <button type="button" class="admin-btn-secondary" id="ts-reset-colors" style="padding:6px 10px; font-size:7pt;">USE GLOBAL COLORS</button>
-                </div>
-                <div class="control-group" style="margin-top:10px;">
-                    <label>LOGO IMAGE (blank = use global)</label>
-                    <div style="display:flex; gap:8px;">
-                        <input type="text" id="ts-logo" maxlength="500" value="${escapeHtmlAttr(b.logoUrl || "")}" style="flex:1;" />
-                        <button type="button" class="admin-btn-secondary" id="ts-pick-logo" style="white-space:nowrap;">BROWSE</button>
-                    </div>
-                </div>
-                <div class="control-group">
-                    <label>HORIZONTAL LOGO (optional - blank = use global)</label>
-                    <div style="display:flex; gap:8px;">
-                        <input type="text" id="ts-logo-wide" maxlength="500" value="${escapeHtmlAttr(b.logoWideUrl || "")}" style="flex:1;" />
-                        <button type="button" class="admin-btn-secondary" id="ts-pick-logo-wide" style="white-space:nowrap;">BROWSE</button>
-                    </div>
-                </div>
-                <div class="control-group">
-                    <label>HERO / STOREFRONT IMAGE (blank = use global)</label>
-                    <div style="display:flex; gap:8px;">
-                        <input type="text" id="ts-hero" maxlength="500" value="${escapeHtmlAttr(b.heroImageUrl || "")}" style="flex:1;" />
-                        <button type="button" class="admin-btn-secondary" id="ts-pick-hero" style="white-space:nowrap;">BROWSE</button>
-                    </div>
-                </div>
-                <div class="control-group">
-                    <label>HOURS (blank = use global)</label>
-                    <input type="text" id="ts-hours" maxlength="60" value="${escapeHtmlAttr(footer.hours || "")}" placeholder="Mon-Sat: 8am - 8pm" />
-                </div>
-                <p id="ts-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:6px;"></p>
-                <button class="admin-btn-primary" id="ts-save">SAVE</button>
-            </div>
-        `;
-
-        document.getElementById("ts-reset-colors").addEventListener("click", () => {
-            const preset = { accent: "#d97706", background: "#0a0a0a", surface: "#111111", text: "#f9fafb", secondary: "#22d3ee" };
-            Object.entries(preset).forEach(([k, v]) => (document.getElementById(`ts-${k}`).value = v));
-        });
-        document.getElementById("ts-pick-logo").addEventListener("click", () => {
-            renderImagePickerModal({ onSelect: (url) => (document.getElementById("ts-logo").value = url) });
-        });
-        document.getElementById("ts-pick-logo-wide").addEventListener("click", () => {
-            renderImagePickerModal({ onSelect: (url) => (document.getElementById("ts-logo-wide").value = url) });
-        });
-        document.getElementById("ts-pick-hero").addEventListener("click", () => {
-            renderImagePickerModal({ onSelect: (url) => (document.getElementById("ts-hero").value = url) });
-        });
-        document.getElementById("ts-use-location").addEventListener("click", () => {
-            const statusEl = document.getElementById("ts-location-status");
-            if (!navigator.geolocation) {
-                statusEl.textContent = "Geolocation isn't available in this browser.";
-                return;
-            }
-            statusEl.textContent = "Getting your location...";
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    document.getElementById("ts-lat").value = pos.coords.latitude.toFixed(6);
-                    document.getElementById("ts-lng").value = pos.coords.longitude.toFixed(6);
-                    statusEl.textContent = "Got it - remember to hit SAVE.";
-                },
-                (err) => {
-                    statusEl.textContent = err.code === err.PERMISSION_DENIED ? "Location permission denied." : "Could not get your location.";
-                },
-                { timeout: 10000 }
-            );
-        });
-        document.getElementById("ts-save").addEventListener("click", async () => {
-            const errorEl = document.getElementById("ts-error");
-            errorEl.textContent = "";
-            try {
-                await PayrollSystem.updateStore(store.id, {
-                    address: document.getElementById("ts-address").value.trim(),
-                    lat: document.getElementById("ts-lat").value.trim() || null,
-                    lng: document.getElementById("ts-lng").value.trim() || null,
-                    branding: {
-                        shopName: document.getElementById("ts-name").value.trim(),
-                        logoUrl: document.getElementById("ts-logo").value.trim(),
-                        logoWideUrl: document.getElementById("ts-logo-wide").value.trim(),
-                        heroImageUrl: document.getElementById("ts-hero").value.trim(),
-                        colors: {
-                            accent: document.getElementById("ts-accent").value,
-                            background: document.getElementById("ts-background").value,
-                            surface: document.getElementById("ts-surface").value,
-                            text: document.getElementById("ts-text").value,
-                            secondary: document.getElementById("ts-secondary").value
+        const allItems = this.menu.items.filter((i) => !i.deleted);
+        const picks = store.homePicks !== undefined ? store.homePicks : null;
+        renderReadOnlySection(container.querySelector("#sp-picks"), {
+            title: "HOME PAGE PICKS",
+            canEdit,
+            fields:
+                picks === null
+                    ? [{ label: "Source", value: "Using the franchise-wide default" }]
+                    : picks.length === 0
+                      ? [{ label: "Source", value: "Store override - no picks shown" }]
+                      : picks.map((p, i) => {
+                            const item = allItems.find((it) => it.id === p.itemId);
+                            return { label: `Pick ${i + 1}`, value: item ? `${item.name}${p.tag ? ` (${p.tag})` : ""}` : "Unknown item" };
+                        }),
+            onEdit: () => {
+                const pickField = (n) => {
+                    const current = picks && picks[n];
+                    return [
+                        {
+                            id: `sp-pick${n}-item`,
+                            label: `Pick ${n + 1}`,
+                            type: "select",
+                            value: current ? String(current.itemId) : "",
+                            options: [{ value: "", label: "(none)" }, ...allItems.map((i) => ({ value: String(i.id), label: i.name }))]
                         },
-                        footer: {
-                            hours: document.getElementById("ts-hours").value.trim(),
-                            phone: document.getElementById("ts-phone").value.trim()
+                        { id: `sp-pick${n}-tag`, label: `Pick ${n + 1} tag (optional, e.g. "House favourite")`, value: current?.tag || "", maxlength: 40 }
+                    ];
+                };
+                renderSectionEditModal({
+                    title: "EDIT HOME PAGE PICKS",
+                    fields: [
+                        { id: "sp-picks-use-default", label: "Use the franchise-wide default (ignore this store's own picks below)", value: picks === null, type: "checkbox" },
+                        ...pickField(0),
+                        ...pickField(1),
+                        ...pickField(2)
+                    ],
+                    onSave: async (v) => {
+                        if (v["sp-picks-use-default"]) {
+                            await PayrollSystem.updateStore(store.id, { homePicks: null });
+                        } else {
+                            const newPicks = [0, 1, 2]
+                                .map((n) => ({ itemId: v[`sp-pick${n}-item`], tag: v[`sp-pick${n}-tag`] }))
+                                .filter((p) => p.itemId !== "");
+                            await PayrollSystem.updateStore(store.id, { homePicks: newPicks });
                         }
+                        ok("Home page picks saved");
+                        onSaved();
                     }
                 });
-                ok("Store details saved");
-            } catch (e) {
-                errorEl.textContent = e.message;
-                fail(e.message);
             }
+        });
+
+        const payments = store.payments || {};
+        const fmtOverride = (v, suffix = "") => (v == null ? "Franchise default" : `${v}${suffix}`);
+        renderReadOnlySection(container.querySelector("#sp-payments"), {
+            title: "PAYMENTS & TAX OVERRIDE",
+            canEdit,
+            fields: [
+                { label: "CGST rate", value: fmtOverride(payments.cgstRate != null ? (payments.cgstRate * 100).toFixed(2) : null, "%"), tooltip: "Blank = use the franchise default." },
+                { label: "SGST rate", value: fmtOverride(payments.sgstRate != null ? (payments.sgstRate * 100).toFixed(2) : null, "%") },
+                { label: "Service charge rate", value: fmtOverride(payments.serviceChargeRate != null ? (payments.serviceChargeRate * 100).toFixed(2) : null, "%") },
+                { label: "Tip amount", value: fmtOverride(payments.tipAmount) },
+                { label: "Tip enabled", value: payments.tipEnabled == null ? "Franchise default" : payments.tipEnabled ? "Yes" : "No" },
+                { label: "Currency", value: fmtOverride(payments.currencySymbol ? `${payments.currencySymbol} (${payments.currencyCode})` : null) }
+            ],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT PAYMENTS & TAX OVERRIDE",
+                    fields: [
+                        { id: "sp-cgst", label: "CGST rate (%, blank = franchise default)", value: payments.cgstRate != null ? (payments.cgstRate * 100).toFixed(2) : "", type: "number", step: 0.01, min: 0 },
+                        { id: "sp-sgst", label: "SGST rate (%, blank = franchise default)", value: payments.sgstRate != null ? (payments.sgstRate * 100).toFixed(2) : "", type: "number", step: 0.01, min: 0 },
+                        { id: "sp-service-charge", label: "Service charge rate (%, blank = franchise default)", value: payments.serviceChargeRate != null ? (payments.serviceChargeRate * 100).toFixed(2) : "", type: "number", step: 0.01, min: 0 },
+                        { id: "sp-tip-amount", label: "Tip amount (blank = franchise default)", value: payments.tipAmount ?? "", type: "number", step: 0.01, min: 0 },
+                        {
+                            id: "sp-tip-enabled",
+                            label: "Tip enabled",
+                            type: "select",
+                            value: payments.tipEnabled == null ? "" : String(payments.tipEnabled),
+                            options: [
+                                { value: "", label: "Franchise default" },
+                                { value: "true", label: "Yes" },
+                                { value: "false", label: "No" }
+                            ]
+                        },
+                        { id: "sp-currency-symbol", label: "Currency symbol (blank = franchise default)", value: payments.currencySymbol || "", maxlength: 3 },
+                        { id: "sp-currency-code", label: "Currency ISO code (blank = franchise default)", value: payments.currencyCode || "", maxlength: 3, tooltip: "Only sent to Razorpay." }
+                    ],
+                    onSave: async (v) => {
+                        const pct = (s) => (s.trim() === "" ? null : parseFloat(s) / 100);
+                        const num = (s) => (s.trim() === "" ? null : parseFloat(s));
+                        await PayrollSystem.updateStore(store.id, {
+                            payments: {
+                                cgstRate: pct(v["sp-cgst"]),
+                                sgstRate: pct(v["sp-sgst"]),
+                                serviceChargeRate: pct(v["sp-service-charge"]),
+                                tipAmount: num(v["sp-tip-amount"]),
+                                tipEnabled: v["sp-tip-enabled"] === "" ? null : v["sp-tip-enabled"] === "true",
+                                currencySymbol: v["sp-currency-symbol"].trim() || null,
+                                currencyCode: v["sp-currency-code"].trim() || null
+                            }
+                        });
+                        ok("Payments override saved");
+                        onSaved();
+                    }
+                })
+        });
+
+        const operations = store.operations || { tableCount: 10, arcade: { enabled: true, sessionHours: 2 } };
+        renderReadOnlySection(container.querySelector("#sp-operations"), {
+            title: "OPERATIONS",
+            canEdit,
+            fields: [
+                { label: "Number of tables", value: String(operations.tableCount) },
+                { label: "Arcade enabled", value: operations.arcade.enabled ? "Yes" : "No" },
+                { label: "Arcade session length", value: `${operations.arcade.sessionHours}h` }
+            ],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT OPERATIONS",
+                    fields: [
+                        { id: "sp-table-count", label: "Number of tables", value: operations.tableCount, type: "number", min: 0, max: 200, tooltip: "0 = only Online/Counter, no physical tabs." },
+                        { id: "sp-arcade-enabled", label: "Enable arcade", value: operations.arcade.enabled, type: "checkbox" },
+                        { id: "sp-arcade-hours", label: "Arcade session length (hours)", value: operations.arcade.sessionHours, type: "number", step: 0.5, min: 0.5, max: 24 }
+                    ],
+                    onSave: async (v) => {
+                        const tableCount = parseInt(v["sp-table-count"], 10);
+                        const arcadeHours = parseFloat(v["sp-arcade-hours"]);
+                        if (!Number.isFinite(tableCount) || tableCount < 0) throw new Error("Number of tables must be zero or a positive whole number.");
+                        if (!Number.isFinite(arcadeHours) || arcadeHours <= 0) throw new Error("Arcade session length must be a positive number of hours.");
+                        await PayrollSystem.updateStore(store.id, {
+                            operations: { tableCount, arcade: { enabled: v["sp-arcade-enabled"], sessionHours: arcadeHours } }
+                        });
+                        ok("Operations saved");
+                        onSaved();
+                    }
+                })
+        });
+
+        this.renderStoreDataBackup(container.querySelector("#sp-backup"), store, canEdit);
+    },
+
+    /** Per-store scoped backup/restore - same shape as the whole-instance
+     *  version in renderDataBackup(), just calling the /store/:id routes
+     *  and only ever touching this one store's own records. */
+    renderStoreDataBackup(container, store, canEdit) {
+        container.innerHTML = `
+            <div class="readonly-section">
+                <div class="readonly-section-header"><h3 style="margin:0;">DATA & BACKUP FOR THIS STORE</h3></div>
+                <p class="admin-help-text">Downloads this store's own orders, table sessions, timeclock, local discounts, and settings as one JSON file.</p>
+                <button class="admin-btn-secondary" id="sp-backup-download">DOWNLOAD THIS STORE'S BACKUP</button>
+                ${
+                    canEdit
+                        ? `
+                <div style="margin-top:16px;">
+                    <p class="admin-help-text" style="color:var(--color-danger);">Restoring overwrites this store's own orders/table-sessions/timeclock/local-discounts/settings with whatever's in the file. Never touches another store. This can't be undone.</p>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <label for="sp-restore-file" class="admin-btn-secondary" style="cursor:pointer;">CHOOSE FILE</label>
+                        <input type="file" id="sp-restore-file" accept="application/json" style="display:none;" />
+                        <span id="sp-restore-file-name" style="font-size:8pt; color:var(--color-text-muted);">No file selected.</span>
+                    </div>
+                    <button class="admin-btn-secondary" id="sp-restore-upload" style="border-color:var(--color-danger); color:var(--color-danger);" disabled>RESTORE THIS STORE</button>
+                </div>`
+                        : ""
+                }
+                <p id="sp-backup-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+            </div>
+        `;
+        container.querySelector("#sp-backup-download").addEventListener("click", () => PayrollSystem.downloadStoreBackup(store.id));
+        if (!canEdit) return;
+
+        let restoreFile = null;
+        const restoreBtn = container.querySelector("#sp-restore-upload");
+        container.querySelector("#sp-restore-file").addEventListener("change", (e) => {
+            restoreFile = e.target.files[0] || null;
+            restoreBtn.disabled = !restoreFile;
+            container.querySelector("#sp-restore-file-name").textContent = restoreFile ? restoreFile.name : "No file selected.";
+        });
+        restoreBtn.addEventListener("click", () => {
+            if (!restoreFile) return;
+            renderInfoModal({
+                title: "RESTORE THIS STORE",
+                message: `This will overwrite ${escapeHtmlAttr(store.name)}'s own orders, table sessions, timeclock, local discounts, and settings with the contents of "${restoreFile.name}". This can't be undone. Continue?`,
+                confirmText: "RESTORE",
+                cancelText: "CANCEL",
+                onConfirm: async () => {
+                    const errorEl = container.querySelector("#sp-backup-error");
+                    errorEl.textContent = "";
+                    try {
+                        const text = await restoreFile.text();
+                        const parsed = JSON.parse(text);
+                        const data = await PayrollSystem.restoreStoreBackup(store.id, parsed);
+                        ok(`Restored ${data.restoredCount} record(s)${data.warnings.length ? ` - ${data.warnings.length} warning(s), see console` : ""}`);
+                        if (data.warnings.length) console.warn("Store restore warnings:", data.warnings);
+                    } catch (e) {
+                        errorEl.textContent = e.message || "Could not restore store backup";
+                    }
+                }
+            });
         });
     },
 
-    // ---------------------------------------------------------------- DATA & BACKUP
+    // ---------------------------------------------------------------- DATA & BACKUP (whole-instance)
+    // Restore is Global-Admin-only now (owner keeps read/download, matching
+    // read-only-outside-adding-Global-Admins - see requireGlobalAdmin() in
+    // server.js). Per-store backup/restore lives in each store's own page
+    // instead (renderStoreDataBackup()), not here.
     async renderDataBackup(root) {
         const isOwner = this.session.role === "owner";
+        const isGlobalAdmin = this.isGlobalAdmin();
+        const canRestore = isGlobalAdmin;
         root.innerHTML = `
             <div class="config-controls">
                 <h3 style="margin-top:0;">BACKUP</h3>
                 <p class="admin-help-text">Downloads every record this app stores (menu, orders, staff accounts, config, etc.) as one JSON file. Uploaded images themselves aren't included, only their filenames/metadata - keep the "uploads" folder alongside any backup you keep long-term.</p>
-                ${isOwner ? `<button class="admin-btn-primary" id="backup-download">DOWNLOAD BACKUP</button>` : `<p class="admin-help-text">Only the owner can download or restore a backup.</p>`}
+                <button class="admin-btn-primary" id="backup-download">DOWNLOAD BACKUP</button>
 
                 ${
-                    isOwner
+                    canRestore
                         ? `
                 <h3 style="margin-top:25px; border-top:1px solid var(--color-border); padding-top:20px;">RESTORE</h3>
                 <p class="admin-help-text" style="color:var(--color-danger);">Overwrites current data with whatever's in the backup file - menu, orders, staff accounts, everything it contains. This can't be undone. Only restore a backup you trust.</p>
@@ -858,13 +851,11 @@ export const AdminPortal = {
                 </div>
                 <button class="admin-btn-secondary" id="restore-upload" style="border-color:var(--color-danger); color:var(--color-danger);" disabled>RESTORE FROM BACKUP</button>
                 `
-                        : ""
+                        : `<p class="admin-help-text">${isOwner ? "Owner has read-only access to backups - a Global Admin can restore." : "Only a Global Admin can restore a backup."}</p>`
                 }
                 <p id="backup-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
             </div>
         `;
-
-        if (!isOwner) return;
 
         document.getElementById("backup-download").addEventListener("click", () => {
             // A plain navigation (not fetch+blob) so the browser's own
@@ -872,6 +863,8 @@ export const AdminPortal = {
             // way to trigger a real file save from a GET endpoint.
             window.open("/api/admin/backup", "_blank");
         });
+
+        if (!canRestore) return;
 
         let restoreFile = null;
         const restoreBtn = document.getElementById("restore-upload");
@@ -2721,314 +2714,323 @@ export const AdminPortal = {
     },
 
     // ------------------------------------------------------------ BRANDING (visual: theme/colors/images/icons)
+    // Franchise-wide only now (Global-Admin-edit, everyone-else-view) -
+    // consistent branding across every store is the whole point of pulling
+    // per-store theme/logo/color overrides out (see server.js's
+    // mergeStoreOverrides()).
     async renderBranding(root) {
         const c = AdminConfig.settings;
         const colors = c.colors || {};
         const textStyles = c.textStyles || {};
         const customIcons = c.customIcons || {};
+        const canEdit = this.isGlobalAdmin();
         const profilesRes = await fetch("/api/branding-profiles", { credentials: "include" });
         const profiles = profilesRes.ok ? await profilesRes.json() : {};
 
-        const colorField = (id, label, value) => `
-            <div class="control-group" style="flex:0 0 auto;">
-                <label>${label}</label>
-                <input type="color" id="${id}" value="${value}" />
-            </div>
-        `;
-
         root.innerHTML = `
             <div class="config-controls">
-                <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
-                    <div style="flex:1 1 380px; min-width:300px;">
-                        <h3 style="margin-top:0;">THEME</h3>
-                        <div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
-                            <div class="control-group" style="flex:0 0 130px;">
-                                <label>PRESET</label>
-                                <select id="brand-theme">
-                                    <option value="dark" ${c.theme !== "light" && c.theme !== "custom" ? "selected" : ""}>DARK</option>
-                                    <option value="light" ${c.theme === "light" ? "selected" : ""}>LIGHT</option>
-                                    <option value="custom" ${c.theme === "custom" ? "selected" : ""}>CUSTOM</option>
-                                </select>
-                            </div>
-                            ${colorField("brand-accent", "ACCENT", colors.accent || "#d97706")}
-                            ${colorField("brand-background", "BACKGROUND", colors.background || "#0a0a0a")}
-                            ${colorField("brand-surface", "SURFACE", colors.surface || "#111111")}
-                            ${colorField("brand-text", "TEXT", colors.text || "#f9fafb")}
-                            ${colorField("brand-secondary", "SECONDARY", colors.secondary || "#22d3ee")}
-                        </div>
-                        <p class="admin-help-text">Preset fills in its standard colors below - tweak after, or pick CUSTOM to leave your own alone. Secondary is used for "preparing" status, station tabs, etc.</p>
+                <div id="brand-theme-section"></div>
+
+                <div class="readonly-section">
+                    <div class="readonly-section-header"><h3 style="margin:0;">SAVED THEMES (e.g. HOLIDAY PROFILES)</h3></div>
+                    <p class="admin-help-text">Save the branding above as a named profile (Diwali, Christmas, etc.) to switch back to instantly later.</p>
+                    <div id="branding-profiles-list" style="margin-bottom:10px;">
+                        ${
+                            Object.keys(profiles).length === 0
+                                ? `<p class="admin-help-text">No saved profiles yet.</p>`
+                                : Object.keys(profiles)
+                                      .map(
+                                          (name) => `
+                                    <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
+                                        <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(name)}</span>
+                                        ${canEdit ? `<button class="admin-btn" data-activate-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">ACTIVATE</button>
+                                        <button class="admin-btn admin-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">DELETE</button>` : ""}
+                                    </div>
+                                `
+                                      )
+                                      .join("")
+                        }
                     </div>
-                    <div style="flex:1 1 280px; min-width:240px;">
-                        <h3 style="margin-top:0;">SAVED THEMES (e.g. HOLIDAY PROFILES)</h3>
-                        <p class="admin-help-text">Save the branding on this page as a named profile (Diwali, Christmas, etc.) to switch back to instantly later.</p>
-                        <div id="branding-profiles-list" style="margin-bottom:10px;">
-                            ${
-                                Object.keys(profiles).length === 0
-                                    ? `<p class="admin-help-text">No saved profiles yet.</p>`
-                                    : Object.keys(profiles)
-                                          .map(
-                                              (name) => `
-                                        <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
-                                            <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(name)}</span>
-                                            <button class="admin-btn" data-activate-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">ACTIVATE</button>
-                                            <button class="admin-btn admin-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">DELETE</button>
-                                        </div>
-                                    `
-                                          )
-                                          .join("")
-                            }
-                        </div>
-                        <div style="display:flex; gap:8px;">
-                            <input type="text" id="new-profile-name" maxlength="40" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
-                            <button class="admin-btn" id="save-profile">SAVE AS PROFILE</button>
-                        </div>
-                    </div>
+                    ${
+                        canEdit
+                            ? `
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="new-profile-name" maxlength="40" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                        <button class="admin-btn" id="save-profile">SAVE AS PROFILE</button>
+                    </div>`
+                            : ""
+                    }
                 </div>
 
-                <h3 style="margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">ADMIN PANEL TEXT</h3>
-                <p class="admin-help-text">Font size/color for the admin panel's own sub-tab row, muted helper text, and field labels - staff-facing only, not shown to customers.</p>
-                <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end;">
-                    <div class="control-group" style="flex:0 0 100px;">
-                        <label>TABS SIZE</label>
-                        <input type="number" id="brand-admintabs-size" min="5" max="24" step="0.5" value="${(textStyles.adminTabs && textStyles.adminTabs.fontSize) || 9}" />
+                <div id="brand-admin-text-section"></div>
+                <div id="brand-images-section"></div>
+
+                <div class="readonly-section">
+                    <div class="readonly-section-header"><h3 style="margin:0;">CUSTOM ICONS</h3></div>
+                    <p class="admin-help-text">Upload or link your own icon to make it available in the menu item editor, alongside the built-in set.</p>
+                    <div id="custom-icons-list" style="margin-bottom:10px;">
+                        ${
+                            Object.keys(customIcons).length === 0
+                                ? `<p class="admin-help-text">No custom icons added yet.</p>`
+                                : Object.entries(customIcons)
+                                      .map(
+                                          ([key, url]) => `
+                                    <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
+                                        <img src="${escapeHtmlAttr(url)}" style="width:22px; height:22px; object-fit:contain;" />
+                                        <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(key)}</span>
+                                        ${canEdit ? `<button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>` : ""}
+                                    </div>
+                                `
+                                      )
+                                      .join("")
+                        }
                     </div>
-                    ${colorField("brand-admintabs-color", "TABS COLOR", (textStyles.adminTabs && textStyles.adminTabs.color) || "#888888")}
-                    <div class="control-group" style="flex:0 0 100px;">
-                        <label>HELPER TEXT SIZE</label>
-                        <input type="number" id="brand-adminhelp-size" min="5" max="24" step="0.5" value="${(textStyles.adminHelp && textStyles.adminHelp.fontSize) || 7.5}" />
-                    </div>
-                    ${colorField("brand-adminhelp-color", "HELPER COLOR", (textStyles.adminHelp && textStyles.adminHelp.color) || "#888888")}
-                    <div class="control-group" style="flex:0 0 100px;">
-                        <label>LABELS SIZE</label>
-                        <input type="number" id="brand-adminlabels-size" min="5" max="24" step="0.5" value="${(textStyles.adminLabels && textStyles.adminLabels.fontSize) || 8}" />
-                    </div>
-                    ${colorField("brand-adminlabels-color", "LABELS COLOR", (textStyles.adminLabels && textStyles.adminLabels.color) || "#888888")}
+                    ${
+                        canEdit
+                            ? `
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <input type="text" id="new-icon-key" maxlength="40" placeholder="icon name" style="flex:1 1 120px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                        <input type="text" id="new-icon-url" maxlength="500" placeholder="image URL" style="flex:1 1 140px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                        <button type="button" class="admin-btn-secondary" id="new-icon-pick" style="white-space:nowrap;">BROWSE</button>
+                        <button class="admin-btn" id="add-custom-icon">ADD</button>
+                    </div>`
+                            : ""
+                    }
                 </div>
 
-                <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; margin-top:20px; border-top:1px solid var(--color-border); padding-top:16px;">
-                    <div style="flex:1 1 320px; min-width:280px;">
-                        <h3 style="margin-top:0;">IMAGES</h3>
-                        <div class="control-group">
-                            <label>HERO / STOREFRONT IMAGE (home page - blank keeps the default icon)</label>
-                            <div style="display:flex; gap:8px;">
-                                <input type="text" id="brand-hero" maxlength="500" value="${escapeHtmlAttr(c.heroImageUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
-                                <button type="button" id="brand-hero-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
-                            </div>
-                        </div>
-                        <div class="control-group">
-                            <label>LOGO IMAGE (top nav - blank hides it)</label>
-                            <div style="display:flex; gap:8px;">
-                                <input type="text" id="brand-logo" maxlength="500" value="${escapeHtmlAttr(c.logoUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
-                                <button type="button" id="brand-logo-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
-                            </div>
-                        </div>
-                        <div class="control-group">
-                            <label>HORIZONTAL LOGO (optional - one wide image instead of icon + name)</label>
-                            <div style="display:flex; gap:8px;">
-                                <input type="text" id="brand-logo-wide" maxlength="500" value="${escapeHtmlAttr(c.logoWideUrl || "")}" placeholder="https://... or pick from the bucket" style="flex:1;" />
-                                <button type="button" id="brand-logo-wide-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
-                            </div>
-                        </div>
-                        <p class="admin-help-text">Paste a URL, or BROWSE to upload/pick from the bucket (shared with menu item photos).</p>
-                    </div>
-                    <div style="flex:1 1 280px; min-width:240px;">
-                        <h3 style="margin-top:0;">CUSTOM ICONS</h3>
-                        <p class="admin-help-text">Upload or link your own icon to make it available in the menu item editor, alongside the built-in set.</p>
-                        <div id="custom-icons-list" style="margin-bottom:10px;">
-                            ${
-                                Object.keys(customIcons).length === 0
-                                    ? `<p class="admin-help-text">No custom icons added yet.</p>`
-                                    : Object.entries(customIcons)
-                                          .map(
-                                              ([key, url]) => `
-                                        <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
-                                            <img src="${escapeHtmlAttr(url)}" style="width:22px; height:22px; object-fit:contain;" />
-                                            <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(key)}</span>
-                                            <button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>
-                                        </div>
-                                    `
-                                          )
-                                          .join("")
-                            }
-                        </div>
-                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                            <input type="text" id="new-icon-key" maxlength="40" placeholder="icon name" style="flex:1 1 120px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
-                            <input type="text" id="new-icon-url" maxlength="500" placeholder="image URL" style="flex:1 1 140px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
-                            <button type="button" class="admin-btn-secondary" id="new-icon-pick" style="white-space:nowrap;">BROWSE</button>
-                            <button class="admin-btn" id="add-custom-icon">ADD</button>
-                        </div>
-                    </div>
-                </div>
-
-                <p id="branding-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:16px;"></p>
-                <div style="display:flex; gap:10px; flex-wrap:wrap; border-top:1px solid var(--color-border); padding-top:16px;">
-                    <button class="admin-btn-primary" id="branding-save">SAVE BRANDING</button>
-                    <button class="admin-btn-secondary" id="branding-reset">RESET TO DEFAULT</button>
-                </div>
+                ${canEdit ? `<div style="border-top:1px solid var(--color-border); padding-top:16px;"><button class="admin-btn-secondary" id="branding-reset">RESET TO DEFAULT</button></div>` : ""}
             </div>
         `;
 
-        const collectColors = () => ({
-            accent: document.getElementById("brand-accent").value,
-            background: document.getElementById("brand-background").value,
-            surface: document.getElementById("brand-surface").value,
-            text: document.getElementById("brand-text").value,
-            secondary: document.getElementById("brand-secondary").value
-        });
-
-        // Choosing a DARK/LIGHT preset fills in that theme's standard colors
-        // immediately - CUSTOM leaves whatever's currently in the pickers alone.
-        document.getElementById("brand-theme").addEventListener("change", (e) => {
-            const preset = THEME_PRESETS[e.target.value];
-            if (!preset) return; // "custom" - don't touch the pickers
-            document.getElementById("brand-accent").value = preset.accent;
-            document.getElementById("brand-background").value = preset.background;
-            document.getElementById("brand-surface").value = preset.surface;
-            document.getElementById("brand-text").value = preset.text;
-            document.getElementById("brand-secondary").value = preset.secondary;
-        });
-
-        document.getElementById("brand-hero-pick").addEventListener("click", () => {
-            renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-hero").value = url) });
-        });
-        document.getElementById("brand-logo-pick").addEventListener("click", () => {
-            renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-logo").value = url) });
-        });
-        document.getElementById("brand-logo-wide-pick").addEventListener("click", () => {
-            renderImagePickerModal({ onSelect: (url) => (document.getElementById("brand-logo-wide").value = url) });
-        });
-        document.getElementById("new-icon-pick").addEventListener("click", () => {
-            renderImagePickerModal({ onSelect: (url) => (document.getElementById("new-icon-url").value = url) });
-        });
-
-        const doSaveBranding = async () => {
-            const errorEl = document.getElementById("branding-error");
-            errorEl.textContent = "";
-            try {
-                const updated = await AdminConfig.saveSettings({
-                    theme: document.getElementById("brand-theme").value,
-                    heroImageUrl: document.getElementById("brand-hero").value.trim(),
-                    logoUrl: document.getElementById("brand-logo").value.trim(),
-                    logoWideUrl: document.getElementById("brand-logo-wide").value.trim(),
-                    colors: collectColors(),
-                    textStyles: {
-                        adminTabs: {
-                            fontSize: Number(document.getElementById("brand-admintabs-size").value) || 9,
-                            color: document.getElementById("brand-admintabs-color").value
+        renderReadOnlySection(document.getElementById("brand-theme-section"), {
+            title: "THEME",
+            canEdit,
+            fields: [
+                { label: "Preset", value: (c.theme || "dark").toUpperCase() },
+                { label: "Accent", value: colors.accent || "#d97706" },
+                { label: "Background", value: colors.background || "#0a0a0a" },
+                { label: "Surface", value: colors.surface || "#111111" },
+                { label: "Text", value: colors.text || "#f9fafb" },
+                { label: "Secondary", value: colors.secondary || "#22d3ee", tooltip: "Used for “preparing” status, station tabs, etc." }
+            ],
+            onEdit: () => {
+                renderSectionEditModal({
+                    title: "EDIT THEME",
+                    fields: [
+                        {
+                            id: "bf-theme",
+                            label: "Preset",
+                            type: "select",
+                            value: c.theme || "dark",
+                            options: [
+                                { value: "dark", label: "DARK" },
+                                { value: "light", label: "LIGHT" },
+                                { value: "custom", label: "CUSTOM" }
+                            ]
                         },
-                        adminHelp: {
-                            fontSize: Number(document.getElementById("brand-adminhelp-size").value) || 7.5,
-                            color: document.getElementById("brand-adminhelp-color").value
-                        },
-                        adminLabels: {
-                            fontSize: Number(document.getElementById("brand-adminlabels-size").value) || 8,
-                            color: document.getElementById("brand-adminlabels-color").value
-                        }
+                        { id: "bf-accent", label: "Accent", value: colors.accent || "#d97706", type: "color" },
+                        { id: "bf-background", label: "Background", value: colors.background || "#0a0a0a", type: "color" },
+                        { id: "bf-surface", label: "Surface", value: colors.surface || "#111111", type: "color" },
+                        { id: "bf-text", label: "Text", value: colors.text || "#f9fafb", type: "color" },
+                        { id: "bf-secondary", label: "Secondary", value: colors.secondary || "#22d3ee", type: "color" }
+                    ],
+                    onSave: async (v) => {
+                        await AdminConfig.saveSettings({
+                            theme: v["bf-theme"],
+                            colors: { accent: v["bf-accent"], background: v["bf-background"], surface: v["bf-surface"], text: v["bf-text"], secondary: v["bf-secondary"] }
+                        });
+                        if (window.applyBranding) window.applyBranding(AdminConfig.settings);
+                        ok("Theme saved");
+                        this.renderBranding(root);
                     }
                 });
-                if (window.applyBranding) window.applyBranding(updated);
-                ok("Branding saved");
-            } catch (e) {
-                errorEl.textContent = e.message;
-                fail(e.message);
-            }
-        };
-        document.getElementById("branding-save").addEventListener("click", doSaveBranding);
-
-        document.getElementById("branding-reset").addEventListener("click", () => {
-            renderInfoModal({
-                title: "RESET BRANDING",
-                message: "Reset theme, colors, hero image, logo, and admin panel text size/color back to the original defaults? Shop identity, home page content, and store details are not affected.",
-                confirmText: "RESET",
-                cancelText: "CANCEL",
-                onConfirm: async () => {
-                    const res = await fetch("/api/config/reset-branding", { method: "POST", credentials: "include" });
-                    const updated = await res.json();
-                    if (!res.ok) return fail("Could not reset branding");
-                    AdminConfig.settings = updated;
-                    if (window.applyBranding) window.applyBranding(updated);
-                    await this.renderActiveTab();
-                    ok("Branding reset to default");
-                }
-            });
-        });
-
-        document.getElementById("add-custom-icon").addEventListener("click", async () => {
-            const key = document.getElementById("new-icon-key").value.trim().toLowerCase().replace(/\s+/g, "-");
-            const url = document.getElementById("new-icon-url").value.trim();
-            if (!key || !url) return fail("Enter both a name and an image URL");
-            try {
-                const updated = await AdminConfig.saveSettings({ customIcons: { [key]: url } });
-                if (window.applyBranding) window.applyBranding(updated);
-                await this.renderActiveTab();
-                ok("Icon added");
-            } catch (e) {
-                fail(e.message);
-            }
-        });
-        root.querySelectorAll("[data-remove-icon]").forEach((btn) =>
-            btn.addEventListener("click", async () => {
-                const res = await fetch(`/api/config/custom-icons/${encodeURIComponent(btn.dataset.removeIcon)}`, {
-                    method: "DELETE",
-                    credentials: "include"
+                // Choosing DARK/LIGHT fills in that theme's standard colors
+                // immediately - CUSTOM leaves whatever's in the pickers alone.
+                document.getElementById("bf-theme").addEventListener("change", (e) => {
+                    const preset = THEME_PRESETS[e.target.value];
+                    if (!preset) return;
+                    document.getElementById("bf-accent").value = preset.accent;
+                    document.getElementById("bf-background").value = preset.background;
+                    document.getElementById("bf-surface").value = preset.surface;
+                    document.getElementById("bf-text").value = preset.text;
+                    document.getElementById("bf-secondary").value = preset.secondary;
                 });
-                if (res.ok) {
-                    const updated = await res.json();
-                    AdminConfig.settings = updated;
-                    if (window.applyBranding) window.applyBranding(updated);
-                    await this.renderActiveTab();
-                    ok("Icon removed");
-                }
-            })
-        );
-
-        document.getElementById("save-profile").addEventListener("click", async () => {
-            const name = document.getElementById("new-profile-name").value.trim();
-            if (!name) return fail("Enter a profile name");
-            // Save whatever is currently in the color pickers, not just what's
-            // already persisted - so you can tweak then save in one step.
-            await doSaveBranding();
-            const res = await fetch("/api/branding-profiles", {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name })
-            });
-            if (res.ok) {
-                await this.renderActiveTab();
-                ok(`Saved profile "${name}"`);
-            } else {
-                fail("Could not save profile");
             }
         });
-        root.querySelectorAll("[data-activate-profile]").forEach((btn) =>
-            btn.addEventListener("click", async () => {
-                const res = await fetch(`/api/branding-profiles/${encodeURIComponent(btn.dataset.activateProfile)}/activate`, {
+
+        renderReadOnlySection(document.getElementById("brand-admin-text-section"), {
+            title: "ADMIN PANEL TEXT",
+            canEdit,
+            fields: [
+                { label: "Tabs", value: `${(textStyles.adminTabs && textStyles.adminTabs.fontSize) || 9}pt, ${(textStyles.adminTabs && textStyles.adminTabs.color) || "#888888"}`, tooltip: "Staff-only, customers never see this." },
+                { label: "Helper text", value: `${(textStyles.adminHelp && textStyles.adminHelp.fontSize) || 7.5}pt, ${(textStyles.adminHelp && textStyles.adminHelp.color) || "#888888"}` },
+                { label: "Labels", value: `${(textStyles.adminLabels && textStyles.adminLabels.fontSize) || 8}pt, ${(textStyles.adminLabels && textStyles.adminLabels.color) || "#888888"}` }
+            ],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT ADMIN PANEL TEXT",
+                    fields: [
+                        { id: "bf-admintabs-size", label: "Tabs size", value: (textStyles.adminTabs && textStyles.adminTabs.fontSize) || 9, type: "number", min: 5, max: 24, step: 0.5 },
+                        { id: "bf-admintabs-color", label: "Tabs color", value: (textStyles.adminTabs && textStyles.adminTabs.color) || "#888888", type: "color" },
+                        { id: "bf-adminhelp-size", label: "Helper text size", value: (textStyles.adminHelp && textStyles.adminHelp.fontSize) || 7.5, type: "number", min: 5, max: 24, step: 0.5 },
+                        { id: "bf-adminhelp-color", label: "Helper text color", value: (textStyles.adminHelp && textStyles.adminHelp.color) || "#888888", type: "color" },
+                        { id: "bf-adminlabels-size", label: "Labels size", value: (textStyles.adminLabels && textStyles.adminLabels.fontSize) || 8, type: "number", min: 5, max: 24, step: 0.5 },
+                        { id: "bf-adminlabels-color", label: "Labels color", value: (textStyles.adminLabels && textStyles.adminLabels.color) || "#888888", type: "color" }
+                    ],
+                    onSave: async (v) => {
+                        await AdminConfig.saveSettings({
+                            textStyles: {
+                                adminTabs: { fontSize: Number(v["bf-admintabs-size"]) || 9, color: v["bf-admintabs-color"] },
+                                adminHelp: { fontSize: Number(v["bf-adminhelp-size"]) || 7.5, color: v["bf-adminhelp-color"] },
+                                adminLabels: { fontSize: Number(v["bf-adminlabels-size"]) || 8, color: v["bf-adminlabels-color"] }
+                            }
+                        });
+                        if (window.applyBranding) window.applyBranding(AdminConfig.settings);
+                        ok("Admin panel text saved");
+                        this.renderBranding(root);
+                    }
+                })
+        });
+
+        renderReadOnlySection(document.getElementById("brand-images-section"), {
+            title: "IMAGES",
+            canEdit,
+            fields: [
+                { label: "Hero / storefront image", value: c.heroImageUrl || "" },
+                { label: "Logo image", value: c.logoUrl || "" },
+                { label: "Horizontal logo", value: c.logoWideUrl || "" }
+            ],
+            emptyNote: "No images set - defaults are used.",
+            onEdit: () => {
+                renderSectionEditModal({
+                    title: "EDIT IMAGES",
+                    width: "480px",
+                    fields: [
+                        { id: "bf-hero", label: "Hero / storefront image (home page - blank keeps the default icon)", value: c.heroImageUrl || "", maxlength: 500, placeholder: "https://... or pick from the bucket" },
+                        { id: "bf-logo", label: "Logo image (top nav - blank hides it)", value: c.logoUrl || "", maxlength: 500, placeholder: "https://... or pick from the bucket" },
+                        { id: "bf-logo-wide", label: "Horizontal logo (optional - one wide image instead of icon + name)", value: c.logoWideUrl || "", maxlength: 500, placeholder: "https://... or pick from the bucket" }
+                    ],
+                    onSave: async (v) => {
+                        await AdminConfig.saveSettings({ heroImageUrl: v["bf-hero"].trim(), logoUrl: v["bf-logo"].trim(), logoWideUrl: v["bf-logo-wide"].trim() });
+                        if (window.applyBranding) window.applyBranding(AdminConfig.settings);
+                        ok("Images saved");
+                        this.renderBranding(root);
+                    }
+                });
+                const addBrowseButton = (fieldId) => {
+                    const input = document.getElementById(fieldId);
+                    if (!input) return;
+                    const btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.className = "admin-btn-secondary";
+                    btn.textContent = "BROWSE";
+                    btn.style.marginTop = "6px";
+                    btn.addEventListener("click", () => renderImagePickerModal({ onSelect: (url) => (input.value = url) }));
+                    input.insertAdjacentElement("afterend", btn);
+                };
+                addBrowseButton("bf-hero");
+                addBrowseButton("bf-logo");
+                addBrowseButton("bf-logo-wide");
+            }
+        });
+
+        if (canEdit) {
+            document.getElementById("new-icon-pick").addEventListener("click", () => {
+                renderImagePickerModal({ onSelect: (url) => (document.getElementById("new-icon-url").value = url) });
+            });
+
+            document.getElementById("branding-reset").addEventListener("click", () => {
+                renderInfoModal({
+                    title: "RESET BRANDING",
+                    message: "Reset theme, colors, hero image, logo, and admin panel text size/color back to the original defaults? Shop identity, home page content, and store details are not affected.",
+                    confirmText: "RESET",
+                    cancelText: "CANCEL",
+                    onConfirm: async () => {
+                        const res = await fetch("/api/config/reset-branding", { method: "POST", credentials: "include" });
+                        const updated = await res.json();
+                        if (!res.ok) return fail("Could not reset branding");
+                        AdminConfig.settings = updated;
+                        if (window.applyBranding) window.applyBranding(updated);
+                        await this.renderActiveTab();
+                        ok("Branding reset to default");
+                    }
+                });
+            });
+
+            document.getElementById("add-custom-icon").addEventListener("click", async () => {
+                const key = document.getElementById("new-icon-key").value.trim().toLowerCase().replace(/\s+/g, "-");
+                const url = document.getElementById("new-icon-url").value.trim();
+                if (!key || !url) return fail("Enter both a name and an image URL");
+                try {
+                    const updated = await AdminConfig.saveSettings({ customIcons: { [key]: url } });
+                    if (window.applyBranding) window.applyBranding(updated);
+                    await this.renderActiveTab();
+                    ok("Icon added");
+                } catch (e) {
+                    fail(e.message);
+                }
+            });
+            root.querySelectorAll("[data-remove-icon]").forEach((btn) =>
+                btn.addEventListener("click", async () => {
+                    const res = await fetch(`/api/config/custom-icons/${encodeURIComponent(btn.dataset.removeIcon)}`, {
+                        method: "DELETE",
+                        credentials: "include"
+                    });
+                    if (res.ok) {
+                        const updated = await res.json();
+                        AdminConfig.settings = updated;
+                        if (window.applyBranding) window.applyBranding(updated);
+                        await this.renderActiveTab();
+                        ok("Icon removed");
+                    }
+                })
+            );
+
+            document.getElementById("save-profile").addEventListener("click", async () => {
+                const name = document.getElementById("new-profile-name").value.trim();
+                if (!name) return fail("Enter a profile name");
+                const res = await fetch("/api/branding-profiles", {
                     method: "POST",
-                    credentials: "include"
-                });
-                if (res.ok) {
-                    const updated = await res.json();
-                    AdminConfig.settings = updated;
-                    if (window.applyBranding) window.applyBranding(updated);
-                    if (window.renderFooter) window.renderFooter(updated);
-                    await this.renderActiveTab();
-                    ok(`Activated "${btn.dataset.activateProfile}"`);
-                }
-            })
-        );
-        root.querySelectorAll("[data-delete-profile]").forEach((btn) =>
-            btn.addEventListener("click", async () => {
-                const res = await fetch(`/api/branding-profiles/${encodeURIComponent(btn.dataset.deleteProfile)}`, {
-                    method: "DELETE",
-                    credentials: "include"
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name })
                 });
                 if (res.ok) {
                     await this.renderActiveTab();
-                    ok("Profile deleted");
+                    ok(`Saved profile "${name}"`);
+                } else {
+                    fail("Could not save profile");
                 }
-            })
-        );
+            });
+            root.querySelectorAll("[data-activate-profile]").forEach((btn) =>
+                btn.addEventListener("click", async () => {
+                    const res = await fetch(`/api/branding-profiles/${encodeURIComponent(btn.dataset.activateProfile)}/activate`, {
+                        method: "POST",
+                        credentials: "include"
+                    });
+                    if (res.ok) {
+                        const updated = await res.json();
+                        AdminConfig.settings = updated;
+                        if (window.applyBranding) window.applyBranding(updated);
+                        if (window.renderFooter) window.renderFooter(updated);
+                        await this.renderActiveTab();
+                        ok(`Activated "${btn.dataset.activateProfile}"`);
+                    }
+                })
+            );
+            root.querySelectorAll("[data-delete-profile]").forEach((btn) =>
+                btn.addEventListener("click", async () => {
+                    const res = await fetch(`/api/branding-profiles/${encodeURIComponent(btn.dataset.deleteProfile)}`, {
+                        method: "DELETE",
+                        credentials: "include"
+                    });
+                    if (res.ok) {
+                        await this.renderActiveTab();
+                        ok("Profile deleted");
+                    }
+                })
+            );
+        }
     },
 
     // ------------------------------------------------------------ CONTENT (shop identity/copy/home page text)
