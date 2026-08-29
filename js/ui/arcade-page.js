@@ -192,15 +192,31 @@ export const ArcadePage = {
     },
 
     async renderGate() {
-        this.root.innerHTML = `<p style="color:var(--color-text-muted); font-size:9pt;">Checking access&hellip;</p>`;
+        this.root.innerHTML = `<p aria-live="polite" style="color:var(--color-text-muted); font-size:9pt;">Checking access&hellip;</p>`;
         const access = await ArcadeSystem.checkAccess();
         if (!access.allowed) {
             // The page's own h1 (index.html, matches Billing/Admin's header
-            // treatment) already says "ARCADE" - this used to repeat it in
-            // a second, differently-styled heading right below.
+            // treatment) already says "ARCADE" - no need for a second one
+            // here. A big controller icon + the server's own reason + a way
+            // to actually go do something about it, instead of one muted
+            // line that read as broken/empty rather than intentional.
             this.root.innerHTML = `
-                <p style="color:var(--color-text-muted); font-size:9pt; padding:20px 0;">${escapeHtml(access.reason || "Place an order to unlock the arcade.")}</p>
+                <div class="arcade-locked">
+                    <svg viewBox="0 0 64 40" class="arcade-locked-icon" aria-hidden="true" focusable="false">
+                        <rect x="6" y="10" width="52" height="20" rx="6" fill="var(--color-accent)" />
+                        <rect x="2" y="14" width="10" height="16" rx="5" fill="var(--color-accent)" />
+                        <rect x="52" y="14" width="10" height="16" rx="5" fill="var(--color-accent)" />
+                        <rect x="14" y="16" width="4" height="10" fill="var(--color-bg)" />
+                        <rect x="10" y="19" width="12" height="4" fill="var(--color-bg)" />
+                        <circle cx="37" cy="22" r="3.2" fill="var(--color-bg)" />
+                        <circle cx="44" cy="16" r="3.2" fill="var(--color-bg)" />
+                        <circle cx="51" cy="22" r="3.2" fill="var(--color-bg)" />
+                    </svg>
+                    <p class="arcade-locked-reason" aria-live="polite">${escapeHtml(access.reason || "Place an order to unlock the arcade.")}</p>
+                    <button type="button" class="btn-primary" id="arcade-locked-start-btn">[ START ORDER ]</button>
+                </div>
             `;
+            document.getElementById("arcade-locked-start-btn").addEventListener("click", () => window.showPage("menu"));
             return;
         }
         this.renderMenu(access);

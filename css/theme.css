@@ -2496,6 +2496,53 @@ input[type="checkbox"]:disabled {
     background: #1a1a1a;
 }
 
+/* .arcade-card is a div with role="button" (it mounts a game in place
+   rather than navigating a URL, see arcade-page.js) - the app's global
+   button:focus-visible rule only covers real <button>/<input>/<select>/
+   <textarea> elements, so this keyboard-focusable div had no visible
+   focus ring at all despite already being operable via Enter/Space. */
+.arcade-card:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+/* Locked-state ("place an order to unlock the arcade") - previously a
+   single muted line, which read as broken/empty rather than intentional.
+   Centers a big pixel-style controller icon + the server-given reason +
+   a way to actually go do something about it. */
+.arcade-locked {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 18px;
+    padding: 60px 20px;
+}
+
+.arcade-locked-icon {
+    width: 160px;
+    height: 100px;
+    flex-shrink: 0;
+    animation: arcade-locked-bob 2.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .arcade-locked-icon {
+        animation: none;
+    }
+}
+
+@keyframes arcade-locked-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+.arcade-locked-reason {
+    color: var(--color-text-muted);
+    font-size: 9.5pt;
+    max-width: 360px;
+}
+
 .arcade-card .arcade-thumb {
     width: 56px;
     height: 56px;
@@ -2577,11 +2624,13 @@ input[type="checkbox"]:disabled {
 
 @media (min-width: 820px) and (min-aspect-ratio: 1/1) {
     .arcade-play-layout {
-        /* The outer two columns use 1fr (not a fixed/minmax-only track) so
-           they actually grow to absorb leftover width up to the 1400px cap
-           above - a wide monitor's extra space becomes a bigger switcher/
-           leaderboard instead of just more margin outside the component. */
-        grid-template-columns: minmax(200px, 1fr) minmax(0, 620px) minmax(260px, 1fr);
+        /* The game itself is what someone's actually here to look at - the
+           switcher/leaderboard columns get just enough room for their
+           thumbnails/scores to read comfortably (a capped range, not 1fr),
+           and the game column takes the 1fr so it absorbs all the leftover
+           width up to the 1400px cap above instead of the side columns
+           growing to outweigh it on a wide monitor. */
+        grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) minmax(220px, 300px);
         align-items: start;
     }
     .arcade-switcher {
@@ -2592,7 +2641,7 @@ input[type="checkbox"]:disabled {
         top: 20px;
     }
     .arcade-game-area {
-        max-width: 620px;
+        max-width: 700px;
         margin: 0 auto;
         min-height: 0; /* the fixed-size desktop game doesn't need to stretch */
     }
@@ -2658,8 +2707,15 @@ input[type="checkbox"]:disabled {
 }
 
 @media (min-width: 820px) and (min-aspect-ratio: 1/1) {
+    /* Was capped at a flat 320px regardless of how much room the now-
+       dominant game column (.arcade-game-area above) actually has - a wide
+       desktop can afford a visibly bigger board than that. Canvas games
+       stay at native pixel size on purpose (see .arcade-canvas-wrap canvas
+       above, upscaling blurs their pixel art) - DOM-grid boards have no
+       such limit, they just redraw their own cells at whatever size CSS
+       gives them. */
     .arcade-board {
-        max-width: 320px;
+        max-width: min(90%, 520px);
     }
 }
 

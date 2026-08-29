@@ -2811,10 +2811,20 @@ const DEFAULT_STORE_OPERATIONS = { tableCount: 10, arcade: { enabled: true, sess
  *  facing reads) and everywhere tax/table-count is actually used for real
  *  money/logic (computeOrder, billing-settle, table-session routes) so
  *  those two can never disagree about what a store's effective settings are. */
+// A missing `store` (no store context at all - an owner/Global Admin's own
+// view, or an order/session that was never tied to a store) is NOT the same
+// as "use plain global config" - tableCount/arcade were removed from global
+// config entirely in the franchise-governance redesign (they're fully
+// per-store now, see DEFAULT_STORE_OPERATIONS), so a naive `if (!store)
+// return config` leaves config.tableCount/config.arcade undefined and
+// crashes the first caller that reads `.arcade.enabled` (confirmed via
+// GET /api/arcade/access on a storeless guest order). Every field below is
+// therefore resolved with `store &&` guards instead of short-circuiting on
+// the whole function, so the DEFAULT_STORE_OPERATIONS fallback always
+// applies even with no store at all.
 function mergeStoreOverrides(config, store) {
-  if (!store) return config;
-  const payments = store.payments || {};
-  const operations = store.operations || DEFAULT_STORE_OPERATIONS;
+  const payments = (store && store.payments) || {};
+  const operations = (store && store.operations) || DEFAULT_STORE_OPERATIONS;
   return {
     ...config,
     cgstRate: payments.cgstRate ?? config.cgstRate,
@@ -2826,11 +2836,11 @@ function mergeStoreOverrides(config, store) {
     currencyCode: payments.currencyCode ?? config.currencyCode,
     tableCount: operations.tableCount ?? DEFAULT_STORE_OPERATIONS.tableCount,
     arcade: operations.arcade || DEFAULT_STORE_OPERATIONS.arcade,
-    homePicks: store.homePicks !== undefined ? store.homePicks : config.homePicks,
+    homePicks: store && store.homePicks !== undefined ? store.homePicks : config.homePicks,
     footer: {
       ...config.footer,
-      ...(store.address ? { address: store.address } : {}),
-      ...(store.phone ? { phone: store.phone } : {})
+      ...(store && store.address ? { address: store.address } : {}),
+      ...(store && store.phone ? { phone: store.phone } : {})
     }
   };
 }
