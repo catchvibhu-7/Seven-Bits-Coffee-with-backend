@@ -261,6 +261,21 @@ if (!fs.existsSync(CONFIG_FILE)) {
   });
 }
 
+// One-time boot migration: back-fill storeId:null (franchise-wide) onto any
+// coupon created before coupons gained per-store scoping, without touching
+// coupons.json at all if it doesn't exist yet or nothing needs changing.
+if (fs.existsSync(COUPONS_FILE)) {
+  const coupons = readJson(COUPONS_FILE, []);
+  let changed = false;
+  for (const c of coupons) {
+    if (c.storeId === undefined) {
+      c.storeId = null;
+      changed = true;
+    }
+  }
+  if (changed) writeJson(COUPONS_FILE, coupons);
+}
+
 const DEFAULT_BRANDING = {
   theme: "dark",
   colors: {
@@ -697,6 +712,22 @@ function requireRole(req, res, allowedRoles) {
   return session;
 }
 
+/** Franchise-wide settings (branding, menu catalog, global policy) are a
+ *  Global Admin's job specifically - not owner (read-only outside adding
+ *  Global Admins) and not a Local Admin (scoped to their own store's
+ *  settings instead). Only role:"admin" with no storeAccess restriction
+ *  qualifies - see accessibleStoreIds()/allowedRolesToCreate() above for
+ *  the same Global-vs-Local distinction used everywhere else. */
+function requireGlobalAdmin(req, res) {
+  const session = requireRole(req, res, MENU_ADMIN_ROLES);
+  if (!session) return null;
+  if (session.role !== "admin" || accessibleStoreIds(session) !== null) {
+    sendJson(res, 403, { error: "Only a Global Admin can edit franchise-wide settings" });
+    return null;
+  }
+  return session;
+}
+
 function getClientIp(req) {
   return req.socket.remoteAddress || "unknown";
 }
@@ -1065,7 +1096,7 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
     throw new Error("Coupon codes can't be combined with promotional items in your cart");
   }
   const coupons = readJson(COUPONS_FILE, []);
-  const coupon = couponCode ? findValidCoupon(couponCode, coupons) : null;
+  const coupon = couponCode ? findValidCoupon(couponCode, coupons, storeId) : null;
   const couponDiscount = coupon ? computeCouponDiscount(coupon, subtotal) : 0;
 
   // Loyalty points redemption - capped at the customer's real balance and at
@@ -1340,9 +1371,15 @@ route("GET", /^\/api\/auth\/session\/?$/, async (req, res) => {
 });
 
 /** Which roles a given session is allowed to hand out when creating a new account. */
+/** Franchise governance model: owner's only write action is creating a
+ *  Global Admin - everything else about the franchise is a Global Admin's
+ *  job (branding/menu/policy) or a Local Admin/manager's job (their own
+ *  store). "Global Admin" / "Local Admin" aren't separate role values -
+ *  they're role:"admin" with accessibleStoreIds(session) either null
+ *  (unrestricted = Global) or a concrete array (scoped = Local). */
 function allowedRolesToCreate(session) {
-  if (session.role === "owner") return ["employee", "manager", "admin", "owner"];
-  if (session.role === "admin") return ["employee", "manager"];
+  if (session.role === "owner") return ["admin"];
+  if (session.role === "admin") return accessibleStoreIds(session) === null ? ["employee", "manager", "admin"] : ["employee", "manager"];
   if (session.role === "manager") return ["employee"];
   return [];
 }
@@ -1376,6 +1413,12 @@ function canManageTarget(session, targetUser) {
   if (!targetUser) return false;
   if (session.role === "owner") return true;
   if (session.role === "admin") {
+    if (targetUser.role === "admin") {
+      // Only a Global Admin manages admin-tier accounts, and only Local
+      // Admins (scoped) - Global Admins don't manage each other, that
+      // stays owner's lane (the one account type owner still writes).
+      return accessibleStoreIds(session) === null && Array.isArray(targetUser.storeAccess) && targetUser.storeAccess.length > 0;
+    }
     if (!["employee", "manager"].includes(targetUser.role)) return false;
     const allowed = accessibleStoreIds(session);
     return !allowed || allowed.includes(targetUser.storeId);
@@ -1473,11 +1516,12 @@ route("POST", /^\/api\/users\/?$/, async (req, res) => {
   if (session.role === "admin" && allowedStores && !allowedStores.includes(storeId)) {
     return sendJson(res, 403, { error: "You don't have access to that store" });
   }
-  // storeAccess: only owner may set this (matches allowedRolesToCreate -
-  // only owner can create an "admin" account in the first place), and only
-  // applies when the new account's role is actually admin.
-  const storeAccess =
-    session.role === "owner" && role === "admin" && Array.isArray(body.storeAccess) ? body.storeAccess.map(Number).filter(Number.isFinite) : null;
+  // storeAccess: only owner or a Global Admin may set this (matches
+  // allowedRolesToCreate - those are the only two tiers that can create an
+  // "admin" account in the first place), and only applies when the new
+  // account's role is actually admin.
+  const canGrantStoreAccess = session.role === "owner" || (session.role === "admin" && accessibleStoreIds(session) === null);
+  const storeAccess = canGrantStoreAccess && role === "admin" && Array.isArray(body.storeAccess) ? body.storeAccess.map(Number).filter(Number.isFinite) : null;
 
   if (username.length < 3) return sendJson(res, 400, { error: "Username must be at least 3 characters" });
   const pwIssues = passwordIssues(password);
@@ -1545,12 +1589,14 @@ route("PATCH", /^\/api\/users\/(?<id>\d+)\/?$/, async (req, res, params) => {
   // (same gate as tag/pay rate above), matching reset-password's model of
   // "no extra confirmation beyond canManageTarget".
   if (body.disabled !== undefined) user.disabled = !!body.disabled;
-  // storeAccess: which stores an admin can see/manage - only the owner may
-  // grant/restrict this, and only for an admin account. An empty array or
-  // omitting the field entirely both mean "unrestricted" going forward.
+  // storeAccess: which stores an admin can see/manage - only the owner or a
+  // Global Admin may grant/restrict this (canManageTarget already limits a
+  // Global Admin to acting on Local Admin targets, never another Global
+  // Admin), and only for an admin account. An empty array or omitting the
+  // field entirely both mean "unrestricted" going forward.
   if (body.storeAccess !== undefined && user.role === "admin") {
-    if (session.role !== "owner") {
-      return sendJson(res, 403, { error: "Only the owner can change an admin's store access" });
+    if (session.role !== "owner" && !(session.role === "admin" && accessibleStoreIds(session) === null)) {
+      return sendJson(res, 403, { error: "Only the owner or a Global Admin can change an admin's store access" });
     }
     const storeAccess = Array.isArray(body.storeAccess) ? body.storeAccess.map(Number).filter(Number.isFinite) : [];
     user.storeAccess = storeAccess.length ? storeAccess : null;
@@ -1665,7 +1711,9 @@ route("GET", /^\/api\/stores\/public\/?$/, async (req, res) => {
 });
 
 route("POST", /^\/api\/stores\/?$/, async (req, res) => {
-  if (!requireRole(req, res, ["owner"])) return; // only the owner opens a new store
+  // Opening a new store is franchise structure, a Global Admin's lane - not
+  // owner (read-only outside adding Global Admins).
+  if (!requireGlobalAdmin(req, res)) return;
   const body = await readBody(req);
   const name = String(body.name || "").trim();
   if (!name) return sendJson(res, 400, { error: "Store name is required" });
@@ -1736,7 +1784,9 @@ route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
  *  storeAccess so they're never left "restricted to a store that doesn't
  *  exist" (which would otherwise look identical to "unrestricted"). */
 route("DELETE", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, ["owner"])) return;
+  // Closing a store is franchise structure too - Global Admin's lane, same
+  // as opening one.
+  if (!requireGlobalAdmin(req, res)) return;
   const storeId = Number(params.id);
   const stores = readJson(STORES_FILE, []);
   const store = stores.find((s) => s.id === storeId);
@@ -1902,7 +1952,11 @@ function periodKey(period) {
 function visibleStaffFor(session) {
   const users = readJson(USERS_FILE, []).filter((u) => PAYROLL_ROLES.includes(u.role));
   if (session.role === "manager") return users.filter((u) => u.storeId === session.storeId);
-  return users; // admin/owner see everyone
+  if (session.role === "admin") {
+    const allowed = accessibleStoreIds(session);
+    return allowed ? users.filter((u) => allowed.includes(u.storeId)) : users;
+  }
+  return users; // owner sees everyone
 }
 
 route("POST", /^\/api\/timeclock\/clock-in\/?$/, async (req, res) => {
@@ -2678,7 +2732,7 @@ route("GET", /^\/api\/config\/?$/, async (req, res, params, url) => {
 });
 
 route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const body = await readBody(req);
   const config = readJson(CONFIG_FILE, {});
   const allowed = [
@@ -2872,7 +2926,7 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
 });
 
 route("DELETE", /^\/api\/config\/custom-icons\/(?<key>[\w-]+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const config = readJson(CONFIG_FILE, {});
   if (config.customIcons) delete config.customIcons[params.key];
   writeJson(CONFIG_FILE, config);
@@ -3050,7 +3104,7 @@ route("POST", /^\/api\/admin\/restore\/?$/, async (req, res) => {
 route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
   // Resets ONLY the visual branding fields back to the original hardcoded
   // look - shop name, tax rates, and footer/store-details are untouched.
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const config = readJson(CONFIG_FILE, {});
   config.theme = DEFAULT_BRANDING.theme;
   config.colors = { ...DEFAULT_BRANDING.colors };
@@ -3068,14 +3122,14 @@ route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
 
 // --- Branding profiles ("holiday themes" the admin can save and switch between) ---
 route("GET", /^\/api\/branding-profiles\/?$/, async (req, res) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   sendJson(res, 200, readJson(BRANDING_PROFILES_FILE, {}));
 });
 
 route("POST", /^\/api\/branding-profiles\/?$/, async (req, res) => {
   // Saves the CURRENT live branding (theme/colors/hero/logo) as a named,
   // reusable profile - e.g. "Diwali", "Christmas" - to switch to later.
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const body = await readBody(req);
   const name = String(body.name || "").trim();
   if (!name) return sendJson(res, 400, { error: "Profile name is required" });
@@ -3094,7 +3148,7 @@ route("POST", /^\/api\/branding-profiles\/?$/, async (req, res) => {
 });
 
 route("POST", /^\/api\/branding-profiles\/(?<name>[^/]+)\/activate\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const profiles = readJson(BRANDING_PROFILES_FILE, {});
   const name = decodeURIComponent(params.name);
   const profile = profiles[name];
@@ -3111,7 +3165,7 @@ route("POST", /^\/api\/branding-profiles\/(?<name>[^/]+)\/activate\/?$/, async (
 });
 
 route("DELETE", /^\/api\/branding-profiles\/(?<name>[^/]+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const profiles = readJson(BRANDING_PROFILES_FILE, {});
   const name = decodeURIComponent(params.name);
   delete profiles[name];
@@ -3454,7 +3508,7 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
     if (couponCodeInput) {
       if (hasPromoItem) return sendJson(res, 400, { error: "Coupon codes can't be combined with promotional items" });
       const coupons = readJson(COUPONS_FILE, []);
-      coupon = findValidCoupon(couponCodeInput, coupons);
+      coupon = findValidCoupon(couponCodeInput, coupons, order.storeId ?? null);
       if (!coupon) return sendJson(res, 400, { error: "Invalid or expired code" });
     }
     const couponDiscount = coupon ? computeCouponDiscount(coupon, order.subtotal) : 0;
@@ -3660,12 +3714,18 @@ route("PATCH", /^\/api\/user-preferences\/?$/, async (req, res) => {
 // fixed number of redemptions.
 // ---------------------------------------------------------------------------
 
-function findValidCoupon(code, coupons) {
+/** storeId is the order's own store (null for a customer/guest with no
+ *  store chosen). A franchise-wide coupon (coupon.storeId == null) redeems
+ *  anywhere; a Local Admin/manager's local discount (coupon.storeId set)
+ *  only redeems at that one store - so a discount created for Store 2
+ *  can't be used at Store 1's checkout. */
+function findValidCoupon(code, coupons, storeId = null) {
   const normalized = String(code || "").trim().toUpperCase();
   if (!normalized) return null;
   const coupon = coupons.find((c) => c.code === normalized);
   if (!coupon || !coupon.active) return null;
   if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) return null;
+  if (coupon.storeId != null && coupon.storeId !== storeId) return null;
   return coupon;
 }
 
@@ -3676,10 +3736,16 @@ function computeCouponDiscount(coupon, subtotal) {
 }
 
 route("GET", /^\/api\/coupons\/?$/, async (req, res) => {
-  // Manager/owner only - returns everything, including private/stopped/
-  // exhausted codes. The public listing below is a separate, filtered route.
-  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
-  sendJson(res, 200, readJson(COUPONS_FILE, []));
+  // Everything including private/stopped/exhausted codes, but scoped like
+  // orders/KPI: a Local Admin/manager only sees franchise-wide coupons
+  // (storeId null) plus their own store's local discounts, never another
+  // store's. The public listing below is a separate, filtered route.
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const allowed = accessibleStoreIds(session);
+  let coupons = readJson(COUPONS_FILE, []);
+  if (allowed) coupons = coupons.filter((c) => c.storeId == null || allowed.includes(c.storeId));
+  sendJson(res, 200, coupons);
 });
 
 /** Lets a customer self-serve the list of codes worth trying at checkout.
@@ -3711,6 +3777,23 @@ route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
   if (type === "percent" && value > 100) return sendJson(res, 400, { error: "Percent discount can't exceed 100" });
   if (usageLimit !== null && (!Number.isFinite(usageLimit) || usageLimit <= 0)) return sendJson(res, 400, { error: "Usage limit must be a positive number, or left blank for unlimited" });
 
+  // storeId: null = franchise-wide coupon (Global Admin's lane). A manager
+  // always creates a local discount for their own store; a Local Admin
+  // must say which of their accessible stores it's for; a Global Admin/
+  // owner may target one store too, or omit it for franchise-wide.
+  let storeId = null;
+  if (session.role === "manager") {
+    storeId = session.storeId;
+  } else if (body.storeId !== undefined && body.storeId !== null && body.storeId !== "") {
+    const requested = Number(body.storeId);
+    if (!Number.isFinite(requested) || !canManageStore(session, requested)) {
+      return sendJson(res, 403, { error: "You don't have access to that store" });
+    }
+    storeId = requested;
+  } else if (session.role === "admin" && accessibleStoreIds(session) !== null) {
+    return sendJson(res, 400, { error: "Pick which store this local discount is for" });
+  }
+
   const coupon = {
     id: coupons.length ? Math.max(...coupons.map((c) => c.id)) + 1 : 1,
     code,
@@ -3720,6 +3803,7 @@ route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
     usedCount: 0,
     active: true,
     private: !!body.private, // default false = public, listed in GET /api/coupons/public
+    storeId,
     createdBy: session.name,
     createdAt: new Date().toISOString()
   };
@@ -3729,11 +3813,15 @@ route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
 });
 
 route("PATCH", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
   const body = await readBody(req);
   const coupons = readJson(COUPONS_FILE, []);
   const coupon = coupons.find((c) => c.id === Number(params.id));
   if (!coupon) return sendJson(res, 404, { error: "Coupon not found" });
+  if (coupon.storeId != null && !canManageStore(session, coupon.storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's discount" });
+  }
 
   if (body.active !== undefined) coupon.active = Boolean(body.active);
   if (body.private !== undefined) coupon.private = Boolean(body.private);
@@ -3742,10 +3830,14 @@ route("PATCH", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
 });
 
 route("DELETE", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
   const coupons = readJson(COUPONS_FILE, []);
   const idx = coupons.findIndex((c) => c.id === Number(params.id));
   if (idx === -1) return sendJson(res, 404, { error: "Coupon not found" });
+  if (coupons[idx].storeId != null && !canManageStore(session, coupons[idx].storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's discount" });
+  }
   coupons.splice(idx, 1);
   writeJson(COUPONS_FILE, coupons);
   sendJson(res, 200, { ok: true });
@@ -3755,10 +3847,17 @@ route("DELETE", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
  *  and discount amount without redeeming it (redemption/usedCount happens
  *  only at real order creation, so previewing never burns a use). */
 route("POST", /^\/api\/coupons\/validate\/?$/, async (req, res) => {
-  if (!requireSession(req, res)) return;
+  const session = requireSession(req, res);
+  if (!session) return;
   const body = await readBody(req);
   const coupons = readJson(COUPONS_FILE, []);
-  const coupon = findValidCoupon(body.code, coupons);
+  // storeId: the session's own store for staff, or the customer/guest's
+  // chosen store passed in the body (mirrors how POST /api/orders resolves
+  // effectiveStoreId) - a preview must apply the same store-scoping rule
+  // real redemption does, or it'd show a discount that then fails at
+  // checkout for a store-scoped local discount.
+  const previewStoreId = session.storeId != null ? session.storeId : Number.isFinite(Number(body.storeId)) ? Number(body.storeId) : null;
+  const coupon = findValidCoupon(body.code, coupons, previewStoreId);
   if (!coupon) return sendJson(res, 404, { error: "Invalid or expired coupon code" });
   const subtotal = Number(body.subtotal) || 0;
   sendJson(res, 200, { code: coupon.code, type: coupon.type, value: coupon.value, discountAmount: computeCouponDiscount(coupon, subtotal) });
