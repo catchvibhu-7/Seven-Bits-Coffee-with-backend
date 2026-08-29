@@ -3034,158 +3034,217 @@ export const AdminPortal = {
     },
 
     // ------------------------------------------------------------ CONTENT (shop identity/copy/home page text)
+    // Franchise-wide only now, same as Branding - Global-Admin-edit, view
+    // for everyone else. A store overrides "This week's picks" from its own
+    // Store Setup/This Store page (see renderStoreSettingsPanel()); the
+    // picks/roast story/headings/footer here are the franchise defaults.
     async renderContent(root) {
         const c = AdminConfig.settings;
+        const canEdit = this.isGlobalAdmin();
 
         root.innerHTML = `
             <div class="config-controls">
-                <h3 style="margin-top:0;">SHOP IDENTITY</h3>
-                <div class="control-group">
-                    <label>SHOP NAME</label>
-                    <input type="text" id="cfg-shop-name" maxlength="60" value="${escapeHtmlAttr(c.shopName || "")}" />
-                </div>
-                <div class="control-group">
-                    <label>HOME PAGE BADGE (e.g. "Est. 2019 &middot; 8-bit roastery")</label>
-                    <input type="text" id="cfg-hero-badge" maxlength="80" value="${escapeHtmlAttr(c.heroBadgeText || "")}" />
-                </div>
-                <div class="control-group">
-                    <label>HOME PAGE ABOUT TEXT</label>
-                    <textarea id="cfg-hero-tagline" rows="3" maxlength="400" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8.5pt;">${escapeHtmlAttr(c.heroTagline || "")}</textarea>
-                </div>
-                <div class="control-group">
-                    <label>RECEIPT FOOTER MESSAGE (printed at the bottom of the bill, under the logo from Branding)</label>
-                    <input type="text" id="cfg-receipt-footer" maxlength="120" value="${escapeHtmlAttr(c.receiptFooterText || "")}" />
-                </div>
-                <div class="control-group" style="max-width:260px;">
-                    <label>HERO IMAGE CAPTION (label under the storefront photo, before the address)</label>
-                    <input type="text" id="cfg-hero-caption-label" maxlength="40" placeholder="The counter" value="${escapeHtmlAttr(c.heroCaptionLabel || "")}" />
-                </div>
-                <p id="identity-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
-                <button class="admin-btn-primary" id="identity-save">SAVE SHOP IDENTITY</button>
+                <div id="content-identity-section"></div>
+                <div id="content-nav-section"></div>
 
-                <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">SITE NAVIGATION</h3>
-                <div class="control-group" style="max-width:180px;">
-                    <label>DEFAULT LAYOUT</label>
-                    <select id="cfg-default-nav-layout">
-                        <option value="rail" ${c.defaultNavLayout !== "topbar" ? "selected" : ""}>LEFT RAIL</option>
-                        <option value="topbar" ${c.defaultNavLayout === "topbar" ? "selected" : ""}>TOP BAR</option>
-                    </select>
-                </div>
-                <p class="admin-help-text" style="margin-top:-4px;">What a visitor sees the first time they load the site, before they've picked their own layout (rail/top-bar switch lives in Account Settings). Applies to customers, guests, and staff alike.</p>
-                <p id="nav-layout-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
-                <button class="admin-btn-primary" id="nav-layout-save">SAVE NAVIGATION</button>
+                <div class="readonly-section">
+                    <div class="readonly-section-header">
+                        <h3 style="margin:0;">HOME PAGE CONTENT (FRANCHISE DEFAULT)</h3>
+                        ${canEdit ? "" : `<span class="admin-help-text">A store can override “This week's picks” from its own Store Setup page.</span>`}
+                    </div>
+                    <div id="content-home-view"></div>
+                    ${
+                        canEdit
+                            ? `
+                    <div id="content-home-edit" style="margin-top:12px;">
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                            <div class="control-group">
+                                <label>PICKS HEADING</label>
+                                <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
+                            </div>
+                            <div class="control-group">
+                                <label>ROAST HEADING</label>
+                                <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
+                            </div>
+                            <div class="control-group">
+                                <label>CONTACT HEADING</label>
+                                <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
+                            </div>
+                        </div>
 
-                <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">HOME PAGE CONTENT</h3>
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
-                    <div class="control-group">
-                        <label>PICKS HEADING</label>
-                        <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
-                    </div>
-                    <div class="control-group">
-                        <label>ROAST HEADING</label>
-                        <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
-                    </div>
-                    <div class="control-group">
-                        <label>CONTACT HEADING</label>
-                        <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
-                    </div>
-                </div>
+                        <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:16px;">
+                            <div style="flex:1 1 320px; min-width:260px;">
+                                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
+                                <p class="admin-help-text">Pick up to 3 items to feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
+                                <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+                                <div id="home-picks-list" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                            </div>
+                            <div style="flex:1 1 240px; min-width:220px;">
+                                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
+                                <p class="admin-help-text">Small badge shown on each picked item's home page card (e.g. "House favourite").</p>
+                                <div id="home-picks-tags" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                            </div>
+                        </div>
 
-                <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:16px;">
-                    <div style="flex:1 1 320px; min-width:260px;">
-                        <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
-                        <p class="admin-help-text">Pick up to 3 items to feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
-                        <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
-                        <div id="home-picks-list" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
-                    </div>
-                    <div style="flex:1 1 240px; min-width:220px;">
-                        <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
-                        <p class="admin-help-text">Small badge shown on each picked item's home page card (e.g. "House favourite").</p>
-                        <div id="home-picks-tags" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
-                    </div>
+                        <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
+                        <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
+                        <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+                        <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
+                        <br />
+                        <p id="content-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                        <button class="admin-btn-primary" id="home-content-save">SAVE HOME PAGE CONTENT</button>
+                    </div>`
+                            : ""
+                    }
                 </div>
 
-                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
-                <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
-                <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
-                <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
-                <br />
-                <p id="content-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
-                <button class="admin-btn-primary" id="home-content-save">SAVE HOME PAGE CONTENT</button>
-
-                <h3 style="margin-top:22px; border-top:1px solid var(--color-border); padding-top:16px;">STORE DETAILS (HOME PAGE FOOTER)</h3>
-                <div class="control-group">
-                    <label>TAGLINE</label>
-                    <input type="text" id="brand-footer-tagline" maxlength="120" value="${escapeHtmlAttr((c.footer && c.footer.tagline) || "")}" placeholder="e.g. Hand-brewed since 2024" />
+                <div id="content-footer-section"></div>
+                <div class="readonly-section">
+                    <div class="readonly-section-header"><h3 style="margin:0;">FOOTER CUSTOM FIELDS</h3></div>
+                    <p class="admin-help-text">Anything else to show on "Find us" - Instagram, WhatsApp, GST number, whatever this shop needs. Add up to 6.</p>
+                    ${
+                        canEdit
+                            ? `
+                    <div id="footer-custom-fields-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+                    <button type="button" class="admin-btn-secondary" id="footer-custom-field-add" style="margin-bottom:14px;">+ ADD FIELD</button>
+                    <br />
+                    <p id="footer-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                    <button class="admin-btn-primary" id="footer-save">SAVE CUSTOM FIELDS</button>`
+                            : (c.customFooterFields || []).length === 0
+                              ? `<p class="admin-help-text">No custom fields added yet.</p>`
+                              : `<ul style="margin:0; padding-left:18px; font-size:8.5pt;">${(c.customFooterFields || []).map((f) => `<li>${escapeHtmlAttr(f.label)}: ${escapeHtmlAttr(f.value)}</li>`).join("")}</ul>`
+                    }
                 </div>
-                <div class="control-group">
-                    <label>ADDRESS</label>
-                    <input type="text" id="brand-footer-address" maxlength="200" value="${escapeHtmlAttr((c.footer && c.footer.address) || "")}" placeholder="Street, City, State, PIN" />
-                </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <div class="control-group">
-                        <label>PHONE</label>
-                        <input type="text" id="brand-footer-phone" maxlength="20" value="${escapeHtmlAttr((c.footer && c.footer.phone) || "")}" placeholder="+91 ..." />
-                    </div>
-                    <div class="control-group">
-                        <label>EMAIL</label>
-                        <input type="text" id="brand-footer-email" maxlength="80" value="${escapeHtmlAttr((c.footer && c.footer.email) || "")}" placeholder="hello@..." />
-                    </div>
-                </div>
-                <div class="control-group">
-                    <label>HOURS</label>
-                    <input type="text" id="brand-footer-hours" maxlength="60" value="${escapeHtmlAttr((c.footer && c.footer.hours) || "")}" placeholder="Mon-Sat: 8am - 8pm" />
-                </div>
-
-                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:6px;">Custom fields</label>
-                <p class="admin-help-text">Anything else to show on "Find us" - Instagram, WhatsApp, GST number, whatever this shop needs. Add up to 6.</p>
-                <div id="footer-custom-fields-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
-                <button type="button" class="admin-btn-secondary" id="footer-custom-field-add" style="margin-bottom:14px;">+ ADD FIELD</button>
-                <br />
-                <p id="footer-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
-                <button class="admin-btn-primary" id="footer-save">SAVE STORE DETAILS</button>
             </div>
         `;
 
-        document.getElementById("identity-save").addEventListener("click", async () => {
-            const errorEl = document.getElementById("identity-error");
-            errorEl.textContent = "";
-            const shopName = document.getElementById("cfg-shop-name").value.trim();
-            if (!shopName) {
-                errorEl.textContent = "Shop name can't be empty.";
-                return;
-            }
-            try {
-                const updated = await AdminConfig.saveSettings({
-                    shopName,
-                    heroBadgeText: document.getElementById("cfg-hero-badge").value,
-                    heroTagline: document.getElementById("cfg-hero-tagline").value,
-                    receiptFooterText: document.getElementById("cfg-receipt-footer").value,
-                    heroCaptionLabel: document.getElementById("cfg-hero-caption-label").value
-                });
-                if (window.applyBranding) window.applyBranding(updated);
-                ok("Shop identity saved");
-            } catch (e) {
-                errorEl.textContent = e.message;
-                fail(e.message);
-            }
+        renderReadOnlySection(document.getElementById("content-identity-section"), {
+            title: "SHOP IDENTITY",
+            canEdit,
+            fields: [
+                { label: "Shop name", value: c.shopName || "" },
+                { label: "Home page badge", value: c.heroBadgeText || "" },
+                { label: "Home page about text", value: c.heroTagline || "" },
+                { label: "Receipt footer message", value: c.receiptFooterText || "" },
+                { label: "Hero image caption", value: c.heroCaptionLabel || "" }
+            ],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT SHOP IDENTITY",
+                    width: "480px",
+                    fields: [
+                        { id: "cfg-shop-name", label: "Shop name", value: c.shopName || "", maxlength: 60 },
+                        { id: "cfg-hero-badge", label: 'Home page badge (e.g. "Est. 2019 · 8-bit roastery")', value: c.heroBadgeText || "", maxlength: 80 },
+                        { id: "cfg-hero-tagline", label: "Home page about text", value: c.heroTagline || "", type: "textarea", maxlength: 400, rows: 3 },
+                        { id: "cfg-receipt-footer", label: "Receipt footer message (printed under the logo on the bill)", value: c.receiptFooterText || "", maxlength: 120 },
+                        { id: "cfg-hero-caption-label", label: "Hero image caption (label before the address)", value: c.heroCaptionLabel || "", maxlength: 40, placeholder: "The counter" }
+                    ],
+                    onSave: async (v) => {
+                        const shopName = v["cfg-shop-name"].trim();
+                        if (!shopName) throw new Error("Shop name can't be empty.");
+                        const updated = await AdminConfig.saveSettings({
+                            shopName,
+                            heroBadgeText: v["cfg-hero-badge"],
+                            heroTagline: v["cfg-hero-tagline"],
+                            receiptFooterText: v["cfg-receipt-footer"],
+                            heroCaptionLabel: v["cfg-hero-caption-label"]
+                        });
+                        if (window.applyBranding) window.applyBranding(updated);
+                        ok("Shop identity saved");
+                        this.renderContent(root);
+                    }
+                })
         });
 
-        document.getElementById("nav-layout-save").addEventListener("click", async () => {
-            const errorEl = document.getElementById("nav-layout-error");
-            errorEl.textContent = "";
-            try {
-                await AdminConfig.saveSettings({ defaultNavLayout: document.getElementById("cfg-default-nav-layout").value });
-                ok("Navigation default saved");
-            } catch (e) {
-                errorEl.textContent = e.message;
-                fail(e.message);
-            }
+        renderReadOnlySection(document.getElementById("content-nav-section"), {
+            title: "SITE NAVIGATION",
+            canEdit,
+            fields: [{ label: "Default layout", value: c.defaultNavLayout === "topbar" ? "Top bar" : "Left rail" }],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT SITE NAVIGATION",
+                    fields: [
+                        {
+                            id: "cfg-default-nav-layout",
+                            label: "Default layout",
+                            type: "select",
+                            value: c.defaultNavLayout === "topbar" ? "topbar" : "rail",
+                            options: [
+                                { value: "rail", label: "LEFT RAIL" },
+                                { value: "topbar", label: "TOP BAR" }
+                            ],
+                            tooltip: "What a visitor sees before they've picked their own layout. Applies to customers, guests, and staff alike."
+                        }
+                    ],
+                    onSave: async (v) => {
+                        await AdminConfig.saveSettings({ defaultNavLayout: v["cfg-default-nav-layout"] });
+                        ok("Navigation default saved");
+                        this.renderContent(root);
+                    }
+                })
         });
+
+        const pickableItems = this.menu.items.filter((i) => !i.deleted && i.available !== false);
+        const homeViewEl = document.getElementById("content-home-view");
+        if (!c.homePicks || c.homePicks.length === 0) {
+            homeViewEl.innerHTML = `<p class="admin-help-text">No picks curated yet - falls back to the first few items in the top menu section.</p>`;
+        } else {
+            homeViewEl.innerHTML = `<ul style="margin:0; padding-left:18px; font-size:8.5pt;">${c.homePicks
+                .map((p) => {
+                    const item = pickableItems.find((i) => i.id === p.itemId);
+                    return `<li>${escapeHtmlAttr(item ? item.name : "Unknown item")}${p.tag ? ` (${escapeHtmlAttr(p.tag)})` : ""}</li>`;
+                })
+                .join("")}</ul>`;
+        }
+        if (!canEdit) {
+            homeViewEl.insertAdjacentHTML(
+                "beforeend",
+                `<p class="admin-help-text" style="margin-top:8px;">Roast story: ${(c.roastSteps || []).length} step(s). Headings: “${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}” / “${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}” / “${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}”.</p>`
+            );
+        }
+        renderReadOnlySection(document.getElementById("content-footer-section"), {
+            title: "STORE DETAILS (HOME PAGE FOOTER, FRANCHISE DEFAULT)",
+            canEdit,
+            fields: [
+                { label: "Tagline", value: (c.footer && c.footer.tagline) || "" },
+                { label: "Address", value: (c.footer && c.footer.address) || "" },
+                { label: "Phone", value: (c.footer && c.footer.phone) || "" },
+                { label: "Email", value: (c.footer && c.footer.email) || "" },
+                { label: "Hours", value: (c.footer && c.footer.hours) || "" }
+            ],
+            onEdit: () =>
+                renderSectionEditModal({
+                    title: "EDIT STORE DETAILS",
+                    width: "480px",
+                    fields: [
+                        { id: "brand-footer-tagline", label: "Tagline", value: (c.footer && c.footer.tagline) || "", maxlength: 120, placeholder: "e.g. Hand-brewed since 2024" },
+                        { id: "brand-footer-address", label: "Address", value: (c.footer && c.footer.address) || "", maxlength: 200, placeholder: "Street, City, State, PIN" },
+                        { id: "brand-footer-phone", label: "Phone", value: (c.footer && c.footer.phone) || "", maxlength: 20, placeholder: "+91 ..." },
+                        { id: "brand-footer-email", label: "Email", value: (c.footer && c.footer.email) || "", maxlength: 80, placeholder: "hello@..." },
+                        { id: "brand-footer-hours", label: "Hours", value: (c.footer && c.footer.hours) || "", maxlength: 60, placeholder: "Mon-Sat: 8am - 8pm" }
+                    ],
+                    onSave: async (v) => {
+                        const updated = await AdminConfig.saveSettings({
+                            footer: {
+                                tagline: v["brand-footer-tagline"].trim(),
+                                address: v["brand-footer-address"].trim(),
+                                phone: v["brand-footer-phone"].trim(),
+                                email: v["brand-footer-email"].trim(),
+                                hours: v["brand-footer-hours"].trim()
+                            }
+                        });
+                        if (window.applyBranding) window.applyBranding(updated);
+                        if (window.renderFooter) window.renderFooter(updated);
+                        ok("Store details saved");
+                        this.renderContent(root);
+                    }
+                })
+        });
+
+        if (!canEdit) return;
 
         // ---- This week's picks: section-grouped list + smart suggestions ----
         const homePicksById = Object.fromEntries((c.homePicks || []).map((p) => [p.itemId, p.tag]));
-        const pickableItems = this.menu.items.filter((i) => !i.deleted && i.available !== false);
         const sectionTitleById = Object.fromEntries(this.menu.sections.map((s) => [s.id, s.title]));
 
         const pickRowHtml = (item) => {
@@ -3458,19 +3517,10 @@ export const AdminPortal = {
                 }))
                 .filter((f) => f.label || f.value);
             try {
-                const updated = await AdminConfig.saveSettings({
-                    footer: {
-                        tagline: document.getElementById("brand-footer-tagline").value.trim(),
-                        address: document.getElementById("brand-footer-address").value.trim(),
-                        phone: document.getElementById("brand-footer-phone").value.trim(),
-                        email: document.getElementById("brand-footer-email").value.trim(),
-                        hours: document.getElementById("brand-footer-hours").value.trim()
-                    },
-                    customFooterFields: finalCustomFields
-                });
-                if (window.applyBranding) window.applyBranding(updated);
+                const updated = await AdminConfig.saveSettings({ customFooterFields: finalCustomFields });
                 if (window.renderFooter) window.renderFooter(updated);
-                ok("Store details saved");
+                ok("Custom fields saved");
+                this.renderContent(root);
             } catch (e) {
                 errorEl.textContent = e.message;
                 fail(e.message);
