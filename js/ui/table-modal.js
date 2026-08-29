@@ -37,23 +37,23 @@ export function renderTableModal({ tableCount, table = null, onSave }) {
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${isEdit ? "EDIT TABLE" : "OPEN TABLE"}</h2>
             <p id="tm-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 8px;"></p>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">TABLE NUMBER</label>
+            <label for="tm-table-number" style="font-size: 7pt; color: var(--color-text-muted);">TABLE NUMBER</label>
             ${
                 tableCount > 0
                     ? `<select id="tm-table-number" style="${fieldStyle}">${tableOptions}</select>`
                     : `<p style="font-size:8pt; color:var(--color-danger); margin:4px 0 12px;">No tables configured - set "Number of Tables" in Admin &gt; Global Settings first.</p>`
             }
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER NAME (OPTIONAL - for identifying repeat customers / discounts)</label>
+            <label for="tm-customer-name" style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER NAME (OPTIONAL - for identifying repeat customers / discounts)</label>
             <input id="tm-customer-name" type="text" maxlength="60" value="${table ? escapeHtml(table.customerName || "") : ""}" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER PHONE (OPTIONAL)</label>
+            <label for="tm-customer-phone" style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER PHONE (OPTIONAL)</label>
             <input id="tm-customer-phone" type="tel" maxlength="15" value="${table ? escapeHtml(table.customerPhone || "") : ""}" style="${fieldStyle}" />
 
             ${
                 !isEdit
                     ? `
-            <label style="font-size: 7pt; color: var(--color-text-muted);">NOTE (OPTIONAL)</label>
+            <label for="tm-note" style="font-size: 7pt; color: var(--color-text-muted);">NOTE (OPTIONAL)</label>
             <input id="tm-note" type="text" maxlength="140" style="${fieldStyle}" />`
                     : ""
             }

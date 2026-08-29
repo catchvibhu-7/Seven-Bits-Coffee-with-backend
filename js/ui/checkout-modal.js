@@ -51,7 +51,7 @@ function cartRowHtml(item, index) {
     const tagHtml = item.isCombo
         ? `<span style="font-size:7pt; color:var(--color-accent);">COMBO DEAL</span>`
         : hasBreakdown
-          ? `${promoTagHtml}<span class="cart-customized-toggle" data-target="${breakdownId}" style="font-size:7pt; color:var(--color-accent); cursor:pointer; text-decoration:underline;">CUSTOMIZED</span>`
+          ? `${promoTagHtml}<button type="button" class="cart-customized-toggle" data-target="${breakdownId}" aria-expanded="false" aria-controls="${breakdownId}" style="font-size:7pt; color:var(--color-accent); cursor:pointer; text-decoration:underline; background:none; border:none; padding:0; font-family:inherit;">CUSTOMIZED</button>`
           : promoTagHtml;
 
     const breakdownHtml = hasBreakdown
@@ -80,9 +80,9 @@ function cartRowHtml(item, index) {
                     ${tagHtml}
                 </div>
                 <div class="btn-qty-container">
-                    <button class="cart-qty-btn" data-cart-key="${item.cartKey}" data-delta="-1">-</button>
+                    <button type="button" class="cart-qty-btn" data-cart-key="${item.cartKey}" data-delta="-1" aria-label="Decrease quantity of ${escapeHtml(item.name)}">-</button>
                     <span>${item.quantity}</span>
-                    <button class="cart-qty-btn" data-cart-key="${item.cartKey}" data-delta="1">+</button>
+                    <button type="button" class="cart-qty-btn" data-cart-key="${item.cartKey}" data-delta="1" aria-label="Increase quantity of ${escapeHtml(item.name)}">+</button>
                 </div>
             </div>
             ${breakdownHtml}
@@ -163,7 +163,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                 STAFF_ROLES.includes(session.role)
                     ? `
             <div style="margin-bottom: 15px;">
-                <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">ORDER TRACKING PHONE:</label>
+                <label for="checkout-phone" style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">ORDER TRACKING PHONE:</label>
                 <div style="display:flex; align-items:center; gap:10px;">
                     <label style="display:flex; align-items:center; gap:6px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; white-space:nowrap;">
                         <input type="checkbox" id="checkout-guest-order" />
@@ -181,7 +181,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                     : `
             <div style="margin-bottom: 15px; display:flex; gap:8px; align-items:flex-end;">
                 <div style="flex:1;">
-                    <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">PROMO CODE</label>
+                    <label for="checkout-coupon-code" style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">PROMO CODE</label>
                     <input id="checkout-coupon-code" type="text" placeholder="OPTIONAL" style="width: 100%; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding: 10px; font-family: inherit; text-transform:uppercase;" />
                 </div>
                 <button id="checkout-apply-coupon" class="admin-btn" style="padding:11px 14px;">APPLY</button>
@@ -195,7 +195,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                 canUseLoyalty
                     ? `
             <div style="margin-bottom: 15px;">
-                <label style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">REDEEM LOYALTY POINTS (you have ${session.loyaltyPoints} pts &middot; ${currencySymbol()}${(session.loyaltyPoints * loyalty.rupeeValuePerPoint).toFixed(2)} value)</label>
+                <label for="checkout-redeem-points" style="font-size: 8pt; color: var(--color-text-muted); display:block; margin-bottom:5px;">REDEEM LOYALTY POINTS (you have ${session.loyaltyPoints} pts &middot; ${currencySymbol()}${(session.loyaltyPoints * loyalty.rupeeValuePerPoint).toFixed(2)} value)</label>
                 <div style="display:flex; gap:8px;">
                     <input id="checkout-redeem-points" type="number" min="0" max="${session.loyaltyPoints}" placeholder="0" style="flex:1; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding: 10px; font-family: inherit;" />
                     <button id="checkout-apply-points" class="admin-btn" style="padding:11px 14px;">REDEEM</button>
@@ -257,7 +257,10 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
     document.querySelectorAll(".cart-customized-toggle").forEach((el) => {
         el.addEventListener("click", () => {
             const target = document.getElementById(el.dataset.target);
-            if (target) target.style.display = target.style.display === "none" ? "block" : "none";
+            if (!target) return;
+            const opening = target.style.display === "none";
+            target.style.display = opening ? "block" : "none";
+            el.setAttribute("aria-expanded", String(opening));
         });
     });
     document.querySelectorAll(".cart-qty-btn").forEach((btn) => {
@@ -346,7 +349,7 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             ? coupons
                   .map(
                       (c) =>
-                          `<div class="checkout-public-coupon" data-code="${escapeHtml(c.code)}" style="cursor:pointer; padding:3px 0; text-decoration:underline;">${c.code} - ${c.type === "percent" ? `${c.value}% off` : `${currencySymbol()}${c.value} off`}</div>`
+                          `<button type="button" class="checkout-public-coupon" data-code="${escapeHtml(c.code)}" style="display:block; width:100%; text-align:left; background:none; border:none; cursor:pointer; padding:3px 0; text-decoration:underline; color:inherit; font-family:inherit; font-size:inherit;">${escapeHtml(c.code)} - ${c.type === "percent" ? `${c.value}% off` : `${currencySymbol()}${c.value} off`}</button>`
                   )
                   .join("")
             : "No public codes available right now.";
@@ -551,7 +554,7 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
             ${
                 isOnline
                     ? order.paymentQrUrl
-                        ? `<div style="background:white; padding:10px; margin:20px auto; width:150px; border: 4px solid var(--color-accent);"><img src="${order.paymentQrUrl}" alt="UPI QR"></div>`
+                        ? `<div style="background:white; padding:10px; margin:20px auto; width:150px; border: 4px solid var(--color-accent);"><img src="${order.paymentQrUrl}" alt="UPI QR" width="130" height="130" style="width:100%; height:auto; display:block;"></div>`
                         : `<p style="margin:30px 0; font-family: 'Courier New', monospace; color: var(--color-text);">Online payment isn't configured on this till yet - please pay at the counter.</p>`
                     : `<p style="margin:30px 0; font-family: 'Courier New', monospace; color: var(--color-text);">PAYMENT PENDING AT COUNTER.</p>`
             }

@@ -40,8 +40,8 @@ export async function renderCustomizeModal({ item, onAdd }) {
             ${
                 isDrink
                     ? `
-            <label style="font-size: 7pt; color: var(--color-text-muted);">SIZE</label>
-            <div id="cm-size-group" class="cm-pill-group" style="display:flex; gap:8px; margin: 4px 0 12px; flex-wrap: wrap;">
+            <span id="cm-size-label" style="font-size: 7pt; color: var(--color-text-muted);">SIZE</span>
+            <div id="cm-size-group" class="cm-pill-group" role="group" aria-labelledby="cm-size-label" style="display:flex; gap:8px; margin: 4px 0 12px; flex-wrap: wrap;">
                 ${opts.sizeOptions
                     .map(
                         (o) => `
@@ -51,8 +51,8 @@ export async function renderCustomizeModal({ item, onAdd }) {
                     .join("")}
             </div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">MILK</label>
-            <div id="cm-milk-group" class="cm-pill-group" style="display:flex; gap:8px; margin: 4px 0 12px; flex-wrap: wrap;">
+            <span id="cm-milk-label" style="font-size: 7pt; color: var(--color-text-muted);">MILK</span>
+            <div id="cm-milk-group" class="cm-pill-group" role="group" aria-labelledby="cm-milk-label" style="display:flex; gap:8px; margin: 4px 0 12px; flex-wrap: wrap;">
                 ${opts.milkOptions
                     .map(
                         (o) => `
@@ -64,8 +64,8 @@ export async function renderCustomizeModal({ item, onAdd }) {
                     : ""
             }
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">EXTRAS (OPTIONAL)</label>
-            <div id="cm-extras-group" class="cm-pill-group" style="display:flex; gap:8px; margin: 4px 0 12px; flex-wrap: wrap;">
+            <span id="cm-extras-label" style="font-size: 7pt; color: var(--color-text-muted);">EXTRAS (OPTIONAL)</span>
+            <div id="cm-extras-group" class="cm-pill-group" role="group" aria-labelledby="cm-extras-label" style="display:flex; gap:8px; margin: 4px 0 12px; flex-wrap: wrap;">
                 ${opts.extraOptions
                     .map(
                         (o) => `
@@ -75,15 +75,15 @@ export async function renderCustomizeModal({ item, onAdd }) {
                     .join("")}
             </div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">SPECIAL INSTRUCTIONS</label>
+            <label for="cm-notes" style="font-size: 7pt; color: var(--color-text-muted);">SPECIAL INSTRUCTIONS</label>
             <textarea id="cm-notes" rows="2" maxlength="${opts.maxNotesLength}" placeholder="e.g. less ice, extra hot..." style="${fieldStyle} resize: vertical;"></textarea>
 
             <div style="display:flex; align-items:center; justify-content:space-between; margin: 10px 0 16px;">
-                <label style="font-size: 7pt; color: var(--color-text-muted);">QUANTITY</label>
-                <div class="btn-qty-container">
-                    <button id="cm-qty-minus" type="button">-</button>
+                <span id="cm-qty-label" style="font-size: 7pt; color: var(--color-text-muted);">QUANTITY</span>
+                <div class="btn-qty-container" role="group" aria-labelledby="cm-qty-label">
+                    <button id="cm-qty-minus" type="button" aria-label="Decrease quantity">-</button>
                     <span id="cm-qty-value">1</span>
-                    <button id="cm-qty-plus" type="button">+</button>
+                    <button id="cm-qty-plus" type="button" aria-label="Increase quantity">+</button>
                 </div>
             </div>
 
@@ -101,6 +101,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
             const group = btn.dataset.group;
             const key = btn.dataset.key;
             const selected = group === "extras" ? state.extras.includes(key) : state[group] === key;
+            btn.setAttribute("aria-pressed", String(selected));
             btn.style.cssText = `padding:6px 10px; font-size:7.5pt; cursor:pointer; font-family:inherit; border:1px solid var(--color-border); background:${selected ? "var(--color-accent)" : "var(--color-bg)"}; color:${selected ? "var(--color-accent-contrast)" : "var(--color-text)"};`;
         });
     }

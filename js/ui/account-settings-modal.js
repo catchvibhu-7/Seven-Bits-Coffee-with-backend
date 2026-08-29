@@ -45,14 +45,14 @@ export function renderAccountSettingsModal(session) {
             <!-- Collapsed by default - the fields/meter/error-success
                  paragraphs used to always be visible, reserving dead space
                  in the modal even when nobody was changing anything. -->
-            <button type="button" id="am-toggle-password" style="width:100%; text-align:left; background:none; border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; font-size:9pt; letter-spacing:1px; cursor:pointer; text-transform:uppercase;">&gt; Change password</button>
+            <button type="button" id="am-toggle-password" aria-expanded="false" aria-controls="am-password-fields" style="width:100%; text-align:left; background:none; border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; font-size:9pt; letter-spacing:1px; cursor:pointer; text-transform:uppercase;">&gt; Change password</button>
             <div id="am-password-fields" style="display:none; margin-top:12px;">
                 <p id="account-modal-error" style="color:var(--color-danger); font-size: 8pt; margin: 0 0 8px;"></p>
                 <p id="account-modal-success" style="color:var(--color-success); font-size: 8pt; margin: 0 0 8px;"></p>
 
-                <input id="am-current" type="password" placeholder="CURRENT PASSWORD" autocomplete="current-password"
+                <input id="am-current" type="password" placeholder="CURRENT PASSWORD" aria-label="Current password" autocomplete="current-password"
                     style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin-bottom: 8px;" />
-                <input id="am-new" type="password" placeholder="NEW PASSWORD" autocomplete="new-password"
+                <input id="am-new" type="password" placeholder="NEW PASSWORD" aria-label="New password" autocomplete="new-password"
                     style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
                 <div id="am-meter"></div>
 
@@ -80,6 +80,7 @@ export function renderAccountSettingsModal(session) {
         const opening = fieldsEl.style.display === "none";
         fieldsEl.style.display = opening ? "block" : "none";
         toggleBtn.textContent = opening ? "v Change password" : "> Change password";
+        toggleBtn.setAttribute("aria-expanded", String(opening));
     });
 
     if (hasLayoutChoice) {

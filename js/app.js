@@ -423,7 +423,7 @@ window.showToast = (message, tone = "success") => {
         background: var(--color-surface); border: 1px solid ${color}; color: ${color};
         padding: 12px 20px; font-family: 'Courier New', monospace; font-size: 9pt;
         font-weight: bold; box-shadow: 4px 4px 0 rgba(0,0,0,0.4);
-        transform: translateY(20px); opacity: 0; transition: all 0.25s ease;
+        transform: translateY(20px); opacity: 0; transition: transform 0.25s ease, opacity 0.25s ease;
     `;
     toast.textContent = (tone === "error" ? "\u2717 " : "\u2713 ") + message;
     document.body.appendChild(toast);
@@ -662,7 +662,7 @@ window.openOrderStatusPopup = () => {
     const statusColor = STATUS_COLORS[order.status] || "var(--color-accent)";
     const notifyPromptHtml =
         NotificationSystem.permission() === "default"
-            ? `<button id="order-popup-notify-btn" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;" title="Get a notification when your order is ready">\u{1F514}</button>`
+            ? `<button id="order-popup-notify-btn" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;" title="Get a notification when your order is ready" aria-label="Get a notification when your order is ready">\u{1F514}</button>`
             : "";
 
     const overlay = document.createElement("div");
@@ -675,7 +675,7 @@ window.openOrderStatusPopup = () => {
                 <span style="font-size:14px; font-weight:bold;">#${escapeHtml(String(order.orderNumber || order.id))}</span>
                 <span style="display:flex; align-items:center; gap:8px;">
                     ${notifyPromptHtml}
-                    <button id="order-popup-sound-btn" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-accent); opacity:${SoundSystem.isMuted() ? "0.5" : "1"}; padding:0;">${soundIconSvg(SoundSystem.isMuted())}</button>
+                    <button id="order-popup-sound-btn" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" aria-label="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-accent); opacity:${SoundSystem.isMuted() ? "0.5" : "1"}; padding:0;">${soundIconSvg(SoundSystem.isMuted())}</button>
                     <span style="color:${statusColor}; font-weight:bold;">${escapeHtml(order.status)}</span>
                 </span>
             </div>
@@ -1356,9 +1356,9 @@ function renderMenu(filterQuery = "") {
             const buttonHTML =
                 count > 0
                     ? `<div class="btn-qty-container">
-                    <button class="combo-remove-btn">-</button>
+                    <button type="button" class="combo-remove-btn" aria-label="Remove one ${escapeHtml(combo.name)}">-</button>
                     <span>${count}</span>
-                    <button class="combo-add-btn">+</button>
+                    <button type="button" class="combo-add-btn" aria-label="Add one ${escapeHtml(combo.name)}">+</button>
                 </div>`
                     : `<button class="btn-add-fixed combo-add-btn">ADD COMBO</button>`;
             const comboEl = document.createElement("div");
@@ -1434,16 +1434,16 @@ function renderMenu(filterQuery = "") {
                 ? `<button class="btn-add-fixed" disabled style="opacity:0.4; cursor:not-allowed;">UNAVAILABLE</button>`
                 : defaultCount > 0
                   ? `<div class="btn-qty-container">
-                    <button class="quick-remove-btn">-</button>
+                    <button type="button" class="quick-remove-btn" aria-label="Remove one ${escapeHtml(item.name)}">-</button>
                     <span>${defaultCount}</span>
-                    <button class="quick-add-btn">+</button>
+                    <button type="button" class="quick-add-btn" aria-label="Add one ${escapeHtml(item.name)}">+</button>
                 </div>`
                   : `<button class="btn-add-fixed quick-add-btn">ADD BIT</button>`;
 
             const showFavorite = TRACKING_ROLES.includes(session.role);
             const isFav = showFavorite && FavoritesSystem.isFavorite(item.id);
             const favButton = showFavorite
-                ? `<button class="btn-favorite fav-toggle-btn" title="${isFav ? "Remove from favorites" : "Add to favorites"}" style="background:none; border:none; cursor:pointer; font-size: 14pt; line-height:1; color: ${isFav ? "var(--color-accent)" : "var(--color-text-muted)"};">${isFav ? "\u2605" : "\u2606"}</button>`
+                ? `<button type="button" class="btn-favorite fav-toggle-btn" title="${isFav ? "Remove from favorites" : "Add to favorites"}" aria-label="${isFav ? "Remove from favorites" : "Add to favorites"}" aria-pressed="${isFav}" style="background:none; border:none; cursor:pointer; font-size: 14pt; line-height:1; color: ${isFav ? "var(--color-accent)" : "var(--color-text-muted)"};">${isFav ? "\u2605" : "\u2606"}</button>`
                 : "";
 
             // Staff can flag an item as needing to come off the menu (e.g. out of
@@ -1472,9 +1472,9 @@ function renderMenu(filterQuery = "") {
                             ${line.notes ? `<div style="font-style:italic;">"${escapeHtml(line.notes)}"</div>` : ""}
                         </div>
                         <div class="btn-qty-container">
-                            <button class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="-1" title="Remove one">-</button>
+                            <button type="button" class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="-1" title="Remove one" aria-label="Remove one">-</button>
                             <span>${line.quantity}</span>
-                            <button class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="1" title="Repeat this exact customization">+</button>
+                            <button type="button" class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="1" title="Repeat this exact customization" aria-label="Repeat this exact customization">+</button>
                         </div>
                     </div>
                 `;
@@ -1608,7 +1608,7 @@ function renderMenuCartPanel() {
                               const detailsHtml = isCustomized
                                   ? `
                         <div style="margin-top:4px;">
-                            <span class="menu-cart-customized-toggle" data-target="${breakdownId}" style="font-size:9px; font-weight:bold; letter-spacing:.08em; color:var(--color-accent); text-transform:uppercase; cursor:pointer; text-decoration:underline;">Customized</span>
+                            <button type="button" class="menu-cart-customized-toggle" data-target="${breakdownId}" aria-expanded="false" aria-controls="${breakdownId}" style="font-size:9px; font-weight:bold; letter-spacing:.08em; color:var(--color-accent); text-transform:uppercase; cursor:pointer; text-decoration:underline; background:none; border:none; padding:0; font-family:inherit;">Customized</button>
                             <span style="font-size:9px; color:var(--color-text-muted); margin-left:4px;">${currencySymbol()}${extraTotal.toFixed(2)}</span>
                             <div id="${breakdownId}" style="display:none; margin-top:3px;">
                                 ${detailLines
@@ -1631,9 +1631,9 @@ function renderMenuCartPanel() {
                         ${line.notes ? `<div style="font-size:9.5px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(line.notes)}"</div>` : ""}
                     </div>
                     <div class="btn-qty-container">
-                        <button class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="-1">-</button>
+                        <button type="button" class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="-1" aria-label="Decrease quantity of ${escapeHtml(line.name)}">-</button>
                         <span>${line.quantity}</span>
-                        <button class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="1">+</button>
+                        <button type="button" class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="1" aria-label="Increase quantity of ${escapeHtml(line.name)}">+</button>
                     </div>
                     <span style="width:56px; flex:none; text-align:right; font-size:11px; font-weight:bold;">${currencySymbol()}${(line.price * line.quantity).toFixed(2)}</span>
                 </div>
@@ -1644,10 +1644,10 @@ function renderMenuCartPanel() {
         </div>
         <div style="padding:14px 18px 18px; border-top:1px solid var(--color-border); flex:none;">
             <div style="margin-bottom:12px;">
-                <div style="font-size:9.5px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); margin-bottom:6px;">ORDER TYPE</div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-                    <button type="button" class="cart-order-type-btn" data-order-type="takeaway" style="padding:9px 6px; background:${orderType === "takeaway" ? "var(--color-accent)" : "transparent"}; color:${orderType === "takeaway" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Takeaway</button>
-                    <button type="button" class="cart-order-type-btn" data-order-type="dine-in" style="padding:9px 6px; background:${orderType === "dine-in" ? "var(--color-accent)" : "transparent"}; color:${orderType === "dine-in" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Dine-in</button>
+                <div id="cart-order-type-label" style="font-size:9.5px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); margin-bottom:6px;">ORDER TYPE</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;" role="group" aria-labelledby="cart-order-type-label">
+                    <button type="button" class="cart-order-type-btn" data-order-type="takeaway" aria-pressed="${orderType === "takeaway"}" style="padding:9px 6px; background:${orderType === "takeaway" ? "var(--color-accent)" : "transparent"}; color:${orderType === "takeaway" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Takeaway</button>
+                    <button type="button" class="cart-order-type-btn" data-order-type="dine-in" aria-pressed="${orderType === "dine-in"}" style="padding:9px 6px; background:${orderType === "dine-in" ? "var(--color-accent)" : "transparent"}; color:${orderType === "dine-in" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Dine-in</button>
                 </div>
             </div>
             <!-- Deliberately no tax/service-charge breakdown here - just the
@@ -1673,7 +1673,10 @@ function renderMenuCartPanel() {
     panel.querySelectorAll(".menu-cart-customized-toggle").forEach((el) => {
         el.addEventListener("click", () => {
             const target = document.getElementById(el.dataset.target);
-            if (target) target.style.display = target.style.display === "none" ? "block" : "none";
+            if (!target) return;
+            const opening = target.style.display === "none";
+            target.style.display = opening ? "block" : "none";
+            el.setAttribute("aria-expanded", String(opening));
         });
     });
     panel.querySelectorAll(".menu-cart-qty-btn").forEach((btn) => {
@@ -2095,6 +2098,7 @@ window.toggleOrderSound = (btn) => {
     btn.innerHTML = soundIconSvg(muted);
     btn.style.opacity = muted ? "0.5" : "1";
     btn.title = muted ? "Unmute order-ready sound" : "Mute order-ready sound";
+    btn.setAttribute("aria-label", muted ? "Unmute order-ready sound" : "Mute order-ready sound");
 };
 window.requestOrderNotifications = async (btn) => {
     await NotificationSystem.requestPermission();
