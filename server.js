@@ -1550,6 +1550,15 @@ route("GET", /^\/api\/stores\/?$/, async (req, res) => {
   sendJson(res, 200, readJson(STORES_FILE, []));
 });
 
+/** Lets a customer/guest (or a fully anonymous visitor, before any session
+ *  exists) pick which physical location they're ordering from - no login
+ *  required. Deliberately minimal (id/name/address only, no branding
+ *  overrides) - do NOT reuse the staff-only GET /api/stores above. */
+route("GET", /^\/api\/stores\/public\/?$/, async (req, res) => {
+  const stores = readJson(STORES_FILE, []).map((s) => ({ id: s.id, name: s.name, address: s.address || "" }));
+  sendJson(res, 200, stores);
+});
+
 route("POST", /^\/api\/stores\/?$/, async (req, res) => {
   if (!requireRole(req, res, ["owner"])) return; // only the owner opens a new store
   const body = await readBody(req);
@@ -2131,13 +2140,20 @@ route("GET", /^\/api\/menu\/?$/, async (req, res, params, url) => {
   // The menu itself is shared across every store (per the "branding-only"
   // multi-store decision - see configForSession()), but a store can still
   // be out of stock on a shared item without affecting other locations.
-  // Only applies to a session tied to a store (staff assigned to one) - a
-  // customer/guest browsing has no storeId, so they see the item's plain
-  // global availability regardless of any one store's stock.
+  // Staff (assigned to one store) get this from their own session; a
+  // customer/guest isn't tied to a store (they can walk into any location),
+  // so their chosen store comes from ?storeId= instead (see js/app.js's
+  // menu loader) - with no store picked yet, they see plain global
+  // availability, same as before this existed.
   const session = currentSession(req);
-  if (session && session.storeId != null) {
+  let effectiveStoreId = session && session.storeId != null ? session.storeId : null;
+  if (effectiveStoreId == null && url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId)) effectiveStoreId = requestedStoreId;
+  }
+  if (effectiveStoreId != null) {
     items = items.map((i) =>
-      (i.disabledStores || []).includes(session.storeId) ? { ...i, available: false, disabledAtThisStore: true } : i
+      (i.disabledStores || []).includes(effectiveStoreId) ? { ...i, available: false, disabledAtThisStore: true } : i
     );
   }
   sendJson(res, 200, { ...menu, items });
@@ -2410,14 +2426,17 @@ route("DELETE", /^\/api\/combos\/(?<id>\d+)\/?$/, async (req, res, params) => {
 // --- Config ---
 // Per-store branding is layered on top of the global config when the
 // requester's own session is tied to a store (staff assigned to a
-// location) - a customer/guest session has no storeId, so they always see
-// the plain global config. This keeps the merge entirely server-side: the
-// client's existing applyBranding()/AdminConfig flow doesn't need to know
-// stores exist at all, it just receives whatever's already effective.
-function configForSession(session) {
+// location). A customer/guest session has no storeId of its own (they can
+// walk into any location), so `explicitStoreId` lets one be passed in from
+// the client's own chosen store instead (see GET /api/config below) - this
+// keeps the merge entirely server-side either way: the client's existing
+// applyBranding()/AdminConfig flow doesn't need to know stores exist at
+// all, it just receives whatever's already effective.
+function configForSession(session, explicitStoreId = null) {
   const config = readJson(CONFIG_FILE, {});
-  if (!session || session.storeId == null) return config;
-  const store = readJson(STORES_FILE, []).find((s) => s.id === session.storeId);
+  const storeId = session && session.storeId != null ? session.storeId : explicitStoreId;
+  if (storeId == null) return config;
+  const store = readJson(STORES_FILE, []).find((s) => s.id === storeId);
   if (!store || !store.branding) return config;
   return {
     ...config,
@@ -2436,8 +2455,17 @@ function maskSecrets(config) {
   return { ...rest, razorpaySecretConfigured: !!razorpayKeySecret };
 }
 
-route("GET", /^\/api\/config\/?$/, async (req, res) => {
-  sendJson(res, 200, maskSecrets(configForSession(currentSession(req))));
+route("GET", /^\/api\/config\/?$/, async (req, res, params, url) => {
+  const session = currentSession(req);
+  // A session already tied to a store (staff) always wins - the ?storeId=
+  // param only matters for a customer/guest/anonymous visitor picking
+  // their own store client-side.
+  let explicitStoreId = null;
+  if ((!session || session.storeId == null) && url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId)) explicitStoreId = requestedStoreId;
+  }
+  sendJson(res, 200, maskSecrets(configForSession(session, explicitStoreId)));
 });
 
 route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
@@ -2975,6 +3003,17 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     if (staffEnteredUser && staffEnteredUser.role === "customer") matchedCustomer = staffEnteredUser;
   }
 
+  // A customer/guest isn't tied to one store (they can walk into any
+  // location) - their chosen store comes from the request body instead,
+  // validated against real stores so an arbitrary/stale id can't sneak
+  // in. Staff always keep their own session's storeId, unchanged.
+  const allStores = readJson(STORES_FILE, []);
+  let effectiveStoreId = session.storeId != null ? session.storeId : null;
+  if (effectiveStoreId == null && body.storeId != null) {
+    const requestedStoreId = Number(body.storeId);
+    if (allStores.some((s) => s.id === requestedStoreId)) effectiveStoreId = requestedStoreId;
+  }
+
   let computed;
   try {
     const customerId = session.role === "customer" ? session.userId : matchedCustomer ? matchedCustomer.id : null;
@@ -2982,21 +3021,21 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
       couponCode: body.couponCode || null,
       redeemPoints: parseInt(body.redeemPoints, 10) || 0,
       customerId,
-      storeId: session.storeId != null ? session.storeId : null
+      storeId: effectiveStoreId
     });
   } catch (e) {
     return sendJson(res, 400, { error: e.message });
   }
 
   const orders = readJson(ORDERS_FILE, []);
-  const multiStore = readJson(STORES_FILE, []).length > 1;
+  const multiStore = allStores.length > 1;
   // Staff placing an order at the counter on a customer's behalf can mark it
   // paid immediately (cash already collected) instead of having to find it
   // in Order History afterwards - customers/guests can never self-mark paid.
   const staffMarkedPaid = KITCHEN_ROLES.includes(session.role) && body.markPaidNow === true;
 
   const orderId = `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-  const orderNumber = generateOrderNumber(orders, session.storeId, multiStore);
+  const orderNumber = generateOrderNumber(orders, effectiveStoreId, multiStore);
   // Lets a customer track this one order (GET /api/orders/track/:token,
   // no login needed) by scanning a QR code - an alternative to the
   // phone-based guest lookup for someone who doesn't want to type a phone
@@ -3017,7 +3056,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     id: orderId,
     orderNumber,
     trackingToken,
-    storeId: session.storeId != null ? session.storeId : null,
+    storeId: effectiveStoreId,
     createdAt: new Date().toISOString(),
     method,
     // Real verification (see POST .../verify-payment below) gates isPaid

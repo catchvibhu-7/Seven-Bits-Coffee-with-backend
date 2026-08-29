@@ -35,7 +35,8 @@ export const KitchenSystem = {
             couponCode = null,
             redeemPoints = 0,
             guestOrder = false,
-            orderType = "takeaway"
+            orderType = "takeaway",
+            storeId = null
         } = {}
     ) {
         const res = await fetch("/api/orders", {
@@ -61,7 +62,12 @@ export const KitchenSystem = {
                 couponCode,
                 redeemPoints,
                 guestOrder,
-                orderType
+                orderType,
+                // Only meaningful for a customer/guest session (no storeId of
+                // their own - see js/features/store-logic.js); ignored
+                // server-side for a staff session, which always keeps its
+                // own assigned store.
+                storeId
             })
         });
         const data = await res.json();

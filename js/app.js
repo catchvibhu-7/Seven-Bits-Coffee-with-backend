@@ -23,6 +23,8 @@ import { StaffShell } from "./ui/staff-shell.js";
 import { renderStaffHome } from "./ui/staff-home.js";
 import { renderBillingPage, selectBillForOrder } from "./ui/billing-page.js";
 import { ArcadeSystem } from "./features/arcade-logic.js";
+import { StoreSystem } from "./features/store-logic.js";
+import { renderStorePickerModal } from "./ui/store-picker-modal.js";
 
 // --- System State ---
 let cart = [];
@@ -50,7 +52,12 @@ const TRACKING_ROLES = ["customer", "guest"];
 const PAYROLL_ROLES = ["employee", "manager"];
 
 async function loadMenu() {
-    const res = await fetch("/api/menu");
+    // Only a customer/guest/anonymous visitor's own chosen store matters
+    // here - a staff session's storeId is read server-side from the
+    // session itself, never from this query param.
+    const storeId = TRACKING_ROLES.includes(session.role) || !session.authenticated ? StoreSystem.getSelectedStoreId() : null;
+    const url = storeId != null ? `/api/menu?storeId=${encodeURIComponent(storeId)}` : "/api/menu";
+    const res = await fetch(url);
     menuData = await res.json();
 }
 
@@ -498,7 +505,10 @@ window.showPage = async (pageId) => {
         await module.AdminPortal.init();
         ensureOrdersStream();
     }
-    if (pageId === "menu") renderMenu();
+    if (pageId === "menu") {
+        renderMenu();
+        renderStoreBar("menu-store-bar");
+    }
     if (pageId === "kitchen" || pageId === "orders") {
         await KitchenSystem.fetchOrders();
         if (currentKitchenStation === "TABLES") {
@@ -509,6 +519,7 @@ window.showPage = async (pageId) => {
         ensureOrdersStream();
     }
     if (pageId === "home") {
+        renderStoreBar("home-store-bar");
         renderPopularPicks();
         renderHomeStoreFacts();
         renderHomeRoastSteps();
@@ -525,6 +536,45 @@ window.showPage = async (pageId) => {
     if (pageId === "track") {
         renderTrackPage(new URLSearchParams(window.location.search).get("track"));
     }
+};
+
+/** Small "which store" control shown on the Home and Menu pages, only for
+ *  a customer/guest/anonymous visitor (staff always work at their own
+ *  assigned store - see js/features/store-logic.js) and only when there's
+ *  actually more than one store to choose from. */
+function renderStoreBar(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    if (!StoreSystem.hasMultipleStores() || !(TRACKING_ROLES.includes(session.role) || !session.authenticated)) {
+        root.innerHTML = "";
+        return;
+    }
+    const store = StoreSystem.getSelectedStore();
+    root.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--color-surface); border:1px solid var(--color-border); padding:9px 14px; margin-bottom:14px; font-size:9pt;">
+            <span>${store ? `\u{1F4CD} ${escapeHtml(store.name)}${store.address ? ` &middot; ${escapeHtml(store.address)}` : ""}` : "No store selected - showing every item"}</span>
+            <button type="button" id="${containerId}-change" style="background:none; border:none; color:var(--color-accent); cursor:pointer; text-decoration:underline; font-family:inherit; font-size:9pt; flex:none;">${store ? "CHANGE" : "SELECT YOUR STORE"}</button>
+        </div>
+    `;
+    document.getElementById(`${containerId}-change`).addEventListener("click", () => window.openStorePicker());
+}
+
+window.openStorePicker = () => {
+    renderStorePickerModal(async (storeId) => {
+        await Promise.all([loadMenu(), AdminConfig.loadSettings(storeId)]);
+        window.applyBranding(AdminConfig.settings);
+        window.renderFooter(AdminConfig.settings);
+        const activePageId = document.querySelector(".page.active")?.id.replace("page-", "");
+        if (activePageId === "menu") {
+            renderMenu();
+            renderStoreBar("menu-store-bar");
+        } else if (activePageId === "home") {
+            renderHomeStoreFacts();
+            renderHomeVisitRows();
+            renderStoreBar("home-store-bar");
+        }
+        window.showToast?.(`Now showing ${StoreSystem.getSelectedStore()?.name || "your store"}`);
+    });
 };
 
 function soundIconSvg(muted) {
@@ -992,7 +1042,11 @@ window.startCheckout = async (method) => {
             couponCode: discount.couponCode || null,
             redeemPoints: discount.redeemPoints || 0,
             guestOrder,
-            orderType
+            orderType,
+            // Ignored server-side for a staff session (already tied to its
+            // own store) - only matters for a customer/guest who's picked
+            // one from the store bar.
+            storeId: isStaffCheckout ? null : StoreSystem.getSelectedStoreId()
         });
         pendingOrder = order;
 
@@ -2362,6 +2416,7 @@ function wireStaticControls() {
     document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
     wireStaticControls();
     StaffShell.captureCustomerNav(); // before refreshSession() can possibly swap it out for an already-logged-in staff session
+    await StoreSystem.loadStores();
     await loadMenu();
     await loadCombos();
     await CustomizationSystem.loadOptions();
@@ -2369,8 +2424,11 @@ function wireStaticControls() {
     // for every visitor including anonymous ones (see updateStaffShellForSession()),
     // and it reads AdminConfig.settings (shop name, default nav layout) the
     // moment it renders - loading config after would flash the "YOUR SHOP"
-    // fallback wordmark first.
-    const config = await AdminConfig.loadSettings();
+    // fallback wordmark first. The stored store choice is safe to send even
+    // before we know if this is a customer or a staff member logging back
+    // in - the server only ever honors it for a session with no store of
+    // its own (see configForSession() in server.js).
+    const config = await AdminConfig.loadSettings(StoreSystem.getSelectedStoreId());
     window.applyBranding(config);
     window.renderFooter(config);
     await refreshSession();
