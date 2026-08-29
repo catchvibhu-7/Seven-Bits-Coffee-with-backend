@@ -375,7 +375,7 @@ export const StaffShell = {
                  partly below the fold on a short window. -->
             <div class="staff-auth-section">
                 <div id="rail-order-widget" class="nav-order-widget"></div>
-                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none; margin-bottom:6px;"></button>
+                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none;"></button>
                 ${identityHtml}
             </div>
         `;

@@ -276,6 +276,12 @@ header {
     border-right: 1px solid var(--color-border);
     padding: 14px;
     z-index: 101;
+    /* Same gap as .staff-nav-list above it, so the footer's stack of
+       buttons (order widget, clock in/out, store picker, login/account)
+       reads as consistently spaced as the tab list rather than touching. */
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 /* The single identity/account button (#staff-account-btn, see
@@ -455,7 +461,6 @@ header {
 }
 .staff-auth-section .nav-order-widget {
     width: 100%;
-    margin-bottom: 8px;
 }
 .staff-auth-section .nav-order-widget-btn {
     width: 100%;
