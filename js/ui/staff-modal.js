@@ -12,23 +12,27 @@ function randomTempPassword() {
     return `${part()}-${part()}A9`;
 }
 
-function rolesCreatableBy(currentRole) {
-    if (currentRole === "owner") return ["employee", "manager", "admin", "owner"];
-    if (currentRole === "admin") return ["employee", "manager"];
+/** Mirrors allowedRolesToCreate() in server.js exactly - owner's only
+ *  write action is creating a Global Admin (unrestricted admin); a Global
+ *  Admin can create Local Admins too, plus managers/employees; a Local
+ *  Admin (scoped storeAccess) or manager only managers/employees. */
+function rolesCreatableBy(session) {
+    if (session.role === "owner") return ["admin"];
+    if (session.role === "admin") return session.storeAccess && session.storeAccess.length ? ["employee", "manager"] : ["employee", "manager", "admin"];
     return ["employee"]; // manager
 }
 
 const fieldStyle = "width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;";
 
 /**
- * @param {"owner"|"admin"|"manager"} currentRole
+ * @param {{role: "owner"|"admin"|"manager", storeAccess?: number[]|null}} session
  * @param {() => void} onCreated
  */
-export async function renderAddStaffModal(currentRole, onCreated) {
+export async function renderAddStaffModal(session, onCreated) {
     document.getElementById("staff-modal-overlay")?.remove();
 
-    const roleOptions = rolesCreatableBy(currentRole);
-    const stores = currentRole === "manager" ? [] : await PayrollSystem.fetchStores();
+    const roleOptions = rolesCreatableBy(session);
+    const stores = session.role === "manager" ? [] : await PayrollSystem.fetchStores();
     let usernameCheckTimer;
 
     const overlay = document.createElement("div");
@@ -225,11 +229,11 @@ export async function renderAddStaffModal(currentRole, onCreated) {
  * them - a manager never gets them (matches canManageTarget()/allowedRolesToCreate()
  * server-side, which reject the request anyway if bypassed).
  */
-export async function renderEditStaffModal(user, currentRole, onSaved) {
+export async function renderEditStaffModal(user, session, onSaved) {
     document.getElementById("staff-modal-overlay")?.remove();
 
-    const canChangeRole = currentRole !== "manager" && user.role !== "owner";
-    const roleOptions = canChangeRole ? rolesCreatableBy(currentRole).filter((r) => r !== "owner") : [];
+    const canChangeRole = session.role !== "manager" && user.role !== "owner";
+    const roleOptions = canChangeRole ? rolesCreatableBy(session).filter((r) => r !== "owner") : [];
     const stores = canChangeRole ? await PayrollSystem.fetchStores() : [];
 
     const overlay = document.createElement("div");

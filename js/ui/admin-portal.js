@@ -1183,7 +1183,13 @@ export const AdminPortal = {
     },
 
     // ---------------------------------------------------------------- PAYROLL
+    // "Make payments" (marking a pay period paid, approving overtime) is a
+    // manager's own operational duty specifically - a Local Admin sets pay
+    // RATES (via User Management's edit staff modal) but doesn't execute
+    // the payout; Global Admin/owner see this tab read-only like everyone
+    // else's numbers, same as the rest of the franchise.
     async renderPayroll(root) {
+        const canPay = this.session.role === "manager";
         const staff = await PayrollSystem.fetchPayroll();
         const history = await PayrollSystem.fetchPayrollHistory();
         const allStaff = (await fetch("/api/users", { credentials: "include" }).then((r) => r.json())).filter((u) =>
@@ -1222,8 +1228,9 @@ export const AdminPortal = {
                             <td>${currencySymbol()}${s.amount.toFixed(2)}</td>
                             <td>${s.isPaid ? `<span style="color:var(--color-success);">\u2713 PAID</span>` : `<span style="color:var(--color-cyan);">PENDING</span>`}</td>
                             <td style="text-align:right;">
-                                ${s.hasUnapprovedOvertime ? `<button class="admin-btn" data-approve-ot="${s.userId}" data-name="${s.name}">APPROVE OT</button>` : ""}
-                                ${s.isPaid ? "" : `<button class="admin-btn" data-mark-paid="${s.userId}" data-name="${s.name}" data-amount="${s.amount.toFixed(2)}">MARK PAID</button>`}
+                                ${canPay && s.hasUnapprovedOvertime ? `<button class="admin-btn" data-approve-ot="${s.userId}" data-name="${s.name}">APPROVE OT</button>` : ""}
+                                ${canPay && !s.isPaid ? `<button class="admin-btn" data-mark-paid="${s.userId}" data-name="${s.name}" data-amount="${s.amount.toFixed(2)}">MARK PAID</button>` : ""}
+                                ${!canPay ? `<span style="color:var(--color-text-muted); font-size:7pt;">—</span>` : ""}
                             </td>
                         </tr>
                     `
@@ -2683,7 +2690,7 @@ export const AdminPortal = {
 
         root.innerHTML = `
             <div class="admin-toolbar">
-                <button class="admin-btn-primary" id="staff-add">+ ADD ${isOwner ? "STAFF" : "EMPLOYEE"}</button>
+                <button class="admin-btn-primary" id="staff-add">+ ADD ${isOwner ? "GLOBAL ADMIN" : "STAFF"}</button>
             </div>
             <table class="admin-table">
                 <thead>
@@ -2693,12 +2700,21 @@ export const AdminPortal = {
                     ${staff
                         .map((u) => {
                             const isSelf = u.id === myUserId;
+                            const isGlobalAdmin = this.session.role === "admin" && !this.session.storeAccess;
+                            const isLocalAdmin = this.session.role === "admin" && !!this.session.storeAccess;
                             const adminScopeAllows =
                                 !this.session.storeAccess || !["employee", "manager"].includes(u.role) || this.session.storeAccess.includes(u.storeId);
+                            // Mirrors canManageTarget() in server.js: owner only manages the
+                            // Global Admins they add (their one write lane); a Global Admin
+                            // manages employees/managers plus Local Admins (never another
+                            // Global Admin); a Local Admin/manager stays within their store,
+                            // never an admin-tier target.
                             const canManage =
                                 !isSelf &&
-                                (isOwner ||
-                                    (this.session.role === "admin" && ["employee", "manager"].includes(u.role) && adminScopeAllows) ||
+                                ((isOwner && u.role === "admin" && (!u.storeAccess || u.storeAccess.length === 0)) ||
+                                    (isGlobalAdmin && ["employee", "manager"].includes(u.role)) ||
+                                    (isGlobalAdmin && u.role === "admin" && u.storeAccess && u.storeAccess.length > 0) ||
+                                    (isLocalAdmin && ["employee", "manager"].includes(u.role) && adminScopeAllows) ||
                                     (isManager && u.role === "employee" && u.storeId === this.session.storeId));
                             const storeAccessNote =
                                 u.role === "admin"
@@ -2733,17 +2749,19 @@ export const AdminPortal = {
             <p class="admin-help-text" style="margin-top: 10px;">
                 ${
                     isOwner
-                        ? "You can create and manage employee, manager, admin, and owner accounts."
+                        ? "You can add Global Admins - that's your one write action here. Everything else is read-only."
                         : isManager
                           ? "You can create and manage employee accounts at your own store."
-                          : "You can create and manage employee and manager accounts. Only the owner can manage admin/owner accounts."
+                          : this.isGlobalAdmin()
+                            ? "You can create and manage Local Admins, managers, and employees at any store."
+                            : "You can create and manage employee and manager accounts at the stores you're scoped to. Only a Global Admin can manage another admin account."
                 }
             </p>
             ${auditLogHtml}
         `;
 
         document.getElementById("staff-add").addEventListener("click", () => {
-            renderAddStaffModal(this.session.role, async () => {
+            renderAddStaffModal(this.session, async () => {
                 await this.renderActiveTab();
                 ok("Staff account created");
             });
@@ -2767,7 +2785,7 @@ export const AdminPortal = {
     /** Edit an existing staff member's tag and pay rate via a proper modal (not a browser prompt). */
     async editStaffDetails(userId, staffList) {
         const user = staffList.find((u) => u.id === userId);
-        renderEditStaffModal(user, this.session.role, async () => {
+        renderEditStaffModal(user, this.session, async () => {
             await this.renderActiveTab();
             ok("Staff details updated");
         });

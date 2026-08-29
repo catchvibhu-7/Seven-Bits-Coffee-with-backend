@@ -2119,9 +2119,15 @@ route("GET", /^\/api\/payroll\/?$/, async (req, res) => {
   sendJson(res, 200, result);
 });
 
+// "Making payments" (marking a period paid) is a manager's own operational
+// duty specifically - a Local Admin/Global Admin sets pay RATES (via
+// PATCH /api/users/:id) but doesn't execute the payout.
 route("POST", /^\/api\/payroll\/(?<userId>\d+)\/mark-paid\/?$/, async (req, res, params) => {
   const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
+  if (session.role !== "manager") {
+    return sendJson(res, 403, { error: "Only a manager can mark a pay period paid" });
+  }
 
   const targetUser = findUserById(Number(params.userId));
   if (!canManageTarget(session, targetUser)) {
@@ -2254,6 +2260,9 @@ route("DELETE", /^\/api\/attendance\/(?<id>\d+)\/?$/, async (req, res, params) =
 route("POST", /^\/api\/overtime-approvals\/?$/, async (req, res) => {
   const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
+  if (session.role !== "manager") {
+    return sendJson(res, 403, { error: "Only a manager can approve overtime" });
+  }
   const body = await readBody(req);
   const targetUser = findUserById(Number(body.userId));
   if (!canManageTarget(session, targetUser)) {
