@@ -124,5 +124,31 @@ export const PayrollSystem = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not update store");
         return data;
+    },
+
+    /** Closing a store - pass a real storeId to move its staff there
+     *  instead of deactivating them (see DELETE /api/stores/:id). */
+    async removeStore(id, { reassignToStoreId = null } = {}) {
+        const res = await fetch(`/api/stores/${encodeURIComponent(id)}`, {
+            method: "DELETE",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reassignToStoreId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not remove store");
+        return data;
+    },
+
+    async changeUserRole(id, role) {
+        const res = await fetch(`/api/users/${encodeURIComponent(id)}/role`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not change role");
+        return data;
     }
 };

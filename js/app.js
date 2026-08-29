@@ -339,6 +339,13 @@ window.renderAccountMenu = (triggerBtnId = "nav-account") => {
     if (session.role !== "guest") {
         items.push({ label: "ACCOUNT SETTINGS", action: () => renderAccountSettingsModal(session) });
     }
+    // Only a customer/guest gets this (staff always work at their own
+    // assigned store - see js/features/store-logic.js) and only when
+    // there's actually more than one store to choose from.
+    if (TRACKING_ROLES.includes(session.role) && StoreSystem.hasMultipleStores()) {
+        const store = StoreSystem.getSelectedStore();
+        items.push({ label: store ? `STORE: ${store.name.toUpperCase()}` : "SELECT STORE", action: () => window.openStorePicker() });
+    }
     items.push({ label: "LOG OUT", action: doLogout, danger: true });
 
     // Left-align to the button (not right-align) - right-aligning a menu
@@ -505,10 +512,7 @@ window.showPage = async (pageId) => {
         await module.AdminPortal.init();
         ensureOrdersStream();
     }
-    if (pageId === "menu") {
-        renderMenu();
-        renderStoreBar("menu-store-bar");
-    }
+    if (pageId === "menu") renderMenu();
     if (pageId === "kitchen" || pageId === "orders") {
         await KitchenSystem.fetchOrders();
         if (currentKitchenStation === "TABLES") {
@@ -519,7 +523,6 @@ window.showPage = async (pageId) => {
         ensureOrdersStream();
     }
     if (pageId === "home") {
-        renderStoreBar("home-store-bar");
         renderPopularPicks();
         renderHomeStoreFacts();
         renderHomeRoastSteps();
@@ -538,26 +541,17 @@ window.showPage = async (pageId) => {
     }
 };
 
-/** Small "which store" control shown on the Home and Menu pages, only for
- *  a customer/guest/anonymous visitor (staff always work at their own
- *  assigned store - see js/features/store-logic.js) and only when there's
- *  actually more than one store to choose from. */
-function renderStoreBar(containerId) {
-    const root = document.getElementById(containerId);
-    if (!root) return;
-    if (!StoreSystem.hasMultipleStores() || !(TRACKING_ROLES.includes(session.role) || !session.authenticated)) {
-        root.innerHTML = "";
-        return;
-    }
+/** Compact "which store" pill shown next to the LOGIN button for a fully
+ *  anonymous visitor (no session at all) - once signed in (even as a
+ *  guest), the same control moves into the account dropdown instead (see
+ *  renderAccountMenu()) rather than living in two places at once. Exposed
+ *  on window since staff-shell.js's identityHtml() (not this module)
+ *  renders the anonymous LOGIN button. */
+window.storeIndicatorHtml = () => {
+    if (!StoreSystem.hasMultipleStores()) return "";
     const store = StoreSystem.getSelectedStore();
-    root.innerHTML = `
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--color-surface); border:1px solid var(--color-border); padding:9px 14px; margin-bottom:14px; font-size:9pt;">
-            <span>${store ? `\u{1F4CD} ${escapeHtml(store.name)}${store.address ? ` &middot; ${escapeHtml(store.address)}` : ""}` : "No store selected - showing every item"}</span>
-            <button type="button" id="${containerId}-change" style="background:none; border:none; color:var(--color-accent); cursor:pointer; text-decoration:underline; font-family:inherit; font-size:9pt; flex:none;">${store ? "CHANGE" : "SELECT YOUR STORE"}</button>
-        </div>
-    `;
-    document.getElementById(`${containerId}-change`).addEventListener("click", () => window.openStorePicker());
-}
+    return `<button type="button" id="anon-store-indicator" class="staff-auth-identity" style="border-left:none;"><span class="staff-auth-name">${store ? escapeHtml(store.name.toUpperCase()) : "SELECT STORE"}</span></button>`;
+};
 
 window.openStorePicker = () => {
     renderStorePickerModal(async (storeId) => {
@@ -567,12 +561,11 @@ window.openStorePicker = () => {
         const activePageId = document.querySelector(".page.active")?.id.replace("page-", "");
         if (activePageId === "menu") {
             renderMenu();
-            renderStoreBar("menu-store-bar");
         } else if (activePageId === "home") {
             renderHomeStoreFacts();
             renderHomeVisitRows();
-            renderStoreBar("home-store-bar");
         }
+        StaffShell.render(); // refreshes the anonymous store pill / dropdown label either way
         window.showToast?.(`Now showing ${StoreSystem.getSelectedStore()?.name || "your store"}`);
     });
 };

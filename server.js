@@ -408,6 +408,11 @@ function createUser({
     name: name || username,
     phone: phone || null,
     mustChangePassword,
+    // disabled: blocks login entirely without deleting the account/history
+    // (order attribution, payroll, audit log all still reference this id) -
+    // set when a store closes and its staff aren't relocated to another
+    // store (see DELETE /api/stores/:id), or manually from Staff Accounts.
+    disabled: false,
     // storeId: which store this person works at/manages. Owner/admin aren't
     // tied to one store (they see everything), so storeId is mostly
     // meaningful for employee/manager.
@@ -648,7 +653,19 @@ function readBody(req, maxBytes = 1024 * 1024) {
 /** Returns the session for this request, or null. Never sends a response. */
 function currentSession(req) {
   const cookies = parseCookies(req);
-  return getSession(cookies.sb_session);
+  const session = getSession(cookies.sb_session);
+  if (!session) return null;
+  // A staff account disabled mid-session (store closed, manually
+  // deactivated) is cut off immediately, not just blocked from a future
+  // login - the existing session token stops working right away.
+  if (session.userId != null) {
+    const user = findUserById(session.userId);
+    if (!user || user.disabled) {
+      destroySession(cookies.sb_session);
+      return null;
+    }
+  }
+  return session;
 }
 
 /** Requires ANY valid session (any role). Sends 401 and returns null if absent. */
@@ -1188,6 +1205,10 @@ route("POST", /^\/api\/auth\/login\/?$/, async (req, res) => {
     recordAuthFailure(ip);
     return sendJson(res, 401, { error: "Invalid username or password" });
   }
+  if (user.disabled) {
+    recordAuthFailure(ip);
+    return sendJson(res, 401, { error: "This account has been deactivated. Contact your manager or the owner." });
+  }
 
   recordAuthSuccess(ip);
   const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId, storeAccess: user.storeAccess || null });
@@ -1495,6 +1516,30 @@ route("PATCH", /^\/api\/users\/(?<id>\d+)\/?$/, async (req, res, params) => {
     const rate = Number(body.payRate);
     user.payRate = Number.isFinite(rate) && rate >= 0 ? rate : null;
   }
+  // Moving an employee/manager to a different store - admin/owner only. A
+  // manager never gets this: canManageTarget() already limits them to their
+  // own store's employees, so "move to a different store" doesn't fit their
+  // permission model (they'd be handing someone off to a store they can't
+  // themselves manage).
+  if (body.storeId !== undefined && ["employee", "manager"].includes(user.role)) {
+    if (session.role === "manager") {
+      return sendJson(res, 403, { error: "Only an admin/owner can move someone to a different store" });
+    }
+    const requestedStoreId = Number(body.storeId);
+    if (!readJson(STORES_FILE, []).some((s) => s.id === requestedStoreId)) {
+      return sendJson(res, 400, { error: "That store doesn't exist" });
+    }
+    const allowedStores = accessibleStoreIds(session);
+    if (allowedStores && !allowedStores.includes(requestedStoreId)) {
+      return sendJson(res, 403, { error: "You don't have access to that store" });
+    }
+    user.storeId = requestedStoreId;
+  }
+  // disabled: blocks login (see currentSession()) without deleting the
+  // account - anyone who could otherwise manage this person can toggle it
+  // (same gate as tag/pay rate above), matching reset-password's model of
+  // "no extra confirmation beyond canManageTarget".
+  if (body.disabled !== undefined) user.disabled = !!body.disabled;
   // storeAccess: which stores an admin can see/manage - only the owner may
   // grant/restrict this, and only for an admin account. An empty array or
   // omitting the field entirely both mean "unrestricted" going forward.
@@ -1506,6 +1551,47 @@ route("PATCH", /^\/api\/users\/(?<id>\d+)\/?$/, async (req, res, params) => {
     user.storeAccess = storeAccess.length ? storeAccess : null;
   }
   writeJson(USERS_FILE, users);
+  sendJson(res, 200, publicUser(user));
+});
+
+/** Changing someone's role is more sensitive than tag/pay rate/store, so it
+ *  gets its own route rather than living in the general PATCH above -
+ *  gated by allowedRolesToCreate() (the same tiers that govern who may
+ *  CREATE a given role also govern who may PROMOTE/DEMOTE into it), on
+ *  top of the usual canManageTarget() check for the account being edited. */
+route("PATCH", /^\/api\/users\/(?<id>\d+)\/role\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+
+  const targetUser = findUserById(Number(params.id));
+  if (!canManageTarget(session, targetUser)) {
+    return sendJson(res, 403, { error: "Your account can't edit that person" });
+  }
+  if (targetUser.id === session.userId) {
+    return sendJson(res, 400, { error: "You can't change your own role" });
+  }
+
+  const body = await readBody(req);
+  const newRole = String(body.role || "");
+  if (!allowedRolesToCreate(session).includes(newRole)) {
+    return sendJson(res, 403, { error: `Your account can't assign the "${newRole}" role` });
+  }
+
+  const users = readJson(USERS_FILE, []);
+  const user = users.find((u) => u.id === targetUser.id);
+  user.role = newRole;
+  // storeId/storeAccess/tag/payRate are each only meaningful for certain
+  // roles (see createUser()) - moving between tiers clears whichever no
+  // longer applies rather than leaving stale values behind.
+  user.storeId = ["employee", "manager"].includes(newRole) ? (user.storeId ?? 1) : null;
+  user.storeAccess = newRole === "admin" ? user.storeAccess : null;
+  if (!["employee", "manager"].includes(newRole)) {
+    user.tag = "";
+    user.payRateType = null;
+    user.payRate = null;
+  }
+  writeJson(USERS_FILE, users);
+  logAuditEvent(session, "change_role", targetUser);
   sendJson(res, 200, publicUser(user));
 });
 
@@ -1569,7 +1655,7 @@ route("GET", /^\/api\/stores\/?$/, async (req, res) => {
  *  required. Deliberately minimal (id/name/address only, no branding
  *  overrides) - do NOT reuse the staff-only GET /api/stores above. */
 route("GET", /^\/api\/stores\/public\/?$/, async (req, res) => {
-  const stores = readJson(STORES_FILE, []).map((s) => ({ id: s.id, name: s.name, address: s.address || "" }));
+  const stores = readJson(STORES_FILE, []).map((s) => ({ id: s.id, name: s.name, address: s.address || "", lat: s.lat ?? null, lng: s.lng ?? null }));
   sendJson(res, 200, stores);
 });
 
@@ -1588,9 +1674,10 @@ route("POST", /^\/api\/stores\/?$/, async (req, res) => {
 
 // Per-store branding override (shopName/logo/hero/colors/footer/etc,
 // anything Branding & Content also sets globally) - fields left unset here
-// fall back to the global config, see configForSession() above. Owner-only,
-// same as opening a new store - this is a business-structure change, not
-// day-to-day config a manager should be able to touch.
+// fall back to the global config, see configForSession() above. Editable
+// by whoever runs that store (see canManageStore()) - only renaming the
+// store itself is owner-only, since that's more a franchise-structure
+// decision than day-to-day upkeep.
 route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
   // Renaming a store is owner-only (that's more a franchise-structure
   // decision), but a store's own address/branding override is editable by
@@ -1612,6 +1699,19 @@ route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
     store.name = name.slice(0, 60);
   }
   if (typeof body.address === "string") store.address = body.address.trim().slice(0, 200);
+  // lat/lng: optional coordinates for the store picker's geolocation
+  // sort/"X km away" display (see GET /api/stores/public) - not required,
+  // the picker falls back to a plain list for any store without them.
+  // null/empty explicitly CLEARS the coordinate - Number(null) is 0, which
+  // is a real (equatorial) coordinate, not "unset", so that case has to be
+  // checked before coercing to a number.
+  const parseCoord = (value, min, max) => {
+    if (value === null || value === undefined || value === "") return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= min && n <= max ? n : null;
+  };
+  if (body.lat !== undefined) store.lat = parseCoord(body.lat, -90, 90);
+  if (body.lng !== undefined) store.lng = parseCoord(body.lng, -180, 180);
   if (body.branding && typeof body.branding === "object") {
     store.branding = { ...store.branding, ...body.branding };
     if (body.branding.colors) store.branding.colors = { ...(store.branding.colors || {}), ...body.branding.colors };
@@ -1619,6 +1719,51 @@ route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
   }
   writeJson(STORES_FILE, stores);
   sendJson(res, 200, store);
+});
+
+/** Closing a store, owner-only (same tier as opening one). Its employees/
+ *  managers can't be left pointing at a store that no longer exists, so
+ *  the caller must say what happens to them: reassign everyone to another
+ *  store (`reassignToStoreId`), or deactivate their accounts (default,
+ *  matching "deactivated or relocated") - a disabled account can't log in
+ *  (see currentSession()) but its order/payroll history is untouched. Any
+ *  admin scoped to this store also has it quietly dropped from their
+ *  storeAccess so they're never left "restricted to a store that doesn't
+ *  exist" (which would otherwise look identical to "unrestricted"). */
+route("DELETE", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  if (!requireRole(req, res, ["owner"])) return;
+  const storeId = Number(params.id);
+  const stores = readJson(STORES_FILE, []);
+  const store = stores.find((s) => s.id === storeId);
+  if (!store) return sendJson(res, 404, { error: "Store not found" });
+  if (stores.length <= 1) return sendJson(res, 400, { error: "Can't remove the only store" });
+
+  const body = await readBody(req);
+  const reassignToStoreId = Number(body.reassignToStoreId);
+  const willReassign = Number.isFinite(reassignToStoreId) && stores.some((s) => s.id === reassignToStoreId && s.id !== storeId);
+  if (body.reassignToStoreId != null && !willReassign) {
+    return sendJson(res, 400, { error: "Pick a valid store to move staff to, or leave it blank to deactivate them" });
+  }
+
+  const users = readJson(USERS_FILE, []);
+  const affected = users.filter((u) => ["employee", "manager"].includes(u.role) && u.storeId === storeId);
+  affected.forEach((u) => {
+    if (willReassign) {
+      u.storeId = reassignToStoreId;
+    } else {
+      u.disabled = true;
+    }
+  });
+  users.forEach((u) => {
+    if (u.role === "admin" && Array.isArray(u.storeAccess)) {
+      const filtered = u.storeAccess.filter((id) => id !== storeId);
+      u.storeAccess = filtered.length ? filtered : null;
+    }
+  });
+  writeJson(USERS_FILE, users);
+
+  writeJson(STORES_FILE, stores.filter((s) => s.id !== storeId));
+  sendJson(res, 200, { ok: true, affectedStaff: affected.length, reassigned: willReassign });
 });
 
 route("GET", /^\/api\/audit-log\/?$/, async (req, res) => {

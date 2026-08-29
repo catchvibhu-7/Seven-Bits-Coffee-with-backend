@@ -326,7 +326,14 @@ export const StaffShell = {
     identityHtml() {
         const s = this.session || {};
         if (!s.role) {
-            return `<button type="button" id="staff-account-btn" class="staff-auth-identity"><span class="staff-auth-name">LOGIN</span></button>`;
+            // window.storeIndicatorHtml() (app.js) adds a compact "pick your
+            // store" pill alongside LOGIN for a fully anonymous visitor -
+            // empty string when there's only one store, so this is a no-op
+            // for a single-location deployment.
+            return `
+                <button type="button" id="staff-account-btn" class="staff-auth-identity"><span class="staff-auth-name">LOGIN</span></button>
+                ${window.storeIndicatorHtml?.() || ""}
+            `;
         }
         const name = s.name || s.role.toUpperCase();
         const role = s.role.toUpperCase();
@@ -418,6 +425,7 @@ export const StaffShell = {
             }
         });
         root.querySelector("#staff-timeclock-btn")?.addEventListener("click", () => window.handleTimeclockClick?.());
+        root.querySelector("#anon-store-indicator")?.addEventListener("click", () => window.openStorePicker?.());
     },
 
     // Snapshot of the customer nav's markup, captured once on first load

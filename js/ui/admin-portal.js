@@ -464,6 +464,7 @@ export const AdminPortal = {
                         <div style="display:flex; align-items:center; gap:10px; font-size:8pt;">
                             <span style="flex:1;">${escapeHtmlAttr(s.name)}${s.address ? ` — ${escapeHtmlAttr(s.address)}` : ""}</span>
                             ${canEdit ? `<button class="admin-btn-secondary" data-toggle-branding="${s.id}" style="padding:4px 8px; font-size:7pt;">${expanded ? "CLOSE" : "EDIT BRANDING"}</button>` : ""}
+                            ${isOwner && stores.length > 1 ? `<button class="admin-btn-danger" data-remove-store="${s.id}" data-name="${escapeHtmlAttr(s.name)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>` : ""}
                         </div>
                         ${
                             expanded && canEdit
@@ -476,6 +477,13 @@ export const AdminPortal = {
                             <div class="control-group">
                                 <label>ADDRESS (shown on the home page "Visit us" widget)</label>
                                 <input type="text" id="store-${s.id}-address" maxlength="200" value="${escapeHtmlAttr(s.address || "")}" />
+                            </div>
+                            <div class="control-group">
+                                <label>COORDINATES (lets the customer store picker sort by nearest - optional)</label>
+                                <div style="display:flex; gap:8px; align-items:center;">
+                                    <input type="text" id="store-${s.id}-lat" placeholder="Latitude" value="${s.lat ?? ""}" style="flex:1;" />
+                                    <input type="text" id="store-${s.id}-lng" placeholder="Longitude" value="${s.lng ?? ""}" style="flex:1;" />
+                                </div>
                             </div>
                             <div class="control-group">
                                 <label>PHONE (blank = use global)</label>
@@ -557,6 +565,8 @@ export const AdminPortal = {
                     try {
                         await PayrollSystem.updateStore(id, {
                             address: document.getElementById(`store-${id}-address`).value.trim(),
+                            lat: document.getElementById(`store-${id}-lat`).value.trim() || null,
+                            lng: document.getElementById(`store-${id}-lng`).value.trim() || null,
                             branding: {
                                 shopName: document.getElementById(`store-${id}-name`).value.trim(),
                                 logoUrl: document.getElementById(`store-${id}-logo`).value.trim(),
@@ -581,6 +591,28 @@ export const AdminPortal = {
                     }
                 });
             });
+
+            root.querySelectorAll("[data-remove-store]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = Number(btn.dataset.removeStore);
+                    const otherStores = stores.filter((s) => s.id !== id);
+                    this.renderRemoveStoreConfirm(btn.dataset.name, otherStores, async (reassignToStoreId) => {
+                        try {
+                            const result = await PayrollSystem.removeStore(id, { reassignToStoreId });
+                            await renderStoresList();
+                            ok(
+                                result.affectedStaff === 0
+                                    ? "Store removed"
+                                    : result.reassigned
+                                      ? `Store removed - ${result.affectedStaff} staff moved`
+                                      : `Store removed - ${result.affectedStaff} staff deactivated`
+                            );
+                        } catch (e) {
+                            fail(e.message);
+                        }
+                    });
+                });
+            });
         };
         await renderStoresList();
 
@@ -600,6 +632,44 @@ export const AdminPortal = {
                 }
             });
         }
+    },
+
+    /** Closing a store leaves its employees/managers pointing nowhere, so
+     *  this asks up front what happens to them - move everyone to another
+     *  store, or deactivate their accounts (matches DELETE /api/stores/:id,
+     *  which requires exactly this choice). Not built with the generic
+     *  renderInfoModal since this needs a store-picker dropdown, not just
+     *  a yes/no. */
+    renderRemoveStoreConfirm(storeName, otherStores, onConfirm) {
+        document.getElementById("remove-store-overlay")?.remove();
+        const overlay = document.createElement("div");
+        overlay.id = "remove-store-overlay";
+        overlay.className = "modal-overlay";
+        overlay.style.zIndex = "6000";
+        overlay.innerHTML = `
+            <div class="modal-content" style="border: 2px solid var(--color-danger); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 340px; font-family: 'Courier New', monospace;">
+                <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-danger); padding-bottom: 10px; margin-top:0; font-size: 1rem;">REMOVE ${escapeHtmlAttr(storeName)}?</h2>
+                <p style="font-size: 9pt; color: var(--color-text-muted);">Any employee/manager assigned here needs somewhere to go. Pick a store to move them to, or leave it as "Deactivate" to disable their accounts (their order/payroll history is kept either way).</p>
+                <div class="control-group">
+                    <label>WHAT HAPPENS TO THEIR STAFF</label>
+                    <select id="rsc-target" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit;">
+                        <option value="">Deactivate their accounts</option>
+                        ${otherStores.map((s) => `<option value="${s.id}">Move to ${escapeHtmlAttr(s.name)}</option>`).join("")}
+                    </select>
+                </div>
+                <div style="display:grid; gap:10px; margin-top:16px;">
+                    <button id="rsc-confirm" class="admin-btn-danger" style="padding:12px; font-weight:bold; text-transform:uppercase;">REMOVE STORE</button>
+                    <button id="rsc-cancel" class="admin-btn-secondary" style="padding:10px; text-transform:uppercase;">CANCEL</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        document.getElementById("rsc-cancel").addEventListener("click", () => overlay.remove());
+        document.getElementById("rsc-confirm").addEventListener("click", () => {
+            const value = document.getElementById("rsc-target").value;
+            overlay.remove();
+            onConfirm(value ? Number(value) : null);
+        });
     },
 
     // ---------------------------------------------------------------- THIS STORE (manager-only)
@@ -639,6 +709,15 @@ export const AdminPortal = {
                 <div class="control-group">
                     <label>PHONE (blank = use global)</label>
                     <input type="text" id="ts-phone" maxlength="20" value="${escapeHtmlAttr(footer.phone || "")}" />
+                </div>
+                <div class="control-group">
+                    <label>COORDINATES (lets the customer store picker show distance/sort by nearest - optional)</label>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <input type="text" id="ts-lat" placeholder="Latitude" value="${store.lat ?? ""}" style="flex:1;" />
+                        <input type="text" id="ts-lng" placeholder="Longitude" value="${store.lng ?? ""}" style="flex:1;" />
+                        <button type="button" class="admin-btn-secondary" id="ts-use-location" style="white-space:nowrap;">USE MY LOCATION</button>
+                    </div>
+                    <p id="ts-location-status" style="font-size:7pt; color:var(--color-text-muted); min-height:10px; margin-top:4px;"></p>
                 </div>
                 <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
                     ${colorField("ts-accent", "ACCENT", colors.accent || "#d97706")}
@@ -681,12 +760,33 @@ export const AdminPortal = {
         document.getElementById("ts-pick-hero").addEventListener("click", () => {
             renderImagePickerModal({ onSelect: (url) => (document.getElementById("ts-hero").value = url) });
         });
+        document.getElementById("ts-use-location").addEventListener("click", () => {
+            const statusEl = document.getElementById("ts-location-status");
+            if (!navigator.geolocation) {
+                statusEl.textContent = "Geolocation isn't available in this browser.";
+                return;
+            }
+            statusEl.textContent = "Getting your location...";
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    document.getElementById("ts-lat").value = pos.coords.latitude.toFixed(6);
+                    document.getElementById("ts-lng").value = pos.coords.longitude.toFixed(6);
+                    statusEl.textContent = "Got it - remember to hit SAVE.";
+                },
+                (err) => {
+                    statusEl.textContent = err.code === err.PERMISSION_DENIED ? "Location permission denied." : "Could not get your location.";
+                },
+                { timeout: 10000 }
+            );
+        });
         document.getElementById("ts-save").addEventListener("click", async () => {
             const errorEl = document.getElementById("ts-error");
             errorEl.textContent = "";
             try {
                 await PayrollSystem.updateStore(store.id, {
                     address: document.getElementById("ts-address").value.trim(),
+                    lat: document.getElementById("ts-lat").value.trim() || null,
+                    lng: document.getElementById("ts-lng").value.trim() || null,
                     branding: {
                         shopName: document.getElementById("ts-name").value.trim(),
                         logoUrl: document.getElementById("ts-logo").value.trim(),
@@ -2432,7 +2532,12 @@ export const AdminPortal = {
         if (isOwner) {
             const auditRes = await fetch("/api/audit-log", { credentials: "include" });
             const log = auditRes.ok ? await auditRes.json() : [];
-            const actionLabels = { reset_password: "Reset password", remove_account: "Removed account", payroll_paid: "Marked payroll paid" };
+            const actionLabels = {
+                reset_password: "Reset password",
+                remove_account: "Removed account",
+                payroll_paid: "Marked payroll paid",
+                change_role: "Changed role"
+            };
             auditLogHtml = `
                 <h3 style="margin-top:30px; border-top:1px solid var(--color-border); padding-top:20px;">ACCOUNT ACTIVITY LOG</h3>
                 <p class="admin-help-text" style="margin-bottom:10px;">Password resets, removals, and payroll actions performed by admins/managers - visible only to the owner.</p>
@@ -2486,8 +2591,8 @@ export const AdminPortal = {
                                     ? `<div style="font-size:6.5pt; color:var(--color-text-muted);">${u.storeAccess && u.storeAccess.length ? `${u.storeAccess.length} store(s)` : "All stores"}</div>`
                                     : "";
                             return `
-                        <tr>
-                            <td>${u.username}${isSelf ? ' <span style="color:var(--color-text-muted); font-size:7pt;">(you)</span>' : ""}</td>
+                        <tr style="${u.disabled ? "opacity:0.55;" : ""}">
+                            <td>${u.username}${isSelf ? ' <span style="color:var(--color-text-muted); font-size:7pt;">(you)</span>' : ""}${u.disabled ? ' <span style="color:var(--color-danger); font-size:7pt;">(DEACTIVATED)</span>' : ""}</td>
                             <td>${u.name}</td>
                             <td style="color: var(--color-accent);">${u.role.toUpperCase()}${storeAccessNote}</td>
                             <td style="font-size:8pt; color:var(--color-text-muted);">${u.tag || "\u2014"}</td>
