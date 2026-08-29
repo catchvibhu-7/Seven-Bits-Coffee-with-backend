@@ -397,7 +397,7 @@ export const StaffShell = {
                         : `${logoImageHtml(28)}
                            <span style="font-size:17px; font-weight:bold; letter-spacing:2px; color:var(--color-accent);">${shopShortForm()}</span>`
                 }
-                <span style="font-size:9px; letter-spacing:.18em; color:var(--color-text-muted);">${this.isStaffSession() ? "POS" : "ORDER"}</span>
+                <span class="staff-topbar-sublabel" style="font-size:9px; letter-spacing:.18em; color:var(--color-text-muted);">${this.isStaffSession() ? "POS" : "ORDER"}</span>
             </div>
             <nav class="staff-topbar-nav" aria-label="Site navigation">
                 ${this.navButtonsHtml(tabs, { topbar: true })}

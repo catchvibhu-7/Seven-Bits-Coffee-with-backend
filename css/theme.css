@@ -361,7 +361,14 @@ header {
     color: var(--color-accent);
 }
 
-/* Top-bar layout - same tab data as the rail, arranged horizontally. */
+/* Top-bar layout - same tab data as the rail, arranged horizontally.
+   Logo and identity/login are flex:none so they can never be squeezed out
+   or wrapped away - only .staff-topbar-nav (the actual tab list) scrolls
+   horizontally when it doesn't fit (see below). Previously this whole row
+   used flex-wrap:wrap with a fixed height:60px, so once the tabs + identity
+   button stopped fitting on one line, whatever wrapped to a second row
+   rendered outside that fixed height - on a narrow/tablet width that could
+   be the LOGIN button itself, made unreachable rather than just untidy. */
 .staff-topbar {
     display: flex;
     align-items: center;
@@ -370,7 +377,7 @@ header {
     height: 60px;
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     /* Genuinely pinned to the screen (like .staff-rail's position:fixed),
        not just sticky - #app-main gets a matching margin-top whenever this
        layout is active (see setMainOffsetForLayout() in staff-shell.js) so
@@ -396,12 +403,23 @@ header {
     display: flex;
     gap: 8px;
     flex: 1;
-    flex-wrap: wrap;
+    /* Enough for at least a couple of characters of the first tab to peek
+       through and hint "scroll me" - a bare min-width:0 lets the logo and
+       identity buttons squeeze this down to nothing on a real phone width,
+       where it'd otherwise vanish with no visible affordance at all. */
+    min-width: 64px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior: contain;
+    /* Room for the row to actually scroll under a mouse/trackpad, not just
+       touch - matches the rail's own mobile-strip precedent. */
+    padding-bottom: 2px;
 }
 
 .staff-topbar-nav .staff-nav-btn {
     padding: 8px 16px;
     min-height: 40px;
+    flex: none;
 }
 
 .staff-topbar-identity {
@@ -471,6 +489,22 @@ header {
 
 .staff-topbar-identity .staff-auth-name {
     max-width: 140px;
+}
+
+/* Frees up horizontal room for the scrollable tab strip on a real phone
+   width, where the logo + identity/login buttons alone can already fill
+   most of the viewport - a decorative sublabel isn't worth the space there. */
+@media (max-width: 480px) {
+    .staff-topbar-sublabel {
+        display: none;
+    }
+    .staff-topbar {
+        gap: 10px;
+        padding: 0 10px;
+    }
+    .staff-topbar-identity .staff-auth-name {
+        max-width: 80px;
+    }
 }
 
 /* Rail collapses to a horizontal scrollable strip on narrow screens rather
