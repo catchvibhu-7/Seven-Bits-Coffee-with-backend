@@ -541,7 +541,7 @@ export const AdminPortal = {
                 <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-danger); padding-bottom: 10px; margin-top:0; font-size: 1rem;">REMOVE ${escapeHtmlAttr(storeName)}?</h2>
                 <p style="font-size: 9pt; color: var(--color-text-muted);">Any employee/manager assigned here needs somewhere to go. Pick a store to move them to, or leave it as "Deactivate" to disable their accounts (their order/payroll history is kept either way).</p>
                 <div class="control-group">
-                    <label>WHAT HAPPENS TO THEIR STAFF</label>
+                    <label for="rsc-target">WHAT HAPPENS TO THEIR STAFF</label>
                     <select id="rsc-target" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit;">
                         <option value="">Deactivate their accounts</option>
                         ${otherStores.map((s) => `<option value="${s.id}">Move to ${escapeHtmlAttr(s.name)}</option>`).join("")}
@@ -606,9 +606,9 @@ export const AdminPortal = {
                     title: "EDIT CONTACT",
                     fields: [
                         { id: "sp-address", label: "Address (shown on the home page “Visit us” widget)", value: store.address || "", maxlength: 200 },
-                        { id: "sp-phone", label: "Phone (blank = use franchise default)", value: store.phone || "", maxlength: 20 },
-                        { id: "sp-lat", label: "Latitude", value: store.lat ?? "", placeholder: "Optional" },
-                        { id: "sp-lng", label: "Longitude", value: store.lng ?? "", placeholder: "Optional" }
+                        { id: "sp-phone", label: "Phone (blank = use franchise default)", value: store.phone || "", maxlength: 20, type: "tel" },
+                        { id: "sp-lat", label: "Latitude", value: store.lat ?? "", placeholder: "Optional", type: "number", step: "any" },
+                        { id: "sp-lng", label: "Longitude", value: store.lng ?? "", placeholder: "Optional", type: "number", step: "any" }
                     ],
                     onSave: async (v) => {
                         await PayrollSystem.updateStore(store.id, {
@@ -787,7 +787,7 @@ export const AdminPortal = {
                 </div>`
                         : ""
                 }
-                <p id="sp-backup-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+                <p id="sp-backup-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
             </div>
         `;
         container.querySelector("#sp-backup-download").addEventListener("click", () => PayrollSystem.downloadStoreBackup(store.id));
@@ -804,7 +804,7 @@ export const AdminPortal = {
             if (!restoreFile) return;
             renderInfoModal({
                 title: "RESTORE THIS STORE",
-                message: `This will overwrite ${escapeHtmlAttr(store.name)}'s own orders, table sessions, timeclock, local discounts, and settings with the contents of "${restoreFile.name}". This can't be undone. Continue?`,
+                message: `This will overwrite ${escapeHtmlAttr(store.name)}'s own orders, table sessions, timeclock, local discounts, and settings with the contents of "${escapeHtmlAttr(restoreFile.name)}". This can't be undone. Continue?`,
                 confirmText: "RESTORE",
                 cancelText: "CANCEL",
                 onConfirm: async () => {
@@ -853,7 +853,7 @@ export const AdminPortal = {
                 `
                         : `<p class="admin-help-text">${isOwner ? "Owner has read-only access to backups - a Global Admin can restore." : "Only a Global Admin can restore a backup."}</p>`
                 }
-                <p id="backup-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+                <p id="backup-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
             </div>
         `;
 
@@ -878,7 +878,7 @@ export const AdminPortal = {
             if (!restoreFile) return;
             renderInfoModal({
                 title: "RESTORE FROM BACKUP",
-                message: `This will overwrite current menu, orders, staff accounts, and settings with the contents of "${restoreFile.name}". This can't be undone. Continue?`,
+                message: `This will overwrite current menu, orders, staff accounts, and settings with the contents of "${escapeHtmlAttr(restoreFile.name)}". This can't be undone. Continue?`,
                 confirmText: "RESTORE",
                 cancelText: "CANCEL",
                 onConfirm: async () => {
@@ -895,7 +895,7 @@ export const AdminPortal = {
                         });
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error || "Restore failed");
-                        ok(`Restored ${data.restoredCount} file(s) - reloading...`);
+                        ok(`Restored ${data.restoredCount} file(s) - reloading…`);
                         setTimeout(() => window.location.reload(), 1200);
                     } catch (e) {
                         errorEl.textContent = e.message || "Could not restore backup";
@@ -913,16 +913,16 @@ export const AdminPortal = {
                 <p class="admin-help-text">Downloads a spreadsheet-ready CSV of orders for bookkeeping/tax filing - one row per order with items, tax, and totals.</p>
                 <div style="display:flex; gap:12px; margin-bottom:14px;">
                     <div class="control-group" style="flex:0 0 150px;">
-                        <label>FROM (optional)</label>
+                        <label for="report-from">FROM (optional)</label>
                         <input type="date" id="report-from" />
                     </div>
                     <div class="control-group" style="flex:0 0 150px;">
-                        <label>TO (optional)</label>
+                        <label for="report-to">TO (optional)</label>
                         <input type="date" id="report-to" />
                     </div>
                 </div>
                 <button class="admin-btn-primary" id="report-export-csv">EXPORT CSV</button>
-                <p id="report-error" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+                <p id="report-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
             </div>
         `;
 
@@ -1060,7 +1060,7 @@ export const AdminPortal = {
                                       (s) => `
                             <div style="margin-bottom:10px;">
                                 <div style="display:flex; justify-content:space-between; font-size:8pt; margin-bottom:3px;">
-                                    <span>${s.name}</span><span style="color:var(--color-text-muted);">${s.quantity}</span>
+                                    <span>${escapeHtmlAttr(s.name)}</span><span style="color:var(--color-text-muted);">${s.quantity}</span>
                                 </div>
                                 <div style="height:5px; background:var(--color-border);"><div style="height:100%; width:${(s.quantity / maxSeller) * 100}%; background:var(--color-cyan);"></div></div>
                             </div>
@@ -1090,8 +1090,8 @@ export const AdminPortal = {
                                 <div style="display:flex; align-items:center; gap:12px; padding:9px 0; border-top:1px dashed var(--color-border);">
                                     <span style="width:30px; height:30px; flex:none; border:1px solid var(--color-accent); color:var(--color-accent); display:flex; align-items:center; justify-content:center; font-size:10pt; font-weight:bold;">${initials}</span>
                                     <div style="flex:1; min-width:0;">
-                                        <div style="font-size:9pt; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${p.name}</div>
-                                        <div style="font-size:7pt; color:var(--color-text-muted); margin-top:2px; letter-spacing:.06em; text-transform:uppercase;">${p.role}${p.tag ? " &middot; " + p.tag : ""}</div>
+                                        <div style="font-size:9pt; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(p.name)}</div>
+                                        <div style="font-size:7pt; color:var(--color-text-muted); margin-top:2px; letter-spacing:.06em; text-transform:uppercase;">${escapeHtmlAttr(p.role)}${p.tag ? " &middot; " + escapeHtmlAttr(p.tag) : ""}</div>
                                     </div>
                                     <span style="flex:none; font-size:7pt; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; color:${p.clockedIn ? "var(--color-success)" : "var(--color-text-muted)"};">${p.clockedIn ? "● ON SHIFT" : "OFF SHIFT"}</span>
                                 </div>
@@ -1214,8 +1214,8 @@ export const AdminPortal = {
                         .map(
                             (s) => `
                         <tr>
-                            <td>${s.name}</td>
-                            <td style="font-size:8pt; color:var(--color-text-muted);">${s.tag || "\u2014"}</td>
+                            <td>${escapeHtmlAttr(s.name)}</td>
+                            <td style="font-size:8pt; color:var(--color-text-muted);">${escapeHtmlAttr(s.tag) || "\u2014"}</td>
                             <td style="font-size:8pt;">${currencySymbol()}${s.payRate}/${s.payRateType === "hourly" ? "hr" : s.payRateType === "weekly" ? "wk" : "mo"}</td>
                             <td>
                                 ${s.hoursWorked !== null ? s.hoursWorked : "\u2014"}
@@ -1228,8 +1228,8 @@ export const AdminPortal = {
                             <td>${currencySymbol()}${s.amount.toFixed(2)}</td>
                             <td>${s.isPaid ? `<span style="color:var(--color-success);">\u2713 PAID</span>` : `<span style="color:var(--color-cyan);">PENDING</span>`}</td>
                             <td style="text-align:right;">
-                                ${canPay && s.hasUnapprovedOvertime ? `<button class="admin-btn" data-approve-ot="${s.userId}" data-name="${s.name}">APPROVE OT</button>` : ""}
-                                ${canPay && !s.isPaid ? `<button class="admin-btn" data-mark-paid="${s.userId}" data-name="${s.name}" data-amount="${s.amount.toFixed(2)}">MARK PAID</button>` : ""}
+                                ${canPay && s.hasUnapprovedOvertime ? `<button class="admin-btn" data-approve-ot="${s.userId}" data-name="${escapeHtmlAttr(s.name)}">APPROVE OT</button>` : ""}
+                                ${canPay && !s.isPaid ? `<button class="admin-btn" data-mark-paid="${s.userId}" data-name="${escapeHtmlAttr(s.name)}" data-amount="${s.amount.toFixed(2)}">MARK PAID</button>` : ""}
                                 ${!canPay ? `<span style="color:var(--color-text-muted); font-size:7pt;">—</span>` : ""}
                             </td>
                         </tr>
@@ -1247,22 +1247,22 @@ export const AdminPortal = {
             </p>
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:15px;">
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:3px;">STAFF</label>
+                    <label for="att-user" class="admin-field-label" style="display:block; margin-bottom:3px;">STAFF</label>
                     <select id="att-user" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;">
-                        ${allStaff.map((u) => `<option value="${u.id}">${u.name}${u.tag ? ` (${u.tag})` : ""}</option>`).join("")}
+                        ${allStaff.map((u) => `<option value="${u.id}">${escapeHtmlAttr(u.name)}${u.tag ? ` (${escapeHtmlAttr(u.tag)})` : ""}</option>`).join("")}
                     </select>
                 </div>
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:3px;">DATE</label>
+                    <label for="att-date" class="admin-field-label" style="display:block; margin-bottom:3px;">DATE</label>
                     <input type="date" id="att-date" value="${new Date().toISOString().slice(0, 10)}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
                 </div>
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:3px;">HOURS</label>
+                    <label for="att-hours" class="admin-field-label" style="display:block; margin-bottom:3px;">HOURS</label>
                     <input type="number" id="att-hours" min="0.5" max="24" step="0.5" value="8" style="width:80px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
                 </div>
                 <button class="admin-btn-primary" id="att-submit">MARK</button>
             </div>
-            <p id="attendance-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+            <p id="attendance-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
 
             ${
                 attendance.length === 0
@@ -1276,10 +1276,10 @@ export const AdminPortal = {
                         .map(
                             (a) => `
                         <tr>
-                            <td>${a.name}</td>
-                            <td style="font-size:8pt;">${a.date}</td>
+                            <td>${escapeHtmlAttr(a.name)}</td>
+                            <td style="font-size:8pt;">${escapeHtmlAttr(a.date)}</td>
                             <td>${a.hours}${a.hours > 8 ? ` <span style="color:var(--color-danger); font-size:7pt;">(OT)</span>` : ""}</td>
-                            <td style="font-size:8pt; color:var(--color-text-muted);">${a.markedBy}</td>
+                            <td style="font-size:8pt; color:var(--color-text-muted);">${escapeHtmlAttr(a.markedBy)}</td>
                             <td style="text-align:right;"><button class="admin-btn admin-btn-danger" data-delete-attendance="${a.id}">REMOVE</button></td>
                         </tr>
                     `
@@ -1302,11 +1302,11 @@ export const AdminPortal = {
                         .map(
                             (h) => `
                         <tr>
-                            <td>${h.name}</td>
+                            <td>${escapeHtmlAttr(h.name)}</td>
                             <td style="font-size:8pt;">${h.periodStart.slice(0, 10)} \u2192 ${h.periodEnd.slice(0, 10)}</td>
                             <td>${h.hoursWorked !== null ? h.hoursWorked : "\u2014"}</td>
                             <td>${currencySymbol()}${h.amountPaid.toFixed(2)}</td>
-                            <td style="font-size:8pt; color:var(--color-text-muted);">${new Date(h.paidAt).toLocaleString()} by ${h.paidBy}</td>
+                            <td style="font-size:8pt; color:var(--color-text-muted);">${new Date(h.paidAt).toLocaleString()} by ${escapeHtmlAttr(h.paidBy)}</td>
                         </tr>
                     `
                         )
@@ -1320,7 +1320,7 @@ export const AdminPortal = {
             btn.addEventListener("click", () => {
                 renderInfoModal({
                     title: "MARK AS PAID",
-                    message: `Confirm ${btn.dataset.name} has been paid ${currencySymbol()}${btn.dataset.amount} for this period? This can't be undone.`,
+                    message: `Confirm ${escapeHtmlAttr(btn.dataset.name)} has been paid ${currencySymbol()}${escapeHtmlAttr(btn.dataset.amount)} for this period? This can't be undone.`,
                     confirmText: "CONFIRM PAID",
                     cancelText: "CANCEL",
                     onConfirm: async () => {
@@ -1341,7 +1341,7 @@ export const AdminPortal = {
                 const staffMember = staff.find((s) => s.userId === Number(btn.dataset.approveOt));
                 renderInfoModal({
                     title: "APPROVE OVERTIME",
-                    message: `${btn.dataset.name} worked ${staffMember?.rawHours}h against the ${8}h daily cap this period. Approve the extra hours to count toward pay?`,
+                    message: `${escapeHtmlAttr(btn.dataset.name)} worked ${escapeHtmlAttr(staffMember?.rawHours)}h against the ${8}h daily cap this period. Approve the extra hours to count toward pay?`,
                     confirmText: "APPROVE",
                     cancelText: "CANCEL",
                     onConfirm: async () => {
@@ -1424,9 +1424,9 @@ export const AdminPortal = {
 
         const iconHtml = (item) =>
             item.imageUrl
-                ? `<img src="${item.imageUrl}" style="width:22px; height:22px; object-fit:cover; border-radius:4px;" />`
+                ? `<img src="${escapeHtmlAttr(item.imageUrl)}" alt="" width="22" height="22" style="width:22px; height:22px; object-fit:cover; border-radius:4px;" />`
                 : customIcons[item.icon]
-                  ? `<img src="${customIcons[item.icon]}" style="width:22px; height:22px; object-fit:contain;" />`
+                  ? `<img src="${escapeHtmlAttr(customIcons[item.icon])}" alt="" width="22" height="22" style="width:22px; height:22px; object-fit:contain;" />`
                   : `<span class="icon icon-${item.icon}" style="display:inline-block; width:22px; height:22px;"></span>`;
 
         const rowHtml = (item) => {
@@ -1509,9 +1509,9 @@ export const AdminPortal = {
                 : rawItems.filter((i) => !i.deleted);
             const expanded = !!this.expandedMenuSections[section.id];
             const headerHtml = `
-                <div class="menu-section-header" data-toggle-section="${section.id}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; cursor:pointer; border-bottom:1px solid var(--color-border);">
+                <div class="menu-section-header" data-toggle-section="${section.id}" role="button" tabindex="0" aria-expanded="${expanded}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; cursor:pointer; border-bottom:1px solid var(--color-border);">
                     <h3 style="font-size:9.5pt; letter-spacing:1px; color:var(--color-accent); display:flex; align-items:center; gap:8px; margin:0;">
-                        <span style="display:inline-block; transition:transform .1s; transform:rotate(${expanded ? "90deg" : "0deg"});">&#9656;</span>
+                        <span aria-hidden="true" style="display:inline-block; transition:transform .1s; transform:rotate(${expanded ? "90deg" : "0deg"});">&#9656;</span>
                         ${escapeHtmlAttr(section.title)} <span style="color:var(--color-text-muted); font-size:8pt;">(${items.length})</span>
                     </h3>
                     <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}" style="padding:4px 8px; font-size:7pt;">DELETE SECTION</button>
@@ -1543,11 +1543,11 @@ export const AdminPortal = {
                     ${
                         totalPages > 1
                             ? `<div style="display:flex; align-items:center; gap:2px; margin-top:8px; justify-content:flex-end;">
-                            <button class="admin-pg-btn menu-page-first" data-section="${section.id}" ${clampedPage <= 1 ? "disabled" : ""} title="First page">\u00ab</button>
-                            <button class="admin-pg-btn menu-page-prev" data-section="${section.id}" ${clampedPage <= 1 ? "disabled" : ""} title="Previous page">\u2039</button>
+                            <button class="admin-pg-btn menu-page-first" data-section="${section.id}" ${clampedPage <= 1 ? "disabled" : ""} title="First page" aria-label="First page">\u00ab</button>
+                            <button class="admin-pg-btn menu-page-prev" data-section="${section.id}" ${clampedPage <= 1 ? "disabled" : ""} title="Previous page" aria-label="Previous page">\u2039</button>
                             <span style="font-size:8pt; color:var(--color-text-muted); margin:0 6px;">${(clampedPage - 1) * PAGE_SIZE + 1}-${Math.min(clampedPage * PAGE_SIZE, items.length)} of ${items.length}</span>
-                            <button class="admin-pg-btn menu-page-next" data-section="${section.id}" ${clampedPage >= totalPages ? "disabled" : ""} title="Next page">\u203a</button>
-                            <button class="admin-pg-btn menu-page-last" data-section="${section.id}" ${clampedPage >= totalPages ? "disabled" : ""} title="Last page">\u00bb</button>
+                            <button class="admin-pg-btn menu-page-next" data-section="${section.id}" ${clampedPage >= totalPages ? "disabled" : ""} title="Next page" aria-label="Next page">\u203a</button>
+                            <button class="admin-pg-btn menu-page-last" data-section="${section.id}" ${clampedPage >= totalPages ? "disabled" : ""} title="Last page" aria-label="Last page">\u00bb</button>
                         </div>`
                             : ""
                     }
@@ -1636,13 +1636,25 @@ export const AdminPortal = {
                 this.deleteMenuSection(btn.dataset.deleteSection, root);
             })
         );
-        root.querySelectorAll("[data-toggle-section]").forEach((header) =>
-            header.addEventListener("click", () => {
+        root.querySelectorAll("[data-toggle-section]").forEach((header) => {
+            const toggle = () => {
                 const id = header.dataset.toggleSection;
                 this.expandedMenuSections[id] = !this.expandedMenuSections[id];
                 this.renderMenuItems(root);
-            })
-        );
+            };
+            header.addEventListener("click", toggle);
+            // This header is a <div role="button"> (it wraps its own nested
+            // DELETE SECTION <button>, so it can't itself be a <button>) -
+            // native buttons get Enter/Space activation for free, this
+            // doesn't, so it's wired by hand here.
+            header.addEventListener("keydown", (e) => {
+                if (e.target !== header) return; // don't hijack Enter/Space on the nested DELETE button
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggle();
+                }
+            });
+        });
         root.querySelectorAll("[data-approve-disable]").forEach((btn) =>
             btn.addEventListener("click", () => this.toggleItemAvailable(Number(btn.dataset.approveDisable), root, false))
         );
@@ -1859,7 +1871,7 @@ export const AdminPortal = {
                     </table>
                     <button class="admin-btn cp-add-row" style="margin-top:8px;">+ ADD OPTION</button>
                     <button class="admin-btn admin-btn-primary cp-save" style="margin-top:8px; margin-left:8px;">SAVE ${g.title}</button>
-                    <p class="cp-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 6px 0 0;"></p>
+                    <p class="cp-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 6px 0 0;"></p>
                 </div>
             `
                 )
@@ -1887,10 +1899,10 @@ export const AdminPortal = {
             .map(
                 (opt, idx) => `
                 <tr data-idx="${idx}">
-                    <td><input class="cp-label" type="text" maxlength="30" value="${escapeHtmlAttr(opt.label)}" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
-                    <td><input class="cp-key" type="text" maxlength="30" value="${escapeHtmlAttr(opt.key)}" placeholder="auto from label" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text-muted); padding:5px; font-family:inherit; font-size:8pt;" /></td>
-                    <td><input class="cp-price" type="number" min="0" step="1" value="${opt.priceDelta}" style="width:90px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
-                    <td><button class="admin-btn admin-btn-danger cp-remove-row">REMOVE</button></td>
+                    <td><input class="cp-label" type="text" aria-label="Option ${idx + 1} label" maxlength="30" value="${escapeHtmlAttr(opt.label)}" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
+                    <td><input class="cp-key" type="text" aria-label="Option ${idx + 1} key" maxlength="30" value="${escapeHtmlAttr(opt.key)}" placeholder="auto from label" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text-muted); padding:5px; font-family:inherit; font-size:8pt;" /></td>
+                    <td><input class="cp-price" type="number" min="0" step="1" aria-label="Option ${idx + 1} price add-on" value="${opt.priceDelta}" style="width:90px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
+                    <td><button class="admin-btn admin-btn-danger cp-remove-row" aria-label="Remove option ${idx + 1}">REMOVE</button></td>
                 </tr>
             `
             )
@@ -1944,8 +1956,8 @@ export const AdminPortal = {
     async renderCustomers(root) {
         root.innerHTML = `
             <div class="control-group" style="max-width:320px;">
-                <label>SEARCH BY NAME, USERNAME, OR PHONE</label>
-                <input type="text" id="customer-search" maxlength="60" value="${escapeHtmlAttr(this.customerSearchQuery)}" placeholder="Start typing..." />
+                <label for="customer-search">SEARCH BY NAME, USERNAME, OR PHONE</label>
+                <input type="text" id="customer-search" maxlength="60" value="${escapeHtmlAttr(this.customerSearchQuery)}" placeholder="Start typing…" />
             </div>
             <div id="customers-results"></div>
         `;
@@ -2110,22 +2122,22 @@ export const AdminPortal = {
                     ? `
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; background:var(--color-bg); padding:12px; border:1px solid var(--color-border);">
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">CODE</label>
+                    <label for="coupon-code" class="admin-field-label" style="display:block; margin-bottom:4px;">CODE</label>
                     <input type="text" id="coupon-code" maxlength="24" placeholder="WELCOME10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:130px;" />
                 </div>
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">TYPE</label>
+                    <label for="coupon-type" class="admin-field-label" style="display:block; margin-bottom:4px;">TYPE</label>
                     <select id="coupon-type" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit;">
                         <option value="percent">% OFF</option>
                         <option value="flat">${currencySymbol()} FLAT OFF</option>
                     </select>
                 </div>
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">VALUE</label>
+                    <label for="coupon-value" class="admin-field-label" style="display:block; margin-bottom:4px;">VALUE</label>
                     <input type="text" id="coupon-value" maxlength="8" placeholder="10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:80px;" />
                 </div>
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
+                    <label for="coupon-limit" class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
                     <input type="text" id="coupon-limit" maxlength="8" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
                 </div>
                 <label style="display:flex; align-items:center; gap:5px; font-size: 8pt; cursor:pointer;">
@@ -2134,7 +2146,7 @@ export const AdminPortal = {
                 </label>
                 <button class="admin-btn-primary" id="coupon-add">+ ADD COUPON</button>
             </div>
-            <p id="coupon-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>`
+            <p id="coupon-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>`
                     : ""
             }
             <table class="admin-table">
@@ -2157,7 +2169,7 @@ export const AdminPortal = {
                     localAddableStores.length > 1
                         ? `
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">STORE</label>
+                    <label for="local-coupon-store" class="admin-field-label" style="display:block; margin-bottom:4px;">STORE</label>
                     <select id="local-coupon-store" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit;">
                         ${localAddableStores.map((s) => `<option value="${s.id}">${escapeHtmlAttr(s.name)}</option>`).join("")}
                     </select>
@@ -2165,22 +2177,22 @@ export const AdminPortal = {
                         : ""
                 }
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">CODE</label>
+                    <label for="local-coupon-code" class="admin-field-label" style="display:block; margin-bottom:4px;">CODE</label>
                     <input type="text" id="local-coupon-code" maxlength="24" placeholder="STORE10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:130px;" />
                 </div>
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">TYPE</label>
+                    <label for="local-coupon-type" class="admin-field-label" style="display:block; margin-bottom:4px;">TYPE</label>
                     <select id="local-coupon-type" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit;">
                         <option value="percent">% OFF</option>
                         <option value="flat">${currencySymbol()} FLAT OFF</option>
                     </select>
                 </div>
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">VALUE</label>
+                    <label for="local-coupon-value" class="admin-field-label" style="display:block; margin-bottom:4px;">VALUE</label>
                     <input type="text" id="local-coupon-value" maxlength="8" placeholder="10" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:80px;" />
                 </div>
                 <div>
-                    <label class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
+                    <label for="local-coupon-limit" class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
                     <input type="text" id="local-coupon-limit" maxlength="8" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
                 </div>
                 <label style="display:flex; align-items:center; gap:5px; font-size: 8pt; cursor:pointer;">
@@ -2189,7 +2201,7 @@ export const AdminPortal = {
                 </label>
                 <button class="admin-btn-primary" id="local-coupon-add">+ ADD LOCAL DISCOUNT</button>
             </div>
-            <p id="local-coupon-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>`
+            <p id="local-coupon-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>`
                     : ""
             }
             <table class="admin-table">
@@ -2348,12 +2360,12 @@ export const AdminPortal = {
                         this.combos.length
                             ? this.combos
                                   .map((combo) => {
-                                      const lines = combo.items.map((i) => `${i.quantity}x ${itemById[i.id] ? itemById[i.id].name : "(removed item)"}`).join(", ");
+                                      const lines = escapeHtmlAttr(combo.items.map((i) => `${i.quantity}x ${itemById[i.id] ? itemById[i.id].name : "(removed item)"}`).join(", "));
                                       const baseTotal = combo.items.reduce((sum, i) => sum + (itemById[i.id] ? itemById[i.id].price * i.quantity : 0), 0);
                                       const savings = baseTotal - combo.price;
                                       return `
                                 <tr>
-                                    <td>${combo.name}</td>
+                                    <td>${escapeHtmlAttr(combo.name)}</td>
                                     <td style="color: var(--color-text-muted); font-size: 8pt;">${lines}</td>
                                     <td>${currencySymbol()}${combo.price} ${savings > 0 ? `<span style="color: var(--color-accent); font-size: 7pt;">(save ${currencySymbol()}${savings.toFixed(0)})</span>` : ""}</td>
                                     <td style="font-size: 8pt; color: ${combo.active !== false ? "var(--color-accent)" : "var(--color-text-muted)"};">${combo.active !== false ? "ACTIVE" : "HIDDEN"}</td>
@@ -2460,7 +2472,7 @@ export const AdminPortal = {
                     <button class="admin-btn ${this.orderHistoryFilter === "active" ? "active" : ""}" data-history-filter="active">ACTIVE</button>
                     <button class="admin-btn ${this.orderHistoryFilter === "completed" ? "active" : ""}" data-history-filter="completed">COMPLETED</button>
                 </div>
-                <select id="order-history-sort" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:8pt;">
+                <select id="order-history-sort" aria-label="Sort order history" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:8pt;">
                     <option value="newest" ${this.orderHistorySort === "newest" ? "selected" : ""}>NEWEST FIRST</option>
                     <option value="oldest" ${this.orderHistorySort === "oldest" ? "selected" : ""}>OLDEST FIRST</option>
                 </select>
@@ -2502,7 +2514,7 @@ export const AdminPortal = {
                           const complete = o.items.every((i) => i.isDone);
                           const customerLabel = o.customerName ? `${escapeHtmlAttr(o.customerName)} (${o.customerPhone || "-"})` : o.customerPhone || "-";
                           return `
-                        <tr class="order-history-row ${o.id === this.orderHistorySelectedId ? "active" : ""}" data-order-id="${o.id}" style="cursor:pointer;">
+                        <tr class="order-history-row ${o.id === this.orderHistorySelectedId ? "active" : ""}" data-order-id="${o.id}" tabindex="0" aria-label="View order #${escapeHtmlAttr(o.orderNumber || o.id)}" style="cursor:pointer;">
                             <td>#${o.orderNumber || o.id}</td>
                             <td style="font-size:8pt;">${new Date(o.createdAt).toLocaleString()}</td>
                             <td style="font-size:8pt;">${customerLabel}</td>
@@ -2518,10 +2530,19 @@ export const AdminPortal = {
                 : `<tr><td colspan="5" style="text-align:center; color:var(--color-text-muted); padding:20px;">No orders match this filter.</td></tr>`;
 
             tbody.querySelectorAll(".order-history-row").forEach((row) => {
-                row.addEventListener("click", () => {
+                const select = () => {
                     this.orderHistorySelectedId = row.dataset.orderId;
                     renderList();
                     renderDetail(orders.find((o) => o.id === this.orderHistorySelectedId));
+                };
+                row.addEventListener("click", select);
+                // tabindex makes the row focusable, but a <tr> gets no
+                // built-in Enter/Space activation the way <button> does.
+                row.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        select();
+                    }
                 });
             });
 
@@ -2529,11 +2550,11 @@ export const AdminPortal = {
             pager.innerHTML =
                 totalPages > 1
                     ? `
-                <button class="admin-pg-btn" id="oh-first" ${this.orderHistoryPage <= 1 ? "disabled" : ""} title="First page">\u00ab</button>
-                <button class="admin-pg-btn" id="oh-prev" ${this.orderHistoryPage <= 1 ? "disabled" : ""} title="Previous page">\u2039</button>
+                <button class="admin-pg-btn" id="oh-first" ${this.orderHistoryPage <= 1 ? "disabled" : ""} title="First page" aria-label="First page">\u00ab</button>
+                <button class="admin-pg-btn" id="oh-prev" ${this.orderHistoryPage <= 1 ? "disabled" : ""} title="Previous page" aria-label="Previous page">\u2039</button>
                 <span style="font-size:8pt; color:var(--color-text-muted); margin:0 6px;">${(this.orderHistoryPage - 1) * PAGE_SIZE + 1}-${Math.min(this.orderHistoryPage * PAGE_SIZE, filtered.length)} of ${filtered.length}</span>
-                <button class="admin-pg-btn" id="oh-next" ${this.orderHistoryPage >= totalPages ? "disabled" : ""} title="Next page">\u203a</button>
-                <button class="admin-pg-btn" id="oh-last" ${this.orderHistoryPage >= totalPages ? "disabled" : ""} title="Last page">\u00bb</button>
+                <button class="admin-pg-btn" id="oh-next" ${this.orderHistoryPage >= totalPages ? "disabled" : ""} title="Next page" aria-label="Next page">\u203a</button>
+                <button class="admin-pg-btn" id="oh-last" ${this.orderHistoryPage >= totalPages ? "disabled" : ""} title="Last page" aria-label="Last page">\u00bb</button>
             `
                     : "";
             const firstBtn = document.getElementById("oh-first");
@@ -2676,8 +2697,8 @@ export const AdminPortal = {
                             <tr>
                                 <td style="font-size:8pt;">${new Date(e.timestamp).toLocaleString()}</td>
                                 <td style="font-size:8pt;">${actionLabels[e.action] || e.action}</td>
-                                <td style="font-size:8pt;">${e.actorName} (${e.actorRole})</td>
-                                <td style="font-size:8pt;">${e.targetUsername || "\u2014"}</td>
+                                <td style="font-size:8pt;">${escapeHtmlAttr(e.actorName)} (${escapeHtmlAttr(e.actorRole)})</td>
+                                <td style="font-size:8pt;">${escapeHtmlAttr(e.targetUsername) || "\u2014"}</td>
                             </tr>
                         `
                             )
@@ -2722,18 +2743,18 @@ export const AdminPortal = {
                                     : "";
                             return `
                         <tr style="${u.disabled ? "opacity:0.55;" : ""}">
-                            <td>${u.username}${isSelf ? ' <span style="color:var(--color-text-muted); font-size:7pt;">(you)</span>' : ""}${u.disabled ? ' <span style="color:var(--color-danger); font-size:7pt;">(DEACTIVATED)</span>' : ""}</td>
-                            <td>${u.name}</td>
+                            <td>${escapeHtmlAttr(u.username)}${isSelf ? ' <span style="color:var(--color-text-muted); font-size:7pt;">(you)</span>' : ""}${u.disabled ? ' <span style="color:var(--color-danger); font-size:7pt;">(DEACTIVATED)</span>' : ""}</td>
+                            <td>${escapeHtmlAttr(u.name)}</td>
                             <td style="color: var(--color-accent);">${u.role.toUpperCase()}${storeAccessNote}</td>
-                            <td style="font-size:8pt; color:var(--color-text-muted);">${u.tag || "\u2014"}</td>
+                            <td style="font-size:8pt; color:var(--color-text-muted);">${escapeHtmlAttr(u.tag) || "\u2014"}</td>
                             <td style="font-size:8pt;">${u.payRateType ? `${currencySymbol()}${u.payRate}/${u.payRateType === "hourly" ? "hr" : u.payRateType === "weekly" ? "wk" : "mo"}` : "\u2014"}</td>
                             <td style="text-align:right;">
                                 ${
                                     canManage
                                         ? `
                                     <button class="admin-btn" data-edit-staff="${u.id}">EDIT</button>
-                                    <button class="admin-btn" data-reset="${u.id}" data-name="${u.name}">RESET PW</button>
-                                    <button class="admin-btn admin-btn-danger" data-remove="${u.id}" data-name="${u.name}">REMOVE</button>
+                                    <button class="admin-btn" data-reset="${u.id}" data-name="${escapeHtmlAttr(u.name)}">RESET PW</button>
+                                    <button class="admin-btn admin-btn-danger" data-remove="${u.id}" data-name="${escapeHtmlAttr(u.name)}">REMOVE</button>
                                 `
                                         : isSelf
                                           ? `<button class="admin-btn" id="self-account-settings">ACCOUNT SETTINGS</button>`
@@ -2794,7 +2815,7 @@ export const AdminPortal = {
     async resetStaffPassword(userId, name) {
         renderInfoModal({
             title: "RESET PASSWORD",
-            message: `Generate a new temporary password for ${name}? They'll be required to set their own password the next time they log in.`,
+            message: `Generate a new temporary password for ${escapeHtmlAttr(name)}? They'll be required to set their own password the next time they log in.`,
             confirmText: "GENERATE",
             cancelText: "CANCEL",
             onConfirm: async () => {
@@ -2803,7 +2824,7 @@ export const AdminPortal = {
                 if (!res.ok) return renderInfoModal({ title: "ERROR", message: data.error || "Could not reset password" });
                 renderInfoModal({
                     title: "TEMPORARY PASSWORD",
-                    message: `Give this to ${name}. It only works once - they'll be asked to set their own password on first login.`,
+                    message: `Give this to ${escapeHtmlAttr(name)}. It only works once - they'll be asked to set their own password on first login.`,
                     monospaceValue: data.tempPassword,
                     onConfirm: () => this.renderActiveTab() // refresh so the audit log reflects this action immediately
                 });
@@ -2814,7 +2835,7 @@ export const AdminPortal = {
     async removeStaff(userId, name) {
         renderInfoModal({
             title: "REMOVE STAFF ACCOUNT",
-            message: `Remove ${name}'s account? This can't be undone.`,
+            message: `Remove ${escapeHtmlAttr(name)}'s account? This can't be undone.`,
             confirmText: "REMOVE",
             cancelText: "CANCEL",
             onConfirm: async () => {
@@ -2890,7 +2911,7 @@ export const AdminPortal = {
                                       .map(
                                           ([key, url]) => `
                                     <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
-                                        <img src="${escapeHtmlAttr(url)}" style="width:22px; height:22px; object-fit:contain;" />
+                                        <img src="${escapeHtmlAttr(url)}" alt="" width="22" height="22" style="width:22px; height:22px; object-fit:contain;" />
                                         <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(key)}</span>
                                         ${canEdit ? `<button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>` : ""}
                                     </div>
@@ -3173,15 +3194,15 @@ export const AdminPortal = {
                     <div id="content-home-edit" style="margin-top:12px;">
                         <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                             <div class="control-group">
-                                <label>PICKS HEADING</label>
+                                <label for="cfg-home-heading-picks">PICKS HEADING</label>
                                 <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
                             </div>
                             <div class="control-group">
-                                <label>ROAST HEADING</label>
+                                <label for="cfg-home-heading-roast">ROAST HEADING</label>
                                 <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
                             </div>
                             <div class="control-group">
-                                <label>CONTACT HEADING</label>
+                                <label for="cfg-home-heading-findus">CONTACT HEADING</label>
                                 <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
                             </div>
                         </div>
@@ -3205,7 +3226,7 @@ export const AdminPortal = {
                         <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
                         <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
                         <br />
-                        <p id="content-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                        <p id="content-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                         <button class="admin-btn-primary" id="home-content-save">SAVE HOME PAGE CONTENT</button>
                     </div>`
                             : ""
@@ -3222,7 +3243,7 @@ export const AdminPortal = {
                     <div id="footer-custom-fields-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
                     <button type="button" class="admin-btn-secondary" id="footer-custom-field-add" style="margin-bottom:14px;">+ ADD FIELD</button>
                     <br />
-                    <p id="footer-error" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                    <p id="footer-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
                     <button class="admin-btn-primary" id="footer-save">SAVE CUSTOM FIELDS</button>`
                             : (c.customFooterFields || []).length === 0
                               ? `<p class="admin-help-text">No custom fields added yet.</p>`
@@ -3333,8 +3354,8 @@ export const AdminPortal = {
                     fields: [
                         { id: "brand-footer-tagline", label: "Tagline", value: (c.footer && c.footer.tagline) || "", maxlength: 120, placeholder: "e.g. Hand-brewed since 2024" },
                         { id: "brand-footer-address", label: "Address", value: (c.footer && c.footer.address) || "", maxlength: 200, placeholder: "Street, City, State, PIN" },
-                        { id: "brand-footer-phone", label: "Phone", value: (c.footer && c.footer.phone) || "", maxlength: 20, placeholder: "+91 ..." },
-                        { id: "brand-footer-email", label: "Email", value: (c.footer && c.footer.email) || "", maxlength: 80, placeholder: "hello@..." },
+                        { id: "brand-footer-phone", label: "Phone", value: (c.footer && c.footer.phone) || "", maxlength: 20, placeholder: "+91 …", type: "tel" },
+                        { id: "brand-footer-email", label: "Email", value: (c.footer && c.footer.email) || "", maxlength: 80, placeholder: "hello@…", type: "email" },
                         { id: "brand-footer-hours", label: "Hours", value: (c.footer && c.footer.hours) || "", maxlength: 60, placeholder: "Mon-Sat: 8am - 8pm" }
                     ],
                     onSave: async (v) => {
@@ -3390,8 +3411,8 @@ export const AdminPortal = {
                     const tag = existingInput ? existingInput.value : homePicksById[id] || "";
                     return `
                     <div style="margin-bottom:6px;">
-                        <label style="display:block; font-size:7.5pt; color:var(--color-text-muted); margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item ? item.name : "")}</label>
-                        <input type="text" class="home-pick-tag" data-item-id="${id}" maxlength="40" placeholder="e.g. House favourite" value="${escapeHtmlAttr(tag)}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px 7px; font-family:inherit; font-size:8pt;" />
+                        <label for="home-pick-tag-${id}" style="display:block; font-size:7.5pt; color:var(--color-text-muted); margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item ? item.name : "")}</label>
+                        <input type="text" id="home-pick-tag-${id}" class="home-pick-tag" data-item-id="${id}" maxlength="40" placeholder="e.g. House favourite" value="${escapeHtmlAttr(tag)}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px 7px; font-family:inherit; font-size:8pt;" />
                     </div>
                 `;
                 })
@@ -3520,9 +3541,9 @@ export const AdminPortal = {
                 .map(
                     (step, i) => `
                 <div class="roast-step-row" style="display:flex; gap:8px; align-items:center;">
-                    <input type="text" class="roast-step-name" placeholder="Step name" maxlength="40" value="${escapeHtmlAttr(step.name || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" class="roast-step-detail" placeholder="Detail line" maxlength="160" value="${escapeHtmlAttr(step.detail || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <button type="button" class="roast-step-remove admin-btn-secondary" data-index="${i}" style="flex:none; padding:4px 8px;">&times;</button>
+                    <input type="text" class="roast-step-name" aria-label="Step ${i + 1} name" placeholder="Step name" maxlength="40" value="${escapeHtmlAttr(step.name || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="roast-step-detail" aria-label="Step ${i + 1} detail line" placeholder="Detail line" maxlength="160" value="${escapeHtmlAttr(step.detail || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <button type="button" class="roast-step-remove admin-btn-secondary" data-index="${i}" aria-label="Remove step ${i + 1}" style="flex:none; padding:4px 8px;">&times;</button>
                 </div>
             `
                 )
@@ -3591,13 +3612,13 @@ export const AdminPortal = {
                 .map(
                     (f, i) => `
                 <div class="footer-field-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <input type="text" class="footer-field-label" placeholder="Field name (e.g. Instagram)" maxlength="30" value="${escapeHtmlAttr(f.label || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" class="footer-field-value" placeholder="Display text" maxlength="100" value="${escapeHtmlAttr(f.value || "")}" style="flex:1 1 120px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" class="footer-field-url" placeholder="Link URL (optional)" maxlength="300" value="${escapeHtmlAttr(f.url || "")}" style="flex:1 1 160px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <select class="footer-field-type" style="flex:0 0 100px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 4px; font-family:inherit; font-size:8pt;">
+                    <input type="text" class="footer-field-label" aria-label="Field ${i + 1} name" placeholder="Field name (e.g. Instagram)" maxlength="30" value="${escapeHtmlAttr(f.label || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="footer-field-value" aria-label="Field ${i + 1} display text" placeholder="Display text" maxlength="100" value="${escapeHtmlAttr(f.value || "")}" style="flex:1 1 120px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="footer-field-url" aria-label="Field ${i + 1} link URL" placeholder="Link URL (optional)" maxlength="300" value="${escapeHtmlAttr(f.url || "")}" style="flex:1 1 160px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <select class="footer-field-type" aria-label="Field ${i + 1} type" style="flex:0 0 100px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 4px; font-family:inherit; font-size:8pt;">
                         ${FOOTER_FIELD_TYPES.map((t) => `<option value="${t.value}" ${(f.type || "other") === t.value ? "selected" : ""}>${t.label}</option>`).join("")}
                     </select>
-                    <button type="button" class="footer-field-remove admin-btn-secondary" data-index="${i}" style="flex:none; padding:4px 8px;">&times;</button>
+                    <button type="button" class="footer-field-remove admin-btn-secondary" data-index="${i}" aria-label="Remove field ${i + 1}" style="flex:none; padding:4px 8px;">&times;</button>
                 </div>
             `
                 )

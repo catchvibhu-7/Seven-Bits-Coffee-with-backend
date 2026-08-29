@@ -2715,3 +2715,43 @@ input[type="checkbox"]:disabled {
     color: var(--color-text-muted);
     line-height: 1.4;
 }
+
+/* Web-design-guidelines audit additions (admin panel scope) - appended
+   rather than editing the rules above, since other agents may be touching
+   this file concurrently. */
+
+/* .admin-btn/.admin-btn-secondary already have a :hover state; .admin-btn-primary
+   (the SAVE button on every read-only-section edit modal, plus the setup
+   wizard's NEXT/SAVE buttons) never got one, so clicking it gave no visual
+   press/hover feedback at all. */
+.admin-btn-primary:hover {
+    background: var(--color-text);
+    color: var(--color-accent-contrast);
+}
+
+/* Every modal (.modal-content) that can grow taller than the viewport sets
+   its own inline overflow-y:auto for a scrollable body. Without this,
+   scrolling to the top/bottom of that inner scroll area chains into
+   scrolling the page behind the modal overlay. */
+.modal-content {
+    overscroll-behavior: contain;
+}
+
+/* .menu-section-header (admin-portal.js Menu Items tab) is a collapsible
+   section header made keyboard-operable via tabindex="0"/role="button" -
+   it can't be a real <button> since it wraps its own nested DELETE SECTION
+   button. The global button/input/select/textarea focus-visible rule above
+   doesn't reach a plain div, so without this, tabbing to it showed no focus
+   indicator at all. */
+.menu-section-header:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+}
+
+/* .order-history-row (admin-portal.js Order History tab) - same reasoning:
+   a clickable <tr> with tabindex="0" for keyboard selection, which the
+   global focus-visible rule doesn't cover. */
+.order-history-row:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+}

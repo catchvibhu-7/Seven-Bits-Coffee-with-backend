@@ -118,6 +118,7 @@ function fieldControlHtml(f) {
                 ${f.min !== undefined ? `min="${f.min}"` : ""}
                 ${f.max !== undefined ? `max="${f.max}"` : ""}
                 ${f.step !== undefined ? `step="${f.step}"` : ""}
+                ${f.type === "password" ? `autocomplete="new-password" spellcheck="false"` : ""}
             />
         </div>`;
 }

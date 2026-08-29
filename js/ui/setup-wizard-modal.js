@@ -63,16 +63,16 @@ export function renderSetupWizardModal({ onNavigate }) {
         if (step === 0) {
             body = `
                 <h3 style="margin-top:0;">Tell customers who you are</h3>
-                <label style="font-size:7pt; color:var(--color-text-muted);">SHOP NAME</label>
+                <label for="sw-shop-name" style="font-size:7pt; color:var(--color-text-muted);">SHOP NAME</label>
                 <input id="sw-shop-name" type="text" value="${escapeHtmlAttr(c.shopName || "")}" style="${fieldStyle()}" />
 
-                <label style="font-size:7pt; color:var(--color-text-muted);">LOGO (shown in the top nav)</label>
+                <label for="sw-logo" style="font-size:7pt; color:var(--color-text-muted);">LOGO (shown in the top nav)</label>
                 <div style="display:flex; gap:8px; margin:4px 0 12px;">
                     <input id="sw-logo" type="text" value="${escapeHtmlAttr(c.logoUrl || "")}" placeholder="https://... or pick from the bucket" style="${fieldStyle()} margin:0; flex:1;" />
                     <button type="button" id="sw-logo-pick" class="admin-btn-secondary">BROWSE</button>
                 </div>
 
-                <label style="font-size:7pt; color:var(--color-text-muted);">HERO / STOREFRONT IMAGE (home page)</label>
+                <label for="sw-hero" style="font-size:7pt; color:var(--color-text-muted);">HERO / STOREFRONT IMAGE (home page)</label>
                 <div style="display:flex; gap:8px; margin:4px 0 12px;">
                     <input id="sw-hero" type="text" value="${escapeHtmlAttr(c.heroImageUrl || "")}" placeholder="https://... or pick from the bucket" style="${fieldStyle()} margin:0; flex:1;" />
                     <button type="button" id="sw-hero-pick" class="admin-btn-secondary">BROWSE</button>
@@ -84,18 +84,18 @@ export function renderSetupWizardModal({ onNavigate }) {
                 <p style="font-size:8pt; color:var(--color-text-muted); margin-top:-6px;">Skip anything that doesn't apply - defaults are fine to start with and can be changed later from Admin &gt; Payments.</p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                     <div>
-                        <label style="font-size:7pt; color:var(--color-text-muted);">CGST %</label>
-                        <input id="sw-cgst" type="text" value="${(c.cgstRate * 100).toFixed(2)}" style="${fieldStyle()}" />
+                        <label for="sw-cgst" style="font-size:7pt; color:var(--color-text-muted);">CGST %</label>
+                        <input id="sw-cgst" type="number" inputmode="decimal" min="0" step="0.01" value="${(c.cgstRate * 100).toFixed(2)}" style="${fieldStyle()}" />
                     </div>
                     <div>
-                        <label style="font-size:7pt; color:var(--color-text-muted);">SGST %</label>
-                        <input id="sw-sgst" type="text" value="${(c.sgstRate * 100).toFixed(2)}" style="${fieldStyle()}" />
+                        <label for="sw-sgst" style="font-size:7pt; color:var(--color-text-muted);">SGST %</label>
+                        <input id="sw-sgst" type="number" inputmode="decimal" min="0" step="0.01" value="${(c.sgstRate * 100).toFixed(2)}" style="${fieldStyle()}" />
                     </div>
                 </div>
-                <label style="font-size:7pt; color:var(--color-text-muted);">GST NUMBER (GSTIN, optional - printed on bills)</label>
-                <input id="sw-gst-number" type="text" value="${escapeHtmlAttr(c.gstNumber || "")}" placeholder="22AAAAA0000A1Z5" style="${fieldStyle()}" />
-                <label style="font-size:7pt; color:var(--color-text-muted);">UPI ID (VPA, optional - for "Pay Online")</label>
-                <input id="sw-upi" type="text" value="${escapeHtmlAttr(c.upiVpa || "")}" placeholder="yourshop@upi" style="${fieldStyle()}" />
+                <label for="sw-gst-number" style="font-size:7pt; color:var(--color-text-muted);">GST NUMBER (GSTIN, optional - printed on bills)</label>
+                <input id="sw-gst-number" type="text" value="${escapeHtmlAttr(c.gstNumber || "")}" placeholder="22AAAAA0000A1Z5" autocomplete="off" spellcheck="false" style="${fieldStyle()}" />
+                <label for="sw-upi" style="font-size:7pt; color:var(--color-text-muted);">UPI ID (VPA, optional - for "Pay Online")</label>
+                <input id="sw-upi" type="text" value="${escapeHtmlAttr(c.upiVpa || "")}" placeholder="yourshop@upi" autocomplete="off" spellcheck="false" style="${fieldStyle()}" />
             `;
         } else if (step === 2) {
             body = `

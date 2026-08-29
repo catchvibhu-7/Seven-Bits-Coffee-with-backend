@@ -44,10 +44,10 @@ export async function renderAddStaffModal(session, onCreated) {
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">ADD STAFF ACCOUNT</h2>
             <p id="staff-modal-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">NAME</label>
+            <label for="sm-name" style="font-size: 7pt; color: var(--color-text-muted);">NAME</label>
             <input id="sm-name" type="text" maxlength="60" placeholder="Full name" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">ROLE</label>
+            <label for="sm-role" style="font-size: 7pt; color: var(--color-text-muted);">ROLE</label>
             <select id="sm-role" style="${fieldStyle}">
                 ${roleOptions.map((r) => `<option value="${r}">${r.toUpperCase()}</option>`).join("")}
             </select>
@@ -56,7 +56,7 @@ export async function renderAddStaffModal(session, onCreated) {
                 stores.length > 1
                     ? `
             <div id="sm-store-field">
-                <label style="font-size: 7pt; color: var(--color-text-muted);">STORE</label>
+                <label for="sm-store" style="font-size: 7pt; color: var(--color-text-muted);">STORE</label>
                 <select id="sm-store" style="${fieldStyle}">
                     ${stores.map((s) => `<option value="${s.id}">${s.name}</option>`).join("")}
                 </select>
@@ -83,10 +83,10 @@ export async function renderAddStaffModal(session, onCreated) {
                     : ""
             }
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG (optional - e.g. Barista, Cashier)</label>
+            <label for="sm-tag" style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG (optional - e.g. Barista, Cashier)</label>
             <input id="sm-tag" type="text" maxlength="40" placeholder="e.g. Barista" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE (optional)</label>
+            <label for="sm-pay-type" style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE (optional)</label>
             <div style="display:flex; gap:8px; margin: 4px 0 10px;">
                 <select id="sm-pay-type" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;">
                     <option value="">No pay tracking</option>
@@ -94,16 +94,16 @@ export async function renderAddStaffModal(session, onCreated) {
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
                 </select>
-                <input id="sm-pay-rate" type="number" min="0" step="0.01" placeholder="${currencySymbol()} amount" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" disabled />
+                <input id="sm-pay-rate" type="number" min="0" step="0.01" placeholder="${currencySymbol()} amount" aria-label="Pay rate amount" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" disabled />
             </div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">USERNAME</label>
-            <input id="sm-username" type="text" maxlength="30" placeholder="Login username" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 2px;" />
+            <label for="sm-username" style="font-size: 7pt; color: var(--color-text-muted);">USERNAME</label>
+            <input id="sm-username" type="text" maxlength="30" placeholder="Login username" autocomplete="off" spellcheck="false" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 2px;" />
             <div id="sm-username-status" style="font-size: 7pt; min-height: 11px; margin-bottom: 8px;"></div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">TEMPORARY PASSWORD</label>
+            <label for="sm-password" style="font-size: 7pt; color: var(--color-text-muted);">TEMPORARY PASSWORD</label>
             <div style="display:flex; gap:6px; margin: 4px 0 2px;">
-                <input id="sm-password" type="text" maxlength="60" placeholder="Temporary password" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
+                <input id="sm-password" type="text" maxlength="60" placeholder="Temporary password" autocomplete="off" spellcheck="false" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
                 <button id="sm-generate" type="button" style="background:var(--color-border); color:var(--color-accent); border:1px solid var(--color-accent); padding:0 12px; cursor:pointer; font-size:8pt;">GENERATE</button>
             </div>
             <div id="sm-password-meter"></div>
@@ -150,7 +150,7 @@ export async function renderAddStaffModal(session, onCreated) {
             usernameStatus.textContent = "";
             return;
         }
-        usernameStatus.textContent = "checking...";
+        usernameStatus.textContent = "checking…";
         usernameStatus.style.color = "var(--color-text-muted)";
         usernameCheckTimer = setTimeout(async () => {
             const available = await AuthSystem.checkUsernameAvailable(value);
@@ -248,7 +248,7 @@ export async function renderEditStaffModal(user, session, onSaved) {
             ${
                 canChangeRole && roleOptions.length > 1
                     ? `
-            <label style="font-size: 7pt; color: var(--color-text-muted);">ROLE</label>
+            <label for="esm-role" style="font-size: 7pt; color: var(--color-text-muted);">ROLE</label>
             <select id="esm-role" style="${fieldStyle}">
                 ${roleOptions.map((r) => `<option value="${r}" ${r === user.role ? "selected" : ""}>${r.toUpperCase()}</option>`).join("")}
             </select>`
@@ -259,7 +259,7 @@ export async function renderEditStaffModal(user, session, onSaved) {
                 canChangeRole && stores.length > 1
                     ? `
             <div id="esm-store-field" style="display:none;">
-                <label style="font-size: 7pt; color: var(--color-text-muted);">STORE</label>
+                <label for="esm-store" style="font-size: 7pt; color: var(--color-text-muted);">STORE</label>
                 <select id="esm-store" style="${fieldStyle}">
                     ${stores.map((s) => `<option value="${s.id}" ${s.id === user.storeId ? "selected" : ""}>${s.name}</option>`).join("")}
                 </select>
@@ -280,10 +280,10 @@ export async function renderEditStaffModal(user, session, onSaved) {
                     : ""
             }
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG</label>
+            <label for="esm-tag" style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG</label>
             <input id="esm-tag" type="text" maxlength="40" value="${user.tag || ""}" placeholder="e.g. Barista" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE</label>
+            <label for="esm-pay-type" style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE</label>
             <div style="display:flex; gap:8px; margin: 4px 0 10px;">
                 <select id="esm-pay-type" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;">
                     <option value="" ${!user.payRateType ? "selected" : ""}>No pay tracking</option>
@@ -291,7 +291,7 @@ export async function renderEditStaffModal(user, session, onSaved) {
                     <option value="weekly" ${user.payRateType === "weekly" ? "selected" : ""}>Weekly</option>
                     <option value="monthly" ${user.payRateType === "monthly" ? "selected" : ""}>Monthly</option>
                 </select>
-                <input id="esm-pay-rate" type="number" min="0" step="0.01" value="${user.payRate ?? ""}" placeholder="${currencySymbol()} amount" ${!user.payRateType ? "disabled" : ""}
+                <input id="esm-pay-rate" type="number" min="0" step="0.01" value="${user.payRate ?? ""}" placeholder="${currencySymbol()} amount" aria-label="Pay rate amount" ${!user.payRateType ? "disabled" : ""}
                     style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
             </div>
 
