@@ -34,7 +34,9 @@
       "price": 240,
       "icon": "ice-latte",
       "story": "Our signature ginger-honey latte. The crowd favorite..",
-      "imageUrl": "/uploads/ae71a903102d73ae.svg"
+      "imageUrl": "/uploads/187d7f863398b281.jpg",
+      "stockCount": null,
+      "promoDiscount": null
     },
     {
       "id": 102,
@@ -43,7 +45,9 @@
       "price": 260,
       "icon": "cold-brew",
       "story": "Steeped 1024 mins for maximum clarity.",
-      "imageUrl": "/uploads/467c88d52cc74e5c.svg"
+      "imageUrl": "/uploads/dbfddd2986cbd01b.jpg",
+      "stockCount": null,
+      "promoDiscount": null
     },
     {
       "id": 103,
@@ -52,7 +56,9 @@
       "price": 180,
       "icon": "espresso",
       "story": "0 or 1. Just pure specialty espresso.",
-      "imageUrl": "/uploads/bf358e575c3a8896.svg"
+      "imageUrl": "/uploads/7502747a12a8e7fa.jpg",
+      "stockCount": null,
+      "promoDiscount": null
     },
     {
       "id": 104,
@@ -60,7 +66,10 @@
       "name": "The Bit-Shake",
       "price": 290,
       "icon": "ice-latte",
-      "story": "Espresso frappe with dark chocolate chips."
+      "story": "Espresso frappe with dark chocolate chips.",
+      "imageUrl": "/uploads/4c66ecbdc94b2973.jpg",
+      "stockCount": null,
+      "promoDiscount": null
     },
     {
       "id": 105,
@@ -68,7 +77,10 @@
       "name": "Vanilla Logic",
       "price": 250,
       "icon": "ice-latte",
-      "story": "Latte with real Madagascar vanilla strings."
+      "story": "Latte with real Madagascar vanilla strings.",
+      "imageUrl": "/uploads/4c66ecbdc94b2973.jpg",
+      "stockCount": null,
+      "promoDiscount": null
     },
     {
       "id": 106,
@@ -76,7 +88,10 @@
       "name": "Iced Aero-Am",
       "price": 210,
       "icon": "cold-brew",
-      "story": "Aerated Americano. Coffee in the cloud."
+      "story": "Aerated Americano. Coffee in the cloud.",
+      "imageUrl": "/uploads/4c66ecbdc94b2973.jpg",
+      "stockCount": null,
+      "promoDiscount": null
     },
     {
       "id": 107,
@@ -84,7 +99,10 @@
       "name": "Daily Driver",
       "price": 150,
       "icon": "cold-brew",
-      "story": "Batch brew. The stable, reliable drip."
+      "story": "Batch brew. The stable, reliable drip.",
+      "imageUrl": "/uploads/aa1c4660a6c025ba.jpg",
+      "stockCount": null,
+      "promoDiscount": null
     },
     {
       "id": 108,
@@ -92,7 +110,10 @@
       "name": "Quantum Cortado",
       "price": 220,
       "icon": "espresso",
-      "story": "Mystry bean. Observe to find the flavor."
+      "story": "Mystry bean. Observe to find the flavor.",
+      "imageUrl": "/uploads/3683bf8c6ad56bfc.jpg",
+      "stockCount": null,
+      "promoDiscount": null
     },
     {
       "id": 109,
@@ -116,7 +137,10 @@
       "name": "Schrodinger's Foam",
       "price": 270,
       "icon": "ice-latte",
-      "story": "Daily secret foam flavor. Sip to solve."
+      "story": "Daily secret foam flavor. Sip to solve.",
+      "imageUrl": "/uploads/dbfddd2986cbd01b.jpg",
+      "stockCount": null,
+      "promoDiscount": null
     },
     {
       "id": 112,

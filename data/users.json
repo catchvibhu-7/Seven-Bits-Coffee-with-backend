@@ -44,5 +44,19 @@
     "name": "kumar vaibhav",
     "phone": "8825125275",
     "mustChangePassword": false
+  },
+  {
+    "id": 6,
+    "username": "abhinav",
+    "salt": "986dc2617d6cfcd036f4eb6ecbf708df",
+    "hash": "1cb83d5bbf6ef366cac02015874979630c76b047e129cf5e3c7ada6317db3fa782190c5806ca487f755844a47ada6a2a8708873db2a9a036b346fb204b61cae7",
+    "role": "customer",
+    "name": "Abhinav",
+    "phone": "8092790440",
+    "mustChangePassword": false,
+    "storeId": null,
+    "tag": "",
+    "payRateType": null,
+    "payRate": null
   }
 ]
