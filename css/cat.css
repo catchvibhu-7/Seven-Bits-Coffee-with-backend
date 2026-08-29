@@ -58,8 +58,11 @@
     /* Set rotation point to the cat's feet so it falls forward naturally */
     transform-origin: 50% 100%; 
     
-    /* 15 second total loop for the full sequence */
-    animation: move-and-tumble 15s infinite linear;
+    /* 14 second total loop for the full sequence - the fall/dizzy/stand-up
+       phase was 1.8s of near-stillness, which read as slow-mo rather than a
+       comedic trip; compressed to ~0.8s (see move-and-tumble below) while
+       keeping the walking pace on either side unchanged. */
+    animation: move-and-tumble 14s infinite linear;
 }
 
 /* Base shared styles for the cat bodies and the latte */
@@ -78,7 +81,7 @@
     background-image: var(--biped-f1);
     animation: 
         walk-biped 1.4s step-end infinite,
-        toggle-biped 15s infinite; 
+        toggle-biped 14s infinite;
 }
 
 /* The Quadruped Walk (Slowed down to 1.4s) */
@@ -86,13 +89,13 @@
     background-image: var(--quad-f1);
     animation: 
         walk-quad 1.4s step-end infinite,
-        toggle-quad 15s infinite; 
+        toggle-quad 14s infinite;
 }
 
 /* The Latte Cup Physics */
 .latte-cup {
     background-image: var(--latte-svg);
-    animation: latte-fly 15s infinite linear;
+    animation: latte-fly 14s infinite linear;
 }
 
 /* 
@@ -114,23 +117,23 @@
     background-position: center bottom;
     background-repeat: no-repeat;
     
-    animation: item-fly 15s infinite linear;
+    animation: item-fly 14s infinite linear;
 }
 
 /* The Item Physics (Renamed from latte-fly) */
 @keyframes item-fly {
-    0%, 35% { 
-        transform: translate(0, 0) rotate(0deg); 
-        opacity: 1; 
+    0%, 37% {
+        transform: translate(0, 0) rotate(0deg);
+        opacity: 1;
     }
     /* Throws the item forward and down when the cat trips */
-    40% { 
-        transform: translate(40px, -60px) rotate(-180deg); 
-        opacity: 0; 
+    39% {
+        transform: translate(40px, -60px) rotate(-180deg);
+        opacity: 0;
     }
-    41%, 100% { 
-        opacity: 0; 
-        transform: translate(0,0); 
+    40%, 100% {
+        opacity: 0;
+        transform: translate(0,0);
     }
 }
 /* 
@@ -164,42 +167,47 @@
     100%  { background-image: var(--quad-f1); }
 }
 
-/* 2. Opacity Toggles (Who is visible when?) */
+/* 2. Opacity Toggles (Who is visible when?) - swap point matches the
+   stand-up keyframe in move-and-tumble below (43%). */
 @keyframes toggle-biped {
-    0%, 46.9% { opacity: 1; }
-    47%, 100% { opacity: 0; }
+    0%, 42.9% { opacity: 1; }
+    43%, 100% { opacity: 0; }
 }
 
 @keyframes toggle-quad {
-    0%, 46.9% { opacity: 0; }
-    47%, 100% { opacity: 1; }
+    0%, 42.9% { opacity: 0; }
+    43%, 100% { opacity: 1; }
 }
 
-/* 3. The Grand Journey (Walk Right -> Faceplant -> Walk Left) */
+/* 3. The Grand Journey (Walk Right -> Faceplant -> Walk Left)
+   Fall/dizzy/stand-up compressed to 37%-43% (~0.8s of the 14s loop, was
+   35%-47%/1.8s of the old 15s loop) - reads as a quick comedic trip instead
+   of slow motion. Walk-right/walk-left keep essentially the same real-time
+   pace as before (only the still-on-the-ground phase got shorter). */
 @keyframes move-and-tumble {
     /* Walk right on two legs */
     0%   { left: -70px; transform: scaleX(1) rotate(0deg); }
-    
+
     /* Stop well before the screen edge so we can see the fall */
-    35%  { left: calc(100% - 120px); transform: scaleX(1) rotate(0deg); }
-    
+    37%  { left: calc(100% - 120px); transform: scaleX(1) rotate(0deg); }
+
     /* Trip and faceplant immediately! */
-    36%  { left: calc(100% - 120px); transform: scaleX(1) rotate(90deg); }
-    
-    /* 
-     * Dizzy Phase: Shaking back and forth while on the ground 
+    38%  { left: calc(100% - 120px); transform: scaleX(1) rotate(90deg); }
+
+    /*
+     * Dizzy Phase: a quick shake back and forth while on the ground
      */
-    38%  { left: calc(100% - 120px); transform: scaleX(1) rotate(85deg); }
+    39%  { left: calc(100% - 120px); transform: scaleX(1) rotate(85deg); }
     40%  { left: calc(100% - 120px); transform: scaleX(1) rotate(95deg); }
-    42%  { left: calc(100% - 120px); transform: scaleX(1) rotate(85deg); }
-    44%  { left: calc(100% - 120px); transform: scaleX(1) rotate(90deg); }
-    
+    41%  { left: calc(100% - 120px); transform: scaleX(1) rotate(85deg); }
+    42%  { left: calc(100% - 120px); transform: scaleX(1) rotate(90deg); }
+
     /* Stand up, Instantly flip around to face left (Opacity swaps to Quadruped here!) */
-    47%  { left: calc(100% - 120px); transform: scaleX(-1) rotate(0deg); }
-    
+    43%  { left: calc(100% - 120px); transform: scaleX(-1) rotate(0deg); }
+
     /* Walk all the way back to the start on four legs */
     95%  { left: -70px; transform: scaleX(-1) rotate(0deg); }
-    
+
     /* Snap back to facing right, ready to start the loop over */
     100% { left: -70px; transform: scaleX(1) rotate(0deg); }
 }
@@ -207,23 +215,23 @@
 /* 4. The Latte Physics */
 @keyframes latte-fly {
     /* Stays in the cat's hand smoothly */
-    0%, 35% { 
-        transform: translate(0, 0) rotate(0deg); 
-        opacity: 1; 
+    0%, 37% {
+        transform: translate(0, 0) rotate(0deg);
+        opacity: 1;
     }
-    
-    /* 
+
+    /*
      * When the cat rotates 90 degrees, the latte is technically inside a rotated box.
-     * So to throw the latte "forward and down", we move it on the X/Y axis relative to that rotated box. 
+     * So to throw the latte "forward and down", we move it on the X/Y axis relative to that rotated box.
      */
-    40% { 
-        transform: translate(30px, -80px) rotate(-180deg); 
-        opacity: 0; 
+    39% {
+        transform: translate(30px, -80px) rotate(-180deg);
+        opacity: 0;
     }
-    
+
     /* Stay hidden until the loop restarts */
-    41%, 100% { 
-        opacity: 0; 
-        transform: translate(0,0); 
+    40%, 100% {
+        opacity: 0;
+        transform: translate(0,0);
     }
 }

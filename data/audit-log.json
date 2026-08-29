@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "timestamp": "2026-08-29T18:28:05.530Z",
+    "action": "reset_password",
+    "actorId": 1,
+    "actorName": "Owner",
+    "actorRole": "owner",
+    "targetId": 8,
+    "targetUsername": "test_globaladmin"
+  }
+]

@@ -15,8 +15,12 @@ export const AdminConfig = {
     // actually read from in practice anyway.
     settings: {},
 
-    async loadSettings() {
-        const res = await fetch("/api/config");
+    /** storeId: only meaningful for a customer/guest/anonymous visitor who's
+     *  picked a store (see js/features/store-logic.js) - a staff session
+     *  tied to its own store always wins server-side regardless. */
+    async loadSettings(storeId = null) {
+        const url = storeId != null ? `/api/config?storeId=${encodeURIComponent(storeId)}` : "/api/config";
+        const res = await fetch(url);
         if (res.ok) this.settings = await res.json();
         return this.settings;
     },
@@ -36,3 +40,10 @@ export const AdminConfig = {
         return this.settings;
     }
 };
+
+/** Every price display in the app calls this instead of hardcoding "₹" -
+ *  admin-configurable (Admin > Payments & Tax), defaults to what the app
+ *  always showed so nothing changes until an admin edits it. */
+export function currencySymbol() {
+    return AdminConfig.settings.currencySymbol || "₹";
+}

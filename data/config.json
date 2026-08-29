@@ -7,8 +7,8 @@
   "tipEnabled": true,
   "tipAmount": 7,
   "theme": "dark",
-  "heroImageUrl": "/uploads/556376b9122dec2c.svg",
-  "logoUrl": "",
+  "heroImageUrl": "/uploads/f2c3306b2cd80917.jpg",
+  "logoUrl": "/uploads/e6abe128c2b578b0.png",
   "colors": {
     "accent": "#d97706",
     "background": "#0a0a0a",
@@ -36,7 +36,48 @@
     },
     {
       "itemId": 103,
-      "tag": "Baker's pick"
+      "tag": "Morning Rituals"
     }
-  ]
+  ],
+  "textStyles": {
+    "adminTabs": {
+      "fontSize": 9,
+      "color": "#ffffff"
+    },
+    "adminHelp": {
+      "fontSize": 7.5,
+      "color": "#ffffff"
+    },
+    "adminLabels": {
+      "fontSize": 8,
+      "color": "#ffffff"
+    }
+  },
+  "roastSteps": [
+    {
+      "name": "Sourced",
+      "detail": "Small-batch beans, bought direct, one sack at a time."
+    },
+    {
+      "name": "Drum roast",
+      "detail": "Twelve-minute profile, logged to the second."
+    },
+    {
+      "name": "Rested",
+      "detail": "A few days off-gas before the first pour."
+    },
+    {
+      "name": "Poured",
+      "detail": "Ground to order, never before you walk in."
+    }
+  ],
+  "homeHeadings": {
+    "picks": "This week's picks",
+    "roast": "How we roast",
+    "findUs": "Find us"
+  },
+  "heroTagline": "Born from love for Physics, Coffee, a cat named Ginger and an obsession with the number seven. We don't just brew; we process flavour with low-latency precision. GINGER SAYS HURRAY!!!",
+  "heroBadgeText": "Est. 2026 * 7-bits Roastery",
+  "receiptFooterText": "777777",
+  "heroCaptionLabel": ""
 }

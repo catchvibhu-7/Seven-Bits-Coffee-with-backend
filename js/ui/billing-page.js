@@ -14,6 +14,7 @@
  */
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
 import { KitchenSystem } from "../features/kitchen-logic.js";
+import { AdminConfig, currencySymbol } from "../features/config-logic.js";
 
 const PAYMENT_METHODS = [
     { key: "UPI", note: "Scan / VPA" },
@@ -27,7 +28,7 @@ function escapeHtml(str) {
 }
 
 function money(n) {
-    return "₹" + Number(n || 0).toFixed(2);
+    return currencySymbol() + Number(n || 0).toFixed(2);
 }
 
 let selectedBill = null; // { kind: "table"|"order", id }
@@ -101,11 +102,11 @@ export async function renderBillingPage() {
         totalPages > 1
             ? `
         <div class="menu-pager" style="margin-top:auto;">
-            <button type="button" class="admin-pg-btn" data-page="1" ${billingPage <= 1 ? "disabled" : ""} title="First page">«</button>
-            <button type="button" class="admin-pg-btn" data-page="${billingPage - 1}" ${billingPage <= 1 ? "disabled" : ""} title="Previous page">‹</button>
+            <button type="button" class="admin-pg-btn" data-page="1" ${billingPage <= 1 ? "disabled" : ""} title="First page" aria-label="First page">«</button>
+            <button type="button" class="admin-pg-btn" data-page="${billingPage - 1}" ${billingPage <= 1 ? "disabled" : ""} title="Previous page" aria-label="Previous page">‹</button>
             <span class="menu-pager-label">${pageStart + 1}-${Math.min(pageStart + BILLING_PAGE_SIZE, openBills.length)} of ${openBills.length}</span>
-            <button type="button" class="admin-pg-btn" data-page="${billingPage + 1}" ${billingPage >= totalPages ? "disabled" : ""} title="Next page">›</button>
-            <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${billingPage >= totalPages ? "disabled" : ""} title="Last page">»</button>
+            <button type="button" class="admin-pg-btn" data-page="${billingPage + 1}" ${billingPage >= totalPages ? "disabled" : ""} title="Next page" aria-label="Next page">›</button>
+            <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${billingPage >= totalPages ? "disabled" : ""} title="Last page" aria-label="Last page">»</button>
         </div>`
             : "";
 
@@ -130,14 +131,15 @@ export async function renderBillingPage() {
                             pageBills.length === 0
                                 ? `<p style="color:var(--color-text-muted); font-size:9pt;">Nothing open right now.</p>`
                                 : pageBills
-                                      .map(
-                                          (b) => `
-                            <button type="button" class="billing-list-item${selectedBill && selectedBill.kind === b.kind && selectedBill.id === b.id ? " active" : ""}" data-kind="${b.kind}" data-id="${escapeHtml(String(b.id))}">
+                                      .map((b) => {
+                                          const isActive = !!(selectedBill && selectedBill.kind === b.kind && selectedBill.id === b.id);
+                                          return `
+                            <button type="button" class="billing-list-item${isActive ? " active" : ""}" aria-current="${isActive ? "true" : "false"}" data-kind="${b.kind}" data-id="${escapeHtml(String(b.id))}">
                                 <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(b.label)} <span style="color:var(--color-text-muted); font-weight:normal;">&middot; ${escapeHtml(b.sub)}</span></span>
                                 <span style="flex:none; font-weight:bold;">${money(b.total)}</span>
                             </button>
-                        `
-                                      )
+                        `;
+                                      })
                                       .join("")
                         }
                     </div>
@@ -204,7 +206,20 @@ async function renderBillDetail() {
             selectedBill = null;
             return;
         }
-        bill = { id: order.id, orderNumber: order.orderNumber, tableNumber: null, items: order.items, subtotal: order.subtotal, cgst: order.cgst, sgst: order.sgst, serviceCharge: order.serviceCharge, tipAmount: order.tipAmount, total: order.total };
+        bill = {
+            id: order.id,
+            orderNumber: order.orderNumber,
+            tableNumber: null,
+            items: order.items,
+            subtotal: order.subtotal,
+            discountAmount: order.discountAmount,
+            couponCode: order.couponCode,
+            cgst: order.cgst,
+            sgst: order.sgst,
+            serviceCharge: order.serviceCharge,
+            tipAmount: order.tipAmount,
+            total: order.total
+        };
         // The raw order (not the trimmed `bill` above) already matches what
         // window.printBill()/printKOT() expect exactly - orderNumber,
         // createdAt, method, promo/coupon fields and all - so print from
@@ -227,10 +242,56 @@ async function renderBillDetail() {
             </div>
             <div style="flex:0 1 220px;">
                 <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Phone / Username</label>
-                <input id="billing-tag-phone" type="text" maxlength="60" value="${escapeHtml(order.customerPhone || order.customerName || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
+                <input id="billing-tag-phone" type="text" maxlength="60" value="${escapeHtml(order.customerPhone || order.customerName || "")}" autocomplete="off" spellcheck="false" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
             </div>
         </div>`
         : "";
+
+    const cfg = AdminConfig.settings || {};
+    const cgstPct = ((cfg.cgstRate ?? 0.05) * 100).toFixed(1);
+    const sgstPct = ((cfg.sgstRate ?? 0.05) * 100).toFixed(1);
+
+    // Service charge/tip toggles, coupon, and loyalty redemption - only for
+    // a standalone order (not a table-session bill, which settles through
+    // its own existing close flow) and only once the order hasn't been
+    // settled yet.
+    const adjustBillHtml =
+        order && !order.isPaid
+            ? `
+        <div style="background:var(--color-surface); border:1px solid var(--color-border); margin-top:12px; padding:16px;">
+            <div style="font-size:9px; letter-spacing:.14em; color:var(--color-text-muted); text-transform:uppercase; border-left:4px solid var(--color-accent); padding-left:10px;">Adjust bill</div>
+            <label style="display:flex; align-items:center; gap:8px; font-size:10.5px; margin-top:13px; cursor:pointer;">
+                <input type="checkbox" id="billing-adjust-service" ${order.serviceChargeActive ? "checked" : ""} />
+                Service charge (${((cfg.serviceChargeRate ?? 0.02) * 100).toFixed(1)}%)
+            </label>
+            ${
+                cfg.tipEnabled
+                    ? `
+            <label style="display:flex; align-items:center; gap:8px; font-size:10.5px; margin-top:10px; cursor:pointer;">
+                <input type="checkbox" id="billing-adjust-tip" ${order.tipApplied ? "checked" : ""} />
+                Tip (${money(cfg.tipAmount || 0)})
+            </label>`
+                    : ""
+            }
+            <div style="display:flex; gap:8px; align-items:flex-end; margin-top:13px;">
+                <div style="flex:1;">
+                    <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Coupon code</label>
+                    <input id="billing-adjust-coupon" type="text" maxlength="24" value="${escapeHtml(order.couponCode || "")}" placeholder="OPTIONAL" autocomplete="off" spellcheck="false" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px; text-transform:uppercase;" />
+                </div>
+                ${
+                    order.customerId
+                        ? `
+                <div style="flex:0 0 110px;">
+                    <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Redeem pts</label>
+                    <input id="billing-adjust-points" type="number" min="0" value="${order.loyaltyPointsRedeemed || ""}" placeholder="0" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;" />
+                </div>`
+                        : ""
+                }
+            </div>
+            <p id="billing-adjust-error" style="color:var(--color-danger); font-size:9px; min-height:12px; margin:8px 0 0;"></p>
+            <button type="button" id="billing-adjust-apply" style="width:100%; margin-top:6px; padding:11px; background:var(--color-border); color:var(--color-text); border:none; font-size:10.5px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; min-height:40px;">Update bill</button>
+        </div>`
+            : "";
 
     detail.innerHTML = `
         <h1 style="font-size:22px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">BILL<span style="color:var(--color-accent);">#</span>${escapeHtml(String(bill.tableNumber != null ? "T" + bill.tableNumber : bill.orderNumber || bill.id))}</h1>
@@ -252,7 +313,9 @@ async function renderBillDetail() {
                 .join("")}
             <div style="padding:13px 14px; display:flex; flex-direction:column; gap:6px;">
                 <div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>SUBTOTAL</span><span>${money(bill.subtotal)}</span></div>
-                <div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>CGST + SGST</span><span>${money((bill.cgst || 0) + (bill.sgst || 0))}</span></div>
+                ${bill.discountAmount ? `<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-success);"><span>DISCOUNT${bill.couponCode ? ` (${escapeHtml(bill.couponCode)})` : ""}</span><span>-${money(bill.discountAmount)}</span></div>` : ""}
+                <div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>CGST (${cgstPct}%)</span><span>${money(bill.cgst || 0)}</span></div>
+                <div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>SGST (${sgstPct}%)</span><span>${money(bill.sgst || 0)}</span></div>
                 ${bill.serviceCharge ? `<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>SERVICE CHARGE</span><span>${money(bill.serviceCharge)}</span></div>` : ""}
                 ${bill.tipAmount ? `<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-cyan);"><span>TIP</span><span>${money(bill.tipAmount)}</span></div>` : ""}
                 <div style="display:flex; justify-content:space-between; align-items:baseline; border-top:1px solid var(--color-border); margin-top:4px; padding-top:11px;">
@@ -261,6 +324,7 @@ async function renderBillDetail() {
                 </div>
             </div>
         </div>
+        ${adjustBillHtml}
 
         <div style="background:var(--color-surface); border:1px solid var(--color-border); margin-top:12px; padding:16px;">
             <div style="font-size:9px; letter-spacing:.14em; color:var(--color-text-muted); text-transform:uppercase; border-left:4px solid var(--color-accent); padding-left:10px;">Settle payment</div>
@@ -278,6 +342,39 @@ async function renderBillDetail() {
         </div>
     `;
 
+    // Enter in either field applies the same update as clicking the button -
+    // neither field has its own save action, and there's no surrounding
+    // <form> here (this whole detail panel is a div tree) to submit on Enter
+    // for free. Deliberately not wired for the table/phone fields above,
+    // since those sit next to Settle - an accidental Enter there should not
+    // risk settling a payment.
+    detail.querySelectorAll("#billing-adjust-coupon, #billing-adjust-points").forEach((el) => {
+        el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                detail.querySelector("#billing-adjust-apply")?.click();
+            }
+        });
+    });
+    detail.querySelector("#billing-adjust-apply")?.addEventListener("click", async () => {
+        const btn = detail.querySelector("#billing-adjust-apply");
+        const errorEl = detail.querySelector("#billing-adjust-error");
+        errorEl.textContent = "";
+        btn.disabled = true;
+        try {
+            await KitchenSystem.adjustBill(order.id, {
+                serviceChargeActive: detail.querySelector("#billing-adjust-service").checked,
+                tipApplied: detail.querySelector("#billing-adjust-tip")?.checked || false,
+                couponCode: detail.querySelector("#billing-adjust-coupon").value.trim(),
+                redeemPoints: parseInt(detail.querySelector("#billing-adjust-points")?.value, 10) || 0
+            });
+            window.showToast?.("Bill updated");
+            await renderBillDetail();
+        } catch (e) {
+            errorEl.textContent = e.message || "Could not update bill";
+            btn.disabled = false;
+        }
+    });
     detail.querySelectorAll(".billing-pay-method").forEach((btn) => {
         btn.addEventListener("click", () => {
             selectedMethod = btn.dataset.method;
@@ -298,8 +395,8 @@ async function renderBillDetail() {
             // of settling - no separate save step for a standalone order.
             if (order) {
                 await KitchenSystem.tagOrderInfo(order.id, {
-                    contact: detail.querySelector("#billing-tag-phone").value,
-                    tableNumber: detail.querySelector("#billing-tag-table").value
+                    contact: detail.querySelector("#billing-tag-phone").value.trim(),
+                    tableNumber: detail.querySelector("#billing-tag-table").value.trim()
                 });
             }
             if (selectedBill.kind === "table") {

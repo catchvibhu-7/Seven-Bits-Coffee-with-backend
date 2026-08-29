@@ -5,29 +5,34 @@
 import { AuthSystem } from "../features/auth-logic.js";
 import { PayrollSystem } from "../features/payroll-logic.js";
 import { renderPasswordStrengthMeter } from "../features/password-strength.js";
+import { currencySymbol } from "../features/config-logic.js";
 
 function randomTempPassword() {
     const part = () => Math.random().toString(36).slice(2, 6);
     return `${part()}-${part()}A9`;
 }
 
-function rolesCreatableBy(currentRole) {
-    if (currentRole === "owner") return ["employee", "manager", "admin", "owner"];
-    if (currentRole === "admin") return ["employee", "manager"];
+/** Mirrors allowedRolesToCreate() in server.js exactly - owner's only
+ *  write action is creating a Global Admin (unrestricted admin); a Global
+ *  Admin can create Local Admins too, plus managers/employees; a Local
+ *  Admin (scoped storeAccess) or manager only managers/employees. */
+function rolesCreatableBy(session) {
+    if (session.role === "owner") return ["admin"];
+    if (session.role === "admin") return session.storeAccess && session.storeAccess.length ? ["employee", "manager"] : ["employee", "manager", "admin"];
     return ["employee"]; // manager
 }
 
 const fieldStyle = "width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;";
 
 /**
- * @param {"owner"|"admin"|"manager"} currentRole
+ * @param {{role: "owner"|"admin"|"manager", storeAccess?: number[]|null}} session
  * @param {() => void} onCreated
  */
-export async function renderAddStaffModal(currentRole, onCreated) {
+export async function renderAddStaffModal(session, onCreated) {
     document.getElementById("staff-modal-overlay")?.remove();
 
-    const roleOptions = rolesCreatableBy(currentRole);
-    const stores = currentRole === "manager" ? [] : await PayrollSystem.fetchStores();
+    const roleOptions = rolesCreatableBy(session);
+    const stores = session.role === "manager" ? [] : await PayrollSystem.fetchStores();
     let usernameCheckTimer;
 
     const overlay = document.createElement("div");
@@ -39,10 +44,10 @@ export async function renderAddStaffModal(currentRole, onCreated) {
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">ADD STAFF ACCOUNT</h2>
             <p id="staff-modal-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">NAME</label>
+            <label for="sm-name" style="font-size: 7pt; color: var(--color-text-muted);">NAME</label>
             <input id="sm-name" type="text" maxlength="60" placeholder="Full name" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">ROLE</label>
+            <label for="sm-role" style="font-size: 7pt; color: var(--color-text-muted);">ROLE</label>
             <select id="sm-role" style="${fieldStyle}">
                 ${roleOptions.map((r) => `<option value="${r}">${r.toUpperCase()}</option>`).join("")}
             </select>
@@ -50,17 +55,38 @@ export async function renderAddStaffModal(currentRole, onCreated) {
             ${
                 stores.length > 1
                     ? `
-            <label style="font-size: 7pt; color: var(--color-text-muted);">STORE</label>
-            <select id="sm-store" style="${fieldStyle}">
-                ${stores.map((s) => `<option value="${s.id}">${s.name}</option>`).join("")}
-            </select>`
+            <div id="sm-store-field">
+                <label for="sm-store" style="font-size: 7pt; color: var(--color-text-muted);">STORE</label>
+                <select id="sm-store" style="${fieldStyle}">
+                    ${stores.map((s) => `<option value="${s.id}">${s.name}</option>`).join("")}
+                </select>
+            </div>`
                     : ""
             }
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG (optional - e.g. Barista, Cashier)</label>
+            ${
+                roleOptions.includes("admin") && stores.length > 1
+                    ? `
+            <div id="sm-store-access-field" style="display:none;">
+                <label style="font-size: 7pt; color: var(--color-text-muted);">STORE ACCESS (leave all unchecked = every store)</label>
+                <div style="display:flex; flex-direction:column; gap:5px; margin: 4px 0 10px; padding:8px; border:1px solid var(--color-border);">
+                    ${stores
+                        .map(
+                            (s) => `
+                    <label style="display:flex; align-items:center; gap:6px; font-size:8pt; cursor:pointer;">
+                        <input type="checkbox" class="sm-store-access-cb" value="${s.id}" /> ${s.name}
+                    </label>`
+                        )
+                        .join("")}
+                </div>
+            </div>`
+                    : ""
+            }
+
+            <label for="sm-tag" style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG (optional - e.g. Barista, Cashier)</label>
             <input id="sm-tag" type="text" maxlength="40" placeholder="e.g. Barista" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE (optional)</label>
+            <label for="sm-pay-type" style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE (optional)</label>
             <div style="display:flex; gap:8px; margin: 4px 0 10px;">
                 <select id="sm-pay-type" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;">
                     <option value="">No pay tracking</option>
@@ -68,16 +94,16 @@ export async function renderAddStaffModal(currentRole, onCreated) {
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
                 </select>
-                <input id="sm-pay-rate" type="number" min="0" step="0.01" placeholder="\u20b9 amount" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" disabled />
+                <input id="sm-pay-rate" type="number" min="0" step="0.01" placeholder="${currencySymbol()} amount" aria-label="Pay rate amount" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" disabled />
             </div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">USERNAME</label>
-            <input id="sm-username" type="text" maxlength="30" placeholder="Login username" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 2px;" />
+            <label for="sm-username" style="font-size: 7pt; color: var(--color-text-muted);">USERNAME</label>
+            <input id="sm-username" type="text" maxlength="30" placeholder="Login username" autocomplete="off" spellcheck="false" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 2px;" />
             <div id="sm-username-status" style="font-size: 7pt; min-height: 11px; margin-bottom: 8px;"></div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">TEMPORARY PASSWORD</label>
+            <label for="sm-password" style="font-size: 7pt; color: var(--color-text-muted);">TEMPORARY PASSWORD</label>
             <div style="display:flex; gap:6px; margin: 4px 0 2px;">
-                <input id="sm-password" type="text" maxlength="60" placeholder="Temporary password" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
+                <input id="sm-password" type="text" maxlength="60" placeholder="Temporary password" autocomplete="off" spellcheck="false" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
                 <button id="sm-generate" type="button" style="background:var(--color-border); color:var(--color-accent); border:1px solid var(--color-accent); padding:0 12px; cursor:pointer; font-size:8pt;">GENERATE</button>
             </div>
             <div id="sm-password-meter"></div>
@@ -103,6 +129,20 @@ export async function renderAddStaffModal(currentRole, onCreated) {
         if (!payTypeField.value) payRateField.value = "";
     });
 
+    // STORE (single, for employee/manager) and STORE ACCESS (multi, for
+    // admin) are mutually exclusive - which one's relevant depends on the
+    // role currently picked.
+    const roleField = document.getElementById("sm-role");
+    const storeField = document.getElementById("sm-store-field");
+    const storeAccessField = document.getElementById("sm-store-access-field");
+    const syncStoreFieldsToRole = () => {
+        const role = roleField.value;
+        if (storeField) storeField.style.display = ["employee", "manager"].includes(role) ? "" : "none";
+        if (storeAccessField) storeAccessField.style.display = role === "admin" ? "" : "none";
+    };
+    roleField.addEventListener("change", syncStoreFieldsToRole);
+    syncStoreFieldsToRole();
+
     usernameField.addEventListener("input", () => {
         clearTimeout(usernameCheckTimer);
         const value = usernameField.value.trim();
@@ -110,7 +150,7 @@ export async function renderAddStaffModal(currentRole, onCreated) {
             usernameStatus.textContent = "";
             return;
         }
-        usernameStatus.textContent = "checking...";
+        usernameStatus.textContent = "checking…";
         usernameStatus.style.color = "var(--color-text-muted)";
         usernameCheckTimer = setTimeout(async () => {
             const available = await AuthSystem.checkUsernameAvailable(value);
@@ -147,6 +187,8 @@ export async function renderAddStaffModal(currentRole, onCreated) {
         const payRateType = payTypeField.value || null;
         const payRate = payRateType ? Number(payRateField.value) : null;
         const storeId = document.getElementById("sm-store")?.value;
+        const storeAccess =
+            role === "admin" ? [...document.querySelectorAll(".sm-store-access-cb:checked")].map((cb) => Number(cb.value)) : undefined;
 
         if (!name) return (errorEl.textContent = "Enter a name.");
         if (username.length < 3) return (errorEl.textContent = "Username must be at least 3 characters.");
@@ -156,7 +198,17 @@ export async function renderAddStaffModal(currentRole, onCreated) {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, username, password, role, tag, payRateType, payRate, storeId: storeId ? Number(storeId) : undefined })
+            body: JSON.stringify({
+                name,
+                username,
+                password,
+                role,
+                tag,
+                payRateType,
+                payRate,
+                storeId: storeId ? Number(storeId) : undefined,
+                storeAccess
+            })
         });
         const data = await res.json();
         if (!res.ok) {
@@ -170,26 +222,68 @@ export async function renderAddStaffModal(currentRole, onCreated) {
 }
 
 /**
- * Edit an existing staff member's tag and pay rate (role and password have
- * their own dedicated, more tightly-guarded flows, so they're not editable
- * here).
+ * Edit an existing staff member - tag, pay rate, role, which store they're
+ * assigned to, an admin's store access, and active/deactivated (password
+ * has its own, more tightly-guarded flow, so it's not editable here).
+ * Role/store are only offered to an admin/owner editing someone role-below
+ * them - a manager never gets them (matches canManageTarget()/allowedRolesToCreate()
+ * server-side, which reject the request anyway if bypassed).
  */
-export function renderEditStaffModal(user, onSaved) {
+export async function renderEditStaffModal(user, session, onSaved) {
     document.getElementById("staff-modal-overlay")?.remove();
+
+    const canChangeRole = session.role !== "manager" && user.role !== "owner";
+    const roleOptions = canChangeRole ? rolesCreatableBy(session).filter((r) => r !== "owner") : [];
+    const stores = canChangeRole ? await PayrollSystem.fetchStores() : [];
 
     const overlay = document.createElement("div");
     overlay.id = "staff-modal-overlay";
     overlay.className = "modal-overlay";
     overlay.style.zIndex = "5000";
     overlay.innerHTML = `
-        <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 340px; font-family: 'Courier New', monospace;">
+        <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 340px; font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">EDIT ${user.name}</h2>
             <p id="esm-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG</label>
+            ${
+                canChangeRole && roleOptions.length > 1
+                    ? `
+            <label for="esm-role" style="font-size: 7pt; color: var(--color-text-muted);">ROLE</label>
+            <select id="esm-role" style="${fieldStyle}">
+                ${roleOptions.map((r) => `<option value="${r}" ${r === user.role ? "selected" : ""}>${r.toUpperCase()}</option>`).join("")}
+            </select>`
+                    : ""
+            }
+
+            ${
+                canChangeRole && stores.length > 1
+                    ? `
+            <div id="esm-store-field" style="display:none;">
+                <label for="esm-store" style="font-size: 7pt; color: var(--color-text-muted);">STORE</label>
+                <select id="esm-store" style="${fieldStyle}">
+                    ${stores.map((s) => `<option value="${s.id}" ${s.id === user.storeId ? "selected" : ""}>${s.name}</option>`).join("")}
+                </select>
+            </div>
+            <div id="esm-store-access-field" style="display:none;">
+                <label style="font-size: 7pt; color: var(--color-text-muted);">STORE ACCESS (leave all unchecked = every store)</label>
+                <div style="display:flex; flex-direction:column; gap:5px; margin: 4px 0 10px; padding:8px; border:1px solid var(--color-border);">
+                    ${stores
+                        .map(
+                            (s) => `
+                    <label style="display:flex; align-items:center; gap:6px; font-size:8pt; cursor:pointer;">
+                        <input type="checkbox" class="esm-store-access-cb" value="${s.id}" ${(user.storeAccess || []).includes(s.id) ? "checked" : ""} /> ${s.name}
+                    </label>`
+                        )
+                        .join("")}
+                </div>
+            </div>`
+                    : ""
+            }
+
+            <label for="esm-tag" style="font-size: 7pt; color: var(--color-text-muted);">RESPONSIBILITY / TAG</label>
             <input id="esm-tag" type="text" maxlength="40" value="${user.tag || ""}" placeholder="e.g. Barista" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE</label>
+            <label for="esm-pay-type" style="font-size: 7pt; color: var(--color-text-muted);">PAY RATE</label>
             <div style="display:flex; gap:8px; margin: 4px 0 10px;">
                 <select id="esm-pay-type" style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;">
                     <option value="" ${!user.payRateType ? "selected" : ""}>No pay tracking</option>
@@ -197,9 +291,13 @@ export function renderEditStaffModal(user, onSaved) {
                     <option value="weekly" ${user.payRateType === "weekly" ? "selected" : ""}>Weekly</option>
                     <option value="monthly" ${user.payRateType === "monthly" ? "selected" : ""}>Monthly</option>
                 </select>
-                <input id="esm-pay-rate" type="number" min="0" step="0.01" value="${user.payRate ?? ""}" placeholder="\u20b9 amount" ${!user.payRateType ? "disabled" : ""}
+                <input id="esm-pay-rate" type="number" min="0" step="0.01" value="${user.payRate ?? ""}" placeholder="${currencySymbol()} amount" aria-label="Pay rate amount" ${!user.payRateType ? "disabled" : ""}
                     style="flex:1; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit;" />
             </div>
+
+            <label style="display:flex; align-items:center; gap:6px; font-size:8pt; cursor:pointer; margin-bottom:10px;">
+                <input type="checkbox" id="esm-disabled" ${user.disabled ? "checked" : ""} /> Account deactivated (can't log in)
+            </label>
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">
                 <button id="esm-save" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">SAVE CHANGES</button>
@@ -208,6 +306,24 @@ export function renderEditStaffModal(user, onSaved) {
         </div>
     `;
     document.body.appendChild(overlay);
+
+    const roleField = document.getElementById("esm-role");
+    const storeField = document.getElementById("esm-store-field");
+    const storeAccessField = document.getElementById("esm-store-access-field");
+    if (roleField) {
+        const syncStoreFieldsToRole = () => {
+            const role = roleField.value;
+            if (storeField) storeField.style.display = ["employee", "manager"].includes(role) ? "" : "none";
+            if (storeAccessField) storeAccessField.style.display = role === "admin" ? "" : "none";
+        };
+        roleField.addEventListener("change", syncStoreFieldsToRole);
+        syncStoreFieldsToRole();
+    } else if (storeField) {
+        // No role dropdown (viewer can't change role), but the target's
+        // CURRENT role still decides which of these two shows.
+        storeField.style.display = ["employee", "manager"].includes(user.role) ? "" : "none";
+        if (storeAccessField) storeAccessField.style.display = user.role === "admin" ? "" : "none";
+    }
 
     const payTypeField = document.getElementById("esm-pay-type");
     const payRateField = document.getElementById("esm-pay-rate");
@@ -224,19 +340,42 @@ export function renderEditStaffModal(user, onSaved) {
         const payRateType = payTypeField.value || null;
         const payRate = payRateType ? Number(payRateField.value) : null;
         if (payRateType && !(payRate >= 0)) return (errorEl.textContent = "Enter a valid pay rate.");
+        const disabled = document.getElementById("esm-disabled").checked;
+        // The role dropdown (if shown) decides which of storeId/storeAccess
+        // applies below - if it's not shown, the target's role isn't
+        // changing, so use whatever it already is.
+        const newRole = roleField ? roleField.value : user.role;
+        const storeId = document.getElementById("esm-store")?.value;
+        const storeAccess =
+            newRole === "admin" ? [...document.querySelectorAll(".esm-store-access-cb:checked")].map((cb) => Number(cb.value)) : undefined;
 
-        const res = await fetch(`/api/users/${user.id}`, {
-            method: "PATCH",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tag, payRateType, payRate })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            errorEl.textContent = data.error || "Could not save changes";
-            return;
+        try {
+            // Role changes through its own dedicated, more tightly-guarded
+            // route (see PATCH /api/users/:id/role) - applied first so the
+            // rest of this save (storeId vs. storeAccess) reflects the NEW
+            // role, not the one being replaced.
+            if (roleField && newRole !== user.role) {
+                await PayrollSystem.changeUserRole(user.id, newRole);
+            }
+            const res = await fetch(`/api/users/${user.id}`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    tag,
+                    payRateType,
+                    payRate,
+                    disabled,
+                    storeId: storeId ? Number(storeId) : undefined,
+                    storeAccess
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Could not save changes");
+            overlay.remove();
+            onSaved(data);
+        } catch (e) {
+            errorEl.textContent = e.message;
         }
-        overlay.remove();
-        onSaved(data);
     });
 }

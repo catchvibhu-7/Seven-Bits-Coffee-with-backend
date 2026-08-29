@@ -174,12 +174,16 @@ header {
 }
 
 .staff-rail-logo-mark {
-    font-size: 24px;
+    font-size: 18px;
     font-weight: bold;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     line-height: 1.15;
     color: var(--color-accent);
     font-family: "Courier New", monospace;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .staff-rail-sub {
@@ -272,6 +276,12 @@ header {
     border-right: 1px solid var(--color-border);
     padding: 14px;
     z-index: 101;
+    /* Same gap as .staff-nav-list above it, so the footer's stack of
+       buttons (order widget, clock in/out, store picker, login/account)
+       reads as consistently spaced as the tab list rather than touching. */
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 /* The single identity/account button (#staff-account-btn, see
@@ -287,19 +297,19 @@ header {
     width: 100%;
     gap: 8px;
     padding: 8px 10px;
-    /* A visibly accent-bordered/tinted resting state (not just on hover) -
-       plain var(--color-border) gray on the dark background read as low
-       contrast/hard to notice as a real button. */
-    background: rgba(217, 119, 6, 0.1);
-    border: 1px solid var(--color-accent);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
     font-family: inherit;
     font-size: 11.5px;
     cursor: pointer;
     min-height: 44px;
     box-sizing: border-box;
+    transition: border-color 0.15s, background 0.15s;
 }
 .staff-auth-identity:hover {
-    background: rgba(217, 119, 6, 0.18);
+    border-color: var(--color-accent);
+    background: rgba(217, 119, 6, 0.08);
 }
 
 .staff-auth-name {
@@ -451,7 +461,6 @@ header {
 }
 .staff-auth-section .nav-order-widget {
     width: 100%;
-    margin-bottom: 8px;
 }
 .staff-auth-section .nav-order-widget-btn {
     width: 100%;
@@ -1605,6 +1614,110 @@ input[type="checkbox"]:disabled {
     color: var(--admin-help-color, var(--color-text-muted));
 }
 
+/* Read-only Field: Value sections (see js/ui/admin-section.js) - one per
+   logical settings group, each with its own EDIT button rather than one
+   big editable form per tab. */
+.readonly-section {
+    margin-bottom: 22px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+.readonly-section:last-child {
+    border-bottom: none;
+}
+.readonly-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.readonly-field-row {
+    display: flex;
+    gap: 14px;
+    padding: 5px 0;
+    font-size: 8.5pt;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+.readonly-field-label {
+    flex: 0 0 220px;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    font-size: 7.5pt;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.readonly-field-value {
+    flex: 1;
+    color: var(--color-text);
+    min-width: 0;
+    word-break: break-word;
+}
+@media (max-width: 600px) {
+    .readonly-field-row {
+        flex-direction: column;
+        gap: 2px;
+    }
+    .readonly-field-label {
+        flex: none;
+    }
+}
+
+/* Small (i) hint glyph next to a field label/name - hover/focus reveals
+   extra context via a CSS-only popover (see tooltipHtml() in
+   admin-section.js). Keyboard-focusable (tabindex on the span itself), not
+   just mouse-hover, so the same information reaches keyboard users. */
+.field-tooltip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    height: 13px;
+    flex: none;
+    border-radius: 50%;
+    border: 1px solid var(--color-text-muted);
+    color: var(--color-text-muted);
+    font-size: 7.5pt;
+    font-style: italic;
+    font-family: Georgia, "Times New Roman", serif;
+    cursor: help;
+}
+.field-tooltip:hover,
+.field-tooltip:focus-visible {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+/* Keyboard focus gets a real ring, not just the hover state's subtle
+   border-color tint - a 13px circle needs a stronger cue than color alone
+   to read as "focused" for a keyboard user tabbing through the page. */
+.field-tooltip:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+.field-tooltip:hover::after,
+.field-tooltip:focus-visible::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: 130%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-surface);
+    border: 1px solid var(--color-accent);
+    color: var(--color-text);
+    padding: 6px 8px;
+    font-size: 7.5pt;
+    font-style: normal;
+    font-family: "Courier New", monospace;
+    white-space: normal;
+    width: 200px;
+    z-index: 20;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
 /* Admin data tables (menu items, staff accounts) - was previously an
    unstyled default HTML <table>, which is why it looked like a plain
    browser form instead of matching the rest of the app. */
@@ -1711,6 +1824,10 @@ input[type="checkbox"]:disabled {
     cursor: pointer;
     font-family: inherit;
     text-transform: uppercase;
+}
+.admin-btn-secondary:hover {
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
 }
 .admin-toolbar {
     display: flex;
@@ -2384,6 +2501,53 @@ input[type="checkbox"]:disabled {
     background: #1a1a1a;
 }
 
+/* .arcade-card is a div with role="button" (it mounts a game in place
+   rather than navigating a URL, see arcade-page.js) - the app's global
+   button:focus-visible rule only covers real <button>/<input>/<select>/
+   <textarea> elements, so this keyboard-focusable div had no visible
+   focus ring at all despite already being operable via Enter/Space. */
+.arcade-card:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+/* Locked-state ("place an order to unlock the arcade") - previously a
+   single muted line, which read as broken/empty rather than intentional.
+   Centers a big pixel-style controller icon + the server-given reason +
+   a way to actually go do something about it. */
+.arcade-locked {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 18px;
+    padding: 60px 20px;
+}
+
+.arcade-locked-icon {
+    width: 160px;
+    height: 100px;
+    flex-shrink: 0;
+    animation: arcade-locked-bob 2.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .arcade-locked-icon {
+        animation: none;
+    }
+}
+
+@keyframes arcade-locked-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+.arcade-locked-reason {
+    color: var(--color-text-muted);
+    font-size: 9.5pt;
+    max-width: 360px;
+}
+
 .arcade-card .arcade-thumb {
     width: 56px;
     height: 56px;
@@ -2465,11 +2629,13 @@ input[type="checkbox"]:disabled {
 
 @media (min-width: 820px) and (min-aspect-ratio: 1/1) {
     .arcade-play-layout {
-        /* The outer two columns use 1fr (not a fixed/minmax-only track) so
-           they actually grow to absorb leftover width up to the 1400px cap
-           above - a wide monitor's extra space becomes a bigger switcher/
-           leaderboard instead of just more margin outside the component. */
-        grid-template-columns: minmax(200px, 1fr) minmax(0, 620px) minmax(260px, 1fr);
+        /* The game itself is what someone's actually here to look at - the
+           switcher/leaderboard columns get just enough room for their
+           thumbnails/scores to read comfortably (a capped range, not 1fr),
+           and the game column takes the 1fr so it absorbs all the leftover
+           width up to the 1400px cap above instead of the side columns
+           growing to outweigh it on a wide monitor. */
+        grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) minmax(220px, 300px);
         align-items: start;
     }
     .arcade-switcher {
@@ -2480,7 +2646,7 @@ input[type="checkbox"]:disabled {
         top: 20px;
     }
     .arcade-game-area {
-        max-width: 620px;
+        max-width: 700px;
         margin: 0 auto;
         min-height: 0; /* the fixed-size desktop game doesn't need to stretch */
     }
@@ -2546,8 +2712,15 @@ input[type="checkbox"]:disabled {
 }
 
 @media (min-width: 820px) and (min-aspect-ratio: 1/1) {
+    /* Was capped at a flat 320px regardless of how much room the now-
+       dominant game column (.arcade-game-area above) actually has - a wide
+       desktop can afford a visibly bigger board than that. Canvas games
+       stay at native pixel size on purpose (see .arcade-canvas-wrap canvas
+       above, upscaling blurs their pixel art) - DOM-grid boards have no
+       such limit, they just redraw their own cells at whatever size CSS
+       gives them. */
     .arcade-board {
-        max-width: 320px;
+        max-width: min(90%, 520px);
     }
 }
 
@@ -2602,4 +2775,44 @@ input[type="checkbox"]:disabled {
     font-size: 8pt;
     color: var(--color-text-muted);
     line-height: 1.4;
+}
+
+/* Web-design-guidelines audit additions (admin panel scope) - appended
+   rather than editing the rules above, since other agents may be touching
+   this file concurrently. */
+
+/* .admin-btn/.admin-btn-secondary already have a :hover state; .admin-btn-primary
+   (the SAVE button on every read-only-section edit modal, plus the setup
+   wizard's NEXT/SAVE buttons) never got one, so clicking it gave no visual
+   press/hover feedback at all. */
+.admin-btn-primary:hover {
+    background: var(--color-text);
+    color: var(--color-accent-contrast);
+}
+
+/* Every modal (.modal-content) that can grow taller than the viewport sets
+   its own inline overflow-y:auto for a scrollable body. Without this,
+   scrolling to the top/bottom of that inner scroll area chains into
+   scrolling the page behind the modal overlay. */
+.modal-content {
+    overscroll-behavior: contain;
+}
+
+/* .menu-section-header (admin-portal.js Menu Items tab) is a collapsible
+   section header made keyboard-operable via tabindex="0"/role="button" -
+   it can't be a real <button> since it wraps its own nested DELETE SECTION
+   button. The global button/input/select/textarea focus-visible rule above
+   doesn't reach a plain div, so without this, tabbing to it showed no focus
+   indicator at all. */
+.menu-section-header:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+}
+
+/* .order-history-row (admin-portal.js Order History tab) - same reasoning:
+   a clickable <tr> with tabindex="0" for keyboard selection, which the
+   global focus-visible rule doesn't cover. */
+.order-history-row:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
 }

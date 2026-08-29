@@ -34,5 +34,77 @@
     "sizeBytes": 576,
     "uploadedAt": "2026-08-28T14:00:43.511Z",
     "uploadedBy": "seed-script"
+  },
+  {
+    "id": "f2c3306b2cd80917",
+    "filename": "f2c3306b2cd80917.jpg",
+    "originalName": "hfdhdhg.jpeg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 82775,
+    "uploadedAt": "2026-08-28T17:55:11.112Z",
+    "uploadedBy": "Owner"
+  },
+  {
+    "id": "e6abe128c2b578b0",
+    "filename": "e6abe128c2b578b0.png",
+    "originalName": "Gemini_Generated_Image_o374jxo374jxo374dsadsad.png",
+    "mimeType": "image/png",
+    "sizeBytes": 632570,
+    "uploadedAt": "2026-08-28T17:55:22.621Z",
+    "uploadedBy": "Owner"
+  },
+  {
+    "id": "187d7f863398b281",
+    "filename": "187d7f863398b281.jpg",
+    "originalName": "latte.jpeg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 49059,
+    "uploadedAt": "2026-08-28T18:16:14.297Z",
+    "uploadedBy": "Owner"
+  },
+  {
+    "id": "dbfddd2986cbd01b",
+    "filename": "dbfddd2986cbd01b.jpg",
+    "originalName": "creamtopfoam.jpeg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 20102,
+    "uploadedAt": "2026-08-28T18:16:34.670Z",
+    "uploadedBy": "Owner"
+  },
+  {
+    "id": "7502747a12a8e7fa",
+    "filename": "7502747a12a8e7fa.jpg",
+    "originalName": "black-coffee.jpeg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 20187,
+    "uploadedAt": "2026-08-28T18:16:45.475Z",
+    "uploadedBy": "Owner"
+  },
+  {
+    "id": "4c66ecbdc94b2973",
+    "filename": "4c66ecbdc94b2973.jpg",
+    "originalName": "ice-latte.jpeg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 47339,
+    "uploadedAt": "2026-08-28T18:17:15.513Z",
+    "uploadedBy": "Owner"
+  },
+  {
+    "id": "aa1c4660a6c025ba",
+    "filename": "aa1c4660a6c025ba.jpg",
+    "originalName": "flatwhite.JPG",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 42610,
+    "uploadedAt": "2026-08-28T18:17:46.386Z",
+    "uploadedBy": "Owner"
+  },
+  {
+    "id": "3683bf8c6ad56bfc",
+    "filename": "3683bf8c6ad56bfc.jpg",
+    "originalName": "cortado.jpeg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 21020,
+    "uploadedAt": "2026-08-28T18:18:00.575Z",
+    "uploadedBy": "Owner"
   }
 ]

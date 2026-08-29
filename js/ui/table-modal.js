@@ -8,6 +8,8 @@
  * table and editing an already-open one (renumber if a customer asks to
  * move seats, or update who's on the tab).
  */
+import { currencySymbol } from "../features/config-logic.js";
+
 const fieldStyle =
     "width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 12px;";
 
@@ -35,23 +37,23 @@ export function renderTableModal({ tableCount, table = null, onSave }) {
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${isEdit ? "EDIT TABLE" : "OPEN TABLE"}</h2>
             <p id="tm-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 8px;"></p>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">TABLE NUMBER</label>
+            <label for="tm-table-number" style="font-size: 7pt; color: var(--color-text-muted);">TABLE NUMBER</label>
             ${
                 tableCount > 0
                     ? `<select id="tm-table-number" style="${fieldStyle}">${tableOptions}</select>`
                     : `<p style="font-size:8pt; color:var(--color-danger); margin:4px 0 12px;">No tables configured - set "Number of Tables" in Admin &gt; Global Settings first.</p>`
             }
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER NAME (OPTIONAL - for identifying repeat customers / discounts)</label>
+            <label for="tm-customer-name" style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER NAME (OPTIONAL - for identifying repeat customers / discounts)</label>
             <input id="tm-customer-name" type="text" maxlength="60" value="${table ? escapeHtml(table.customerName || "") : ""}" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER PHONE (OPTIONAL)</label>
+            <label for="tm-customer-phone" style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER PHONE (OPTIONAL)</label>
             <input id="tm-customer-phone" type="tel" maxlength="15" value="${table ? escapeHtml(table.customerPhone || "") : ""}" style="${fieldStyle}" />
 
             ${
                 !isEdit
                     ? `
-            <label style="font-size: 7pt; color: var(--color-text-muted);">NOTE (OPTIONAL)</label>
+            <label for="tm-note" style="font-size: 7pt; color: var(--color-text-muted);">NOTE (OPTIONAL)</label>
             <input id="tm-note" type="text" maxlength="140" style="${fieldStyle}" />`
                     : ""
             }
@@ -117,18 +119,18 @@ export function renderTableBillModal({ table, onClose }) {
                         (i) => `
                     <div style="display:flex; justify-content:space-between; font-size: 9pt; margin-bottom: 5px;">
                         <span>${i.quantity}x ${escapeHtml(i.name)} <span style="color:var(--color-text-muted); font-size:7pt;">(#${escapeHtml(i.orderId)})</span></span>
-                        <span>\u20b9${(i.price * i.quantity).toFixed(2)}</span>
+                        <span>${currencySymbol()}${(i.price * i.quantity).toFixed(2)}</span>
                     </div>
                 `
                     )
                     .join("")}
             </div>
 
-            <div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Subtotal</span><span>\u20b9${table.subtotal.toFixed(2)}</span></div>
-            <div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>CGST + SGST</span><span>\u20b9${(table.cgst + table.sgst).toFixed(2)}</span></div>
-            ${table.serviceCharge ? `<div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Service Charge</span><span>\u20b9${table.serviceCharge.toFixed(2)}</span></div>` : ""}
-            ${table.tipAmount ? `<div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Tip</span><span>\u20b9${table.tipAmount.toFixed(2)}</span></div>` : ""}
-            <div style="font-size: 1.2rem; font-weight:bold; color:var(--color-accent); display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:10px; margin-top:6px;"><span>TOTAL</span><span>\u20b9${table.total.toFixed(2)}</span></div>
+            <div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Subtotal</span><span>${currencySymbol()}${table.subtotal.toFixed(2)}</span></div>
+            <div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>CGST + SGST</span><span>${currencySymbol()}${(table.cgst + table.sgst).toFixed(2)}</span></div>
+            ${table.serviceCharge ? `<div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Service Charge</span><span>${currencySymbol()}${table.serviceCharge.toFixed(2)}</span></div>` : ""}
+            ${table.tipAmount ? `<div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Tip</span><span>${currencySymbol()}${table.tipAmount.toFixed(2)}</span></div>` : ""}
+            <div style="font-size: 1.2rem; font-weight:bold; color:var(--color-accent); display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:10px; margin-top:6px;"><span>TOTAL</span><span>${currencySymbol()}${table.total.toFixed(2)}</span></div>
 
             <div style="display: grid; gap: 10px; margin-top: 20px;">
                 <button id="tb-close-paid" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">CLOSE &amp; MARK PAID</button>

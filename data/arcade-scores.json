@@ -3,35 +3,119 @@
     "id": 1,
     "game": "breakout",
     "name": "Abhinav",
-    "score": 10,
-    "achievedAt": "2026-08-27T18:21:43.451Z"
+    "score": 30,
+    "achievedAt": "2026-08-28T17:08:59.753Z"
   },
   {
     "id": 2,
     "game": "breakout",
     "name": "Abhinav",
-    "score": 20,
-    "achievedAt": "2026-08-27T18:21:57.121Z"
+    "score": 40,
+    "achievedAt": "2026-08-28T17:09:10.365Z"
   },
   {
     "id": 3,
-    "game": "simon",
+    "game": "breakout",
     "name": "Abhinav",
-    "score": 5,
-    "achievedAt": "2026-08-27T18:42:40.064Z"
+    "score": 60,
+    "achievedAt": "2026-08-28T17:09:26.291Z"
   },
   {
     "id": 4,
-    "game": "invaders",
+    "game": "breakout",
     "name": "Abhinav",
-    "score": 320,
-    "achievedAt": "2026-08-27T18:43:24.800Z"
+    "score": 20,
+    "achievedAt": "2026-08-28T17:09:36.591Z"
   },
   {
     "id": 5,
+    "game": "breakout",
+    "name": "Abhinav",
+    "score": 140,
+    "achievedAt": "2026-08-28T17:09:52.491Z"
+  },
+  {
+    "id": 6,
+    "game": "breakout",
+    "name": "Abhinav",
+    "score": 30,
+    "achievedAt": "2026-08-28T17:10:01.861Z"
+  },
+  {
+    "id": 7,
+    "game": "snake",
+    "name": "Abhinav",
+    "score": 20,
+    "achievedAt": "2026-08-28T17:15:13.711Z"
+  },
+  {
+    "id": 8,
+    "game": "snake",
+    "name": "Abhinav",
+    "score": 390,
+    "achievedAt": "2026-08-28T17:17:02.722Z"
+  },
+  {
+    "id": 9,
+    "game": "breakout",
+    "name": "Abhinav",
+    "score": 10,
+    "achievedAt": "2026-08-28T19:23:17.075Z"
+  },
+  {
+    "id": 10,
+    "game": "flappy",
+    "name": "Abhinav",
+    "score": 5,
+    "achievedAt": "2026-08-28T19:23:36.623Z"
+  },
+  {
+    "id": 11,
     "game": "invaders",
     "name": "Abhinav",
-    "score": 200,
-    "achievedAt": "2026-08-27T18:43:42.191Z"
+    "score": 230,
+    "achievedAt": "2026-08-28T19:23:54.637Z"
+  },
+  {
+    "id": 12,
+    "game": "breakout",
+    "name": "Abhinav",
+    "score": 10,
+    "achievedAt": "2026-08-29T17:25:20.752Z"
+  },
+  {
+    "id": 13,
+    "game": "breakout",
+    "name": "Abhinav",
+    "score": 10,
+    "achievedAt": "2026-08-29T17:25:36.341Z"
+  },
+  {
+    "id": 14,
+    "game": "pong",
+    "name": "Abhinav",
+    "score": 2,
+    "achievedAt": "2026-08-29T17:25:39.467Z"
+  },
+  {
+    "id": 15,
+    "game": "snake",
+    "name": "Abhinav",
+    "score": 20,
+    "achievedAt": "2026-08-29T17:25:52.354Z"
+  },
+  {
+    "id": 16,
+    "game": "snake",
+    "name": "Abhinav",
+    "score": 10,
+    "achievedAt": "2026-08-29T17:26:02.162Z"
+  },
+  {
+    "id": 17,
+    "game": "snake",
+    "name": "Abhinav",
+    "score": 380,
+    "achievedAt": "2026-08-29T17:27:46.844Z"
   }
 ]

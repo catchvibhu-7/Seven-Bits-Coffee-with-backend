@@ -3,6 +3,7 @@
  * Location: /js/ui/item-modal.js
  */
 import { renderImagePickerModal } from "./image-picker-modal.js";
+import { currencySymbol } from "../features/config-logic.js";
 
 const BUILT_IN_ICONS = [
     "americano", "bagel", "cake", "cappuccino", "cheesecake", "cold-brew",
@@ -42,7 +43,7 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
             <label style="font-size: 7pt; color: var(--color-text-muted);">NAME</label>
             <input id="im-name" type="text" maxlength="60" value="${item ? item.name : ""}" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PRICE (\u20b9)</label>
+            <label style="font-size: 7pt; color: var(--color-text-muted);">PRICE (${currencySymbol()})</label>
             <input id="im-price" type="number" min="1" step="1" value="${item ? item.price : ""}" style="${fieldStyle}" />
 
             <label style="font-size: 7pt; color: var(--color-text-muted);">SECTION</label>
@@ -70,7 +71,7 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
             <select id="im-promo-type" style="${fieldStyle}">
                 <option value="" ${!item?.promoDiscount ? "selected" : ""}>NO PROMOTION</option>
                 <option value="percent" ${item?.promoDiscount?.type === "percent" ? "selected" : ""}>% OFF</option>
-                <option value="flat" ${item?.promoDiscount?.type === "flat" ? "selected" : ""}>₹ OFF (FLAT)</option>
+                <option value="flat" ${item?.promoDiscount?.type === "flat" ? "selected" : ""}>${currencySymbol()} OFF (FLAT)</option>
             </select>
             <input id="im-promo-value" type="number" min="0.01" step="0.01" placeholder="Discount value" value="${item?.promoDiscount?.value ?? ""}" style="${fieldStyle} ${item?.promoDiscount ? "" : "display:none;"}" />
 
@@ -100,7 +101,12 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
     function updateImagePreview() {
         const url = document.getElementById("im-image-url").value.trim();
         const preview = document.getElementById("im-image-preview");
-        preview.innerHTML = url ? `<img src="${url}" style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--color-border);" onerror="this.style.display='none'" />` : "";
+        preview.innerHTML = url ? `<img style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--color-border);" />` : "";
+        const img = preview.querySelector("img");
+        if (img) {
+            img.addEventListener("error", () => (img.style.display = "none"));
+            img.src = url;
+        }
     }
     document.getElementById("im-image-url").addEventListener("input", updateImagePreview);
     updateImagePreview();

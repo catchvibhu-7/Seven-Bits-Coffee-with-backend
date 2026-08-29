@@ -16,6 +16,7 @@
  */
 import { KitchenSystem } from "../features/kitchen-logic.js";
 import { PayrollSystem } from "../features/payroll-logic.js";
+import { currencySymbol } from "../features/config-logic.js";
 
 const LOW_STOCK_THRESHOLD = 5; // matches admin-portal.js's Menu Items low-stock highlight
 
@@ -24,7 +25,7 @@ function escapeHtml(str) {
 }
 
 function money(n) {
-    return "₹" + Number(n || 0).toLocaleString("en-IN");
+    return currencySymbol() + Number(n || 0).toLocaleString("en-IN");
 }
 
 const orderStatus = (order) => KitchenSystem.statusOf(order);
@@ -128,7 +129,7 @@ export async function renderStaffHome(session) {
                                           const status = orderStatus(o);
                                           const summary = o.items.map((i) => `${i.quantity}x ${i.name}`).join(" · ");
                                           return `
-                                <div class="staff-home-order-row" data-order-id="${escapeHtml(o.id)}" style="display:flex; align-items:center; gap:14px; padding:12px 2px; border-top:1px dashed var(--color-border); cursor:pointer; font-size:12.5px; min-height:44px;">
+                                <div class="staff-home-order-row" data-order-id="${escapeHtml(o.id)}" role="button" tabindex="0" style="display:flex; align-items:center; gap:14px; padding:12px 2px; border-top:1px dashed var(--color-border); cursor:pointer; font-size:12.5px; min-height:44px;">
                                     <span style="flex:none; color:var(--color-text-muted); width:58px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(o.id)}</span>
                                     <span style="flex:none; font-weight:bold; width:92px; letter-spacing:.06em; text-transform:uppercase; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(o.tableSessionId ? "TABLE" : o.method || "ORDER")}</span>
                                     <span style="color:var(--color-text-muted); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(summary)}</span>
@@ -184,6 +185,17 @@ export async function renderStaffHome(session) {
     root.querySelector("#staff-home-all-orders")?.addEventListener("click", () => window.showPage("kitchen"));
     root.querySelector("#staff-home-billing")?.addEventListener("click", () => window.showPage("billing"));
     root.querySelectorAll(".staff-home-order-row").forEach((row) => {
-        row.addEventListener("click", () => window.showPage("kitchen"));
+        const openRow = () => window.showPage("kitchen");
+        row.addEventListener("click", openRow);
+        // These rows are <div>s (not <a>/<button>) since they navigate the
+        // in-page SPA router rather than a real URL - role="button" +
+        // tabindex above makes them focusable, this makes them keyboard-
+        // operable (Enter/Space) instead of mouse/touch-only.
+        row.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openRow();
+            }
+        });
     });
 }

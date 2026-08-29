@@ -9,6 +9,8 @@
  * order: the cart re-adds by item id, so checkout always recomputes fresh
  * from the current menu/config.
  */
+import { currencySymbol } from "../features/config-logic.js";
+
 function starsHtml(order) {
     if (order.rating) {
         return `
@@ -20,8 +22,8 @@ function starsHtml(order) {
     }
     return `
         <div class="mo-feedback" data-order-id="${order.id}" style="margin-top:8px;">
-            <div class="mo-stars" style="font-size:14pt; letter-spacing:2px; cursor:pointer;">
-                ${[1, 2, 3, 4, 5].map((n) => `<span class="mo-star" data-value="${n}" style="color:var(--color-text-muted);">\u2606</span>`).join("")}
+            <div class="mo-stars" role="group" aria-label="Rate this order" style="font-size:14pt; letter-spacing:2px;">
+                ${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="mo-star" data-value="${n}" aria-label="${n} star${n === 1 ? "" : "s"}" aria-pressed="false" style="background:none; border:none; padding:0; cursor:pointer; font-size:inherit; color:var(--color-text-muted);">\u2606</button>`).join("")}
             </div>
             <div style="display:none;" class="mo-comment-row">
                 <input type="text" class="mo-comment-input" placeholder="Add a comment (optional)" maxlength="500" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px; font-family:inherit; font-size:8pt; margin:6px 0;" />
@@ -46,7 +48,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
             <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 10px 0; font-size: 9pt;">
                 <div style="display:flex; justify-content: space-between;">
                     <span>#${order.orderNumber || order.id} <span style="color:var(--color-text-muted); font-size:7pt;">${new Date(order.createdAt).toLocaleDateString()}</span></span>
-                    <span style="font-weight:bold;">\u20b9${order.total.toFixed(2)}</span>
+                    <span style="font-weight:bold;">${currencySymbol()}${order.total.toFixed(2)}</span>
                 </div>
                 <div style="font-size:8pt; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
                 <button class="mo-reorder-btn" data-order-id="${order.id}" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 6px 12px; font-size: 7pt; cursor: pointer; text-transform: uppercase; font-family: inherit;">REORDER</button>
@@ -84,6 +86,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
             stars.forEach((s, i) => {
                 s.textContent = i < selected ? "\u2605" : "\u2606";
                 s.style.color = i < selected ? "var(--color-accent)" : "var(--color-text-muted)";
+                s.setAttribute("aria-pressed", String(i < selected));
             });
         };
 

@@ -28,6 +28,7 @@
 "use strict";
 
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -152,6 +153,13 @@ if (!fs.existsSync(MENU_FILE)) {
 if (!fs.existsSync(CONFIG_FILE)) {
   writeJson(CONFIG_FILE, {
     shopName: "SEVEN BITS COFFEE",
+    // Multi-currency - currencySymbol is what every price display in the
+    // app uses (menu, cart, checkout, billing, receipts); currencyCode is
+    // only used where Razorpay's API actually requires an ISO 4217 code.
+    // Both default to what the app always hardcoded (Indian Rupee), so
+    // nothing changes until an admin edits these.
+    currencySymbol: "₹",
+    currencyCode: "INR",
     // GST registration number (India) - printed on bills when set (see
     // window.printBill in app.js); blank means "not GST-registered", not an
     // error, so it's simply omitted from the printout.
@@ -166,6 +174,13 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // first boot, not the source of truth after that.
     upiVpa: process.env.UPI_VPA || "",
     upiPayeeName: process.env.UPI_PAYEE_NAME || "",
+    // Real payment verification - off by default, an owner turns it on once
+    // they have a Razorpay merchant account (Admin -> Payments & Tax). See
+    // createRazorpayOrder()/verifyRazorpaySignature() above. Off/unconfigured
+    // keeps the original UPI-QR trust-based flow exactly as it was.
+    razorpayEnabled: false,
+    razorpayKeyId: "",
+    razorpayKeySecret: "",
     // Branding - drives CSS custom properties at runtime (see app.js
     // applyBranding()). Defaults match the original hardcoded theme, so
     // nothing changes visually until an admin edits these.
@@ -180,6 +195,10 @@ if (!fs.existsSync(CONFIG_FILE)) {
     },
     heroImageUrl: "",
     logoUrl: "",
+    // A single wide image combining wordmark + mark, shown instead of the
+    // separate logo icon + shop-name text in the nav rail/top bar when set -
+    // optional, most shops just use logoUrl + the auto-generated name text.
+    logoWideUrl: "",
     // Font size (pt) + color for the admin sub-tab nav row and the muted
     // helper/description paragraphs in the admin panel - see Branding tab
     // "ADMIN PANEL TEXT" section, and DEFAULT_BRANDING.textStyles below.
@@ -216,10 +235,6 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // Admin-added fields beyond the fixed set above (Instagram, GST no,
     // WhatsApp, etc.) - see Content -> Store Details -> "+ ADD FIELD".
     customFooterFields: [],
-    // Number of physical tables the shop has. Table 0 is a reserved label
-    // for "Online / Counter" (no physical table), never an openable tab -
-    // real tabs are numbered 1..tableCount. See /api/table-sessions.
-    tableCount: 10,
     // "rail" or "topbar" - which staff-shell layout a browser sees the
     // first time it visits with nobody logged in yet, before it has its own
     // saved localStorage preference (see StaffShell in staff-shell.js).
@@ -230,17 +245,70 @@ if (!fs.existsSync(CONFIG_FILE)) {
       enabled: true,
       pointsPerRupeeSpent: 0.1, // e.g. 0.1 = 1 point per Rs.10 spent
       rupeeValuePerPoint: 0.5 // e.g. 0.5 = each point is worth Rs.0.50 off
-    },
-    // In-store arcade (ARCADE tab) - a customer/guest unlocks it for
-    // sessionHours after placing an order, admin-editable from Global
-    // Settings. This is deliberately in-store only: there's no reason to
-    // let someone play from home just because they ordered once.
-    arcade: {
-      enabled: true,
-      sessionHours: 2
     }
+    // Table count and arcade settings (Operations) used to live here, but
+    // are now fully per-store - see DEFAULT_STORE_OPERATIONS and each
+    // store's own `operations` field.
   });
 }
+
+// One-time boot migration: back-fill storeId:null (franchise-wide) onto any
+// coupon created before coupons gained per-store scoping, without touching
+// coupons.json at all if it doesn't exist yet or nothing needs changing.
+if (fs.existsSync(COUPONS_FILE)) {
+  const coupons = readJson(COUPONS_FILE, []);
+  let changed = false;
+  for (const c of coupons) {
+    if (c.storeId === undefined) {
+      c.storeId = null;
+      changed = true;
+    }
+  }
+  if (changed) writeJson(COUPONS_FILE, coupons);
+}
+
+// One-time boot migration: branding is now global-only (Global Admin's
+// lane) - a store no longer owns its own theme/colors/logo/hero/shopName,
+// only contact info (address/phone/lat/lng), a home-page-picks override,
+// a tax/currency override, and its own operations (tables/arcade, now
+// fully per-store instead of a single global setting). Back-fills the new
+// fields from whatever the store/global config already had, then removes
+// the old per-store branding object and the old global tableCount/arcade
+// (values are copied as-is, not re-validated - they were already
+// clamped/sanitized when originally written under the old code path).
+(function migrateStoresToFranchiseModel() {
+  const stores = readJson(STORES_FILE, []);
+  const config = readJson(CONFIG_FILE, {});
+  let storesChanged = false;
+  for (const s of stores) {
+    if (s.phone === undefined) {
+      s.phone = (s.branding && s.branding.footer && s.branding.footer.phone) || "";
+      storesChanged = true;
+    }
+    if (s.operations === undefined) {
+      s.operations = {
+        tableCount: config.tableCount ?? 10,
+        arcade: config.arcade || { enabled: true, sessionHours: 2 }
+      };
+      storesChanged = true;
+    }
+    if (s.payments === undefined) {
+      s.payments = { cgstRate: null, sgstRate: null, serviceChargeRate: null, tipEnabled: null, tipAmount: null, currencySymbol: null, currencyCode: null };
+      storesChanged = true;
+    }
+    if (s.branding !== undefined) {
+      delete s.branding;
+      storesChanged = true;
+    }
+  }
+  if (storesChanged) writeJson(STORES_FILE, stores);
+
+  if (config.tableCount !== undefined || config.arcade !== undefined) {
+    delete config.tableCount;
+    delete config.arcade;
+    writeJson(CONFIG_FILE, config);
+  }
+})();
 
 const DEFAULT_BRANDING = {
   theme: "dark",
@@ -254,6 +322,7 @@ const DEFAULT_BRANDING = {
   },
   heroImageUrl: "",
   logoUrl: "",
+  logoWideUrl: "",
   // Font size (pt) + color for two specific text categories in the admin
   // panel: the sub-tab navigation row (Dashboard/Menu Items/.../Branding),
   // and the small muted helper/description paragraphs under section
@@ -373,6 +442,7 @@ function createUser({
   phone,
   mustChangePassword = false,
   storeId = 1,
+  storeAccess = null,
   tag = "",
   payRateType = null,
   payRate = null
@@ -392,10 +462,20 @@ function createUser({
     name: name || username,
     phone: phone || null,
     mustChangePassword,
+    // disabled: blocks login entirely without deleting the account/history
+    // (order attribution, payroll, audit log all still reference this id) -
+    // set when a store closes and its staff aren't relocated to another
+    // store (see DELETE /api/stores/:id), or manually from Staff Accounts.
+    disabled: false,
     // storeId: which store this person works at/manages. Owner/admin aren't
     // tied to one store (they see everything), so storeId is mostly
     // meaningful for employee/manager.
     storeId: ["employee", "manager"].includes(role) ? storeId : null,
+    // storeAccess: for an admin only - which stores they can see/manage.
+    // null/absent means unrestricted (every store) - the default, matching
+    // this app's original single-tier admin behavior. Owner sets this
+    // explicitly (PATCH /api/users/:id) to scope a specific admin down.
+    storeAccess: role === "admin" && Array.isArray(storeAccess) && storeAccess.length ? storeAccess : null,
     // tag: free-text responsibility label an admin/manager sets, e.g.
     // "Barista", "Cashier" - shown in the staff table, not used for
     // permissions (that's what role is for).
@@ -627,7 +707,19 @@ function readBody(req, maxBytes = 1024 * 1024) {
 /** Returns the session for this request, or null. Never sends a response. */
 function currentSession(req) {
   const cookies = parseCookies(req);
-  return getSession(cookies.sb_session);
+  const session = getSession(cookies.sb_session);
+  if (!session) return null;
+  // A staff account disabled mid-session (store closed, manually
+  // deactivated) is cut off immediately, not just blocked from a future
+  // login - the existing session token stops working right away.
+  if (session.userId != null) {
+    const user = findUserById(session.userId);
+    if (!user || user.disabled) {
+      destroySession(cookies.sb_session);
+      return null;
+    }
+  }
+  return session;
 }
 
 /** Requires ANY valid session (any role). Sends 401 and returns null if absent. */
@@ -649,6 +741,22 @@ function requireRole(req, res, allowedRoles) {
   }
   if (!allowedRoles.includes(session.role)) {
     sendJson(res, 403, { error: "Not allowed for this account type" });
+    return null;
+  }
+  return session;
+}
+
+/** Franchise-wide settings (branding, menu catalog, global policy) are a
+ *  Global Admin's job specifically - not owner (read-only outside adding
+ *  Global Admins) and not a Local Admin (scoped to their own store's
+ *  settings instead). Only role:"admin" with no storeAccess restriction
+ *  qualifies - see accessibleStoreIds()/allowedRolesToCreate() above for
+ *  the same Global-vs-Local distinction used everywhere else. */
+function requireGlobalAdmin(req, res) {
+  const session = requireRole(req, res, MENU_ADMIN_ROLES);
+  if (!session) return null;
+  if (session.role !== "admin" || accessibleStoreIds(session) !== null) {
+    sendJson(res, 403, { error: "Only a Global Admin can edit franchise-wide settings" });
     return null;
   }
   return session;
@@ -689,6 +797,87 @@ function isDrinkItem(item) {
 
 function round2(n) {
   return Math.round(n * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
+// Razorpay (real payment verification) - optional, off by default. Wiring
+// this up needs a merchant account + API keys only the shop owner can get
+// (Admin -> Payments & Tax -> Razorpay); with it off (or unconfigured), an
+// ONLINE order falls back to the original UPI-QR trust-based flow exactly
+// as before - nothing here changes behavior until an owner turns it on.
+// No SDK/npm dependency - both calls are plain HTTPS requests, consistent
+// with this app's "no external dependencies" approach everywhere else.
+// ---------------------------------------------------------------------------
+
+/** POST to Razorpay's REST API with HTTP Basic Auth (key_id:key_secret) -
+ *  the standard server-to-server auth their API docs specify. */
+function razorpayApiRequest(path, body, keyId, keySecret) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = https.request(
+      {
+        hostname: "api.razorpay.com",
+        path,
+        method: "POST",
+        auth: `${keyId}:${keySecret}`,
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
+        timeout: 10000
+      },
+      (res) => {
+        let raw = "";
+        res.on("data", (chunk) => (raw += chunk));
+        res.on("end", () => {
+          let parsed;
+          try {
+            parsed = JSON.parse(raw);
+          } catch (e) {
+            return reject(new Error("Razorpay returned an unexpected response"));
+          }
+          if (res.statusCode >= 200 && res.statusCode < 300) return resolve(parsed);
+          reject(new Error((parsed.error && parsed.error.description) || "Razorpay request failed"));
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("Razorpay request timed out")));
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+/** Creates a real Razorpay order for the given rupee amount - called once
+ *  computeOrder() has the authoritative, server-priced total, same as the
+ *  existing UPI QR (never a client-supplied amount). Returns null (falls
+ *  back to the UPI QR) on any failure - a misconfigured/unreachable gateway
+ *  should never block someone from placing an order. */
+async function createRazorpayOrder(amountRupees, receipt, config) {
+  if (!config.razorpayEnabled || !config.razorpayKeyId || !config.razorpayKeySecret) return null;
+  try {
+    const order = await razorpayApiRequest(
+      "/v1/orders",
+      { amount: Math.round(amountRupees * 100), currency: config.currencyCode || "INR", receipt: String(receipt).slice(0, 40) },
+      config.razorpayKeyId,
+      config.razorpayKeySecret
+    );
+    return { razorpayOrderId: order.id, razorpayKeyId: config.razorpayKeyId, razorpayCurrency: config.currencyCode || "INR" };
+  } catch (e) {
+    console.error("Razorpay order creation failed:", e.message);
+    return null;
+  }
+}
+
+/** Verifies the signature Razorpay's checkout widget hands back after a
+ *  payment completes - HMAC-SHA256 of "order_id|payment_id" using the key
+ *  secret, exactly as Razorpay's own docs specify. This is what actually
+ *  closes the "online payments are still trust-based" gap: an order is
+ *  only marked paid once this passes, not just because the client claims it. */
+function verifyRazorpaySignature(orderId, paymentId, signature, keySecret) {
+  const expected = crypto.createHmac("sha256", keySecret).update(`${orderId}|${paymentId}`).digest("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(signature || "")));
+  } catch (e) {
+    return false; // length mismatch etc. - never a match
+  }
 }
 
 // Customer/staff-facing display number, separate from `id` (the internal
@@ -876,7 +1065,10 @@ function resolveComboLine(requested, menu, combos) {
 
 function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCode = null, redeemPoints = 0, customerId = null, storeId = null } = {}) {
   const menu = readJson(MENU_FILE, { items: [] });
-  const config = readJson(CONFIG_FILE, {});
+  // Tax/currency resolved through the store's own override (if any) on top
+  // of the franchise-wide default - never trust a raw global read here,
+  // this is real money math (see mergeStoreOverrides()).
+  const config = mergeStoreOverrides(readJson(CONFIG_FILE, {}), storeId != null ? readJson(STORES_FILE, []).find((s) => s.id === storeId) : null);
   const combos = readJson(COMBOS_FILE, []);
 
   const resolvedItems = [];
@@ -941,7 +1133,7 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
     throw new Error("Coupon codes can't be combined with promotional items in your cart");
   }
   const coupons = readJson(COUPONS_FILE, []);
-  const coupon = couponCode ? findValidCoupon(couponCode, coupons) : null;
+  const coupon = couponCode ? findValidCoupon(couponCode, coupons, storeId) : null;
   const couponDiscount = coupon ? computeCouponDiscount(coupon, subtotal) : 0;
 
   // Loyalty points redemption - capped at the customer's real balance and at
@@ -1086,9 +1278,13 @@ route("POST", /^\/api\/auth\/login\/?$/, async (req, res) => {
     recordAuthFailure(ip);
     return sendJson(res, 401, { error: "Invalid username or password" });
   }
+  if (user.disabled) {
+    recordAuthFailure(ip);
+    return sendJson(res, 401, { error: "This account has been deactivated. Contact your manager or the owner." });
+  }
 
   recordAuthSuccess(ip);
-  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId });
+  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId, storeAccess: user.storeAccess || null });
   setSessionCookie(res, token);
   sendJson(res, 200, { role: user.role, name: user.name, phone: user.phone, storeId: user.storeId, mustChangePassword: !!user.mustChangePassword });
 });
@@ -1131,7 +1327,7 @@ route("POST", /^\/api\/auth\/change-password\/?$/, async (req, res) => {
 
   setUserPassword(user.id, body.newPassword, { mustChangePassword: false });
   clearSessionCookie(res);
-  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId });
+  const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId, storeAccess: user.storeAccess || null });
   setSessionCookie(res, token);
   sendJson(res, 200, { ok: true });
 });
@@ -1205,23 +1401,65 @@ route("GET", /^\/api\/auth\/session\/?$/, async (req, res) => {
     phone: session.phone,
     userId: session.userId,
     storeId: session.storeId,
+    storeAccess: session.storeAccess || null,
     mustChangePassword: !!(user && user.mustChangePassword),
     loyaltyPoints: user ? user.loyaltyPoints || 0 : 0
   });
 });
 
 /** Which roles a given session is allowed to hand out when creating a new account. */
+/** Franchise governance model: owner's only write action is creating a
+ *  Global Admin - everything else about the franchise is a Global Admin's
+ *  job (branding/menu/policy) or a Local Admin/manager's job (their own
+ *  store). "Global Admin" / "Local Admin" aren't separate role values -
+ *  they're role:"admin" with accessibleStoreIds(session) either null
+ *  (unrestricted = Global) or a concrete array (scoped = Local). */
 function allowedRolesToCreate(session) {
-  if (session.role === "owner") return ["employee", "manager", "admin", "owner"];
-  if (session.role === "admin") return ["employee", "manager"];
+  if (session.role === "owner") return ["admin"];
+  if (session.role === "admin") return accessibleStoreIds(session) === null ? ["employee", "manager", "admin"] : ["employee", "manager"];
   if (session.role === "manager") return ["employee"];
   return [];
+}
+
+/** Which stores a session may see/act on - null means "unrestricted" (owner,
+ *  or an admin nobody has scoped down yet, which is today's existing
+ *  behavior preserved as the default). Everyone else gets a concrete list:
+ *  a scoped admin's storeAccess, or a manager/employee's own single store. */
+function accessibleStoreIds(session) {
+  if (session.role === "owner") return null;
+  if (session.role === "admin") return Array.isArray(session.storeAccess) && session.storeAccess.length ? session.storeAccess : null;
+  if (session.role === "manager" || session.role === "employee") return session.storeId != null ? [session.storeId] : null;
+  return null;
+}
+
+/** Whether this session may edit a given store's own record (address,
+ *  branding override) - distinct from accessibleStoreIds()'s "can see"
+ *  since a manager should be able to fix their own store's details even
+ *  though most of the app already scopes them to it implicitly. */
+function canManageStore(session, storeId) {
+  if (session.role === "owner") return true;
+  if (session.role === "admin") {
+    const allowed = accessibleStoreIds(session);
+    return !allowed || allowed.includes(storeId);
+  }
+  if (session.role === "manager") return session.storeId === storeId;
+  return false;
 }
 
 function canManageTarget(session, targetUser) {
   if (!targetUser) return false;
   if (session.role === "owner") return true;
-  if (session.role === "admin") return ["employee", "manager"].includes(targetUser.role);
+  if (session.role === "admin") {
+    if (targetUser.role === "admin") {
+      // Only a Global Admin manages admin-tier accounts, and only Local
+      // Admins (scoped) - Global Admins don't manage each other, that
+      // stays owner's lane (the one account type owner still writes).
+      return accessibleStoreIds(session) === null && Array.isArray(targetUser.storeAccess) && targetUser.storeAccess.length > 0;
+    }
+    if (!["employee", "manager"].includes(targetUser.role)) return false;
+    const allowed = accessibleStoreIds(session);
+    return !allowed || allowed.includes(targetUser.storeId);
+  }
   if (session.role === "manager") return targetUser.role === "employee" && targetUser.storeId === session.storeId;
   return false;
 }
@@ -1284,6 +1522,13 @@ route("GET", /^\/api\/users\/?$/, async (req, res) => {
   if (session.role === "manager") {
     users = users.filter((u) => u.id === session.userId || (u.role === "employee" && u.storeId === session.storeId));
   }
+  // A scoped admin (storeAccess set) only sees employee/manager accounts at
+  // their accessible stores - other admin/owner accounts stay visible
+  // regardless, since those aren't "at" any one store.
+  const allowed = accessibleStoreIds(session);
+  if (session.role === "admin" && allowed) {
+    users = users.filter((u) => !["employee", "manager"].includes(u.role) || allowed.includes(u.storeId));
+  }
   sendJson(res, 200, users.map(publicUser));
 });
 
@@ -1302,6 +1547,18 @@ route("POST", /^\/api\/users\/?$/, async (req, res) => {
   // A manager can only create employees for their OWN store - they can't
   // even choose a different store id.
   const storeId = session.role === "manager" ? session.storeId : Number(body.storeId) || 1;
+  // A scoped admin can only place a new employee/manager at a store they
+  // themselves can access - an unrestricted admin (or owner) can pick any.
+  const allowedStores = accessibleStoreIds(session);
+  if (session.role === "admin" && allowedStores && !allowedStores.includes(storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store" });
+  }
+  // storeAccess: only owner or a Global Admin may set this (matches
+  // allowedRolesToCreate - those are the only two tiers that can create an
+  // "admin" account in the first place), and only applies when the new
+  // account's role is actually admin.
+  const canGrantStoreAccess = session.role === "owner" || (session.role === "admin" && accessibleStoreIds(session) === null);
+  const storeAccess = canGrantStoreAccess && role === "admin" && Array.isArray(body.storeAccess) ? body.storeAccess.map(Number).filter(Number.isFinite) : null;
 
   if (username.length < 3) return sendJson(res, 400, { error: "Username must be at least 3 characters" });
   const pwIssues = passwordIssues(password);
@@ -1315,7 +1572,7 @@ route("POST", /^\/api\/users\/?$/, async (req, res) => {
   try {
     // Staff accounts start with mustChangePassword so the temp password an
     // admin hands over only works once before the new hire sets their own.
-    const user = createUser({ username, password, role, name, mustChangePassword: true, storeId, tag, payRateType, payRate });
+    const user = createUser({ username, password, role, name, mustChangePassword: true, storeId, storeAccess, tag, payRateType, payRate });
     sendJson(res, 201, publicUser(user));
   } catch (e) {
     sendJson(res, 400, { error: e.message });
@@ -1345,7 +1602,84 @@ route("PATCH", /^\/api\/users\/(?<id>\d+)\/?$/, async (req, res, params) => {
     const rate = Number(body.payRate);
     user.payRate = Number.isFinite(rate) && rate >= 0 ? rate : null;
   }
+  // Moving an employee/manager to a different store - admin/owner only. A
+  // manager never gets this: canManageTarget() already limits them to their
+  // own store's employees, so "move to a different store" doesn't fit their
+  // permission model (they'd be handing someone off to a store they can't
+  // themselves manage).
+  if (body.storeId !== undefined && ["employee", "manager"].includes(user.role)) {
+    if (session.role === "manager") {
+      return sendJson(res, 403, { error: "Only an admin/owner can move someone to a different store" });
+    }
+    const requestedStoreId = Number(body.storeId);
+    if (!readJson(STORES_FILE, []).some((s) => s.id === requestedStoreId)) {
+      return sendJson(res, 400, { error: "That store doesn't exist" });
+    }
+    const allowedStores = accessibleStoreIds(session);
+    if (allowedStores && !allowedStores.includes(requestedStoreId)) {
+      return sendJson(res, 403, { error: "You don't have access to that store" });
+    }
+    user.storeId = requestedStoreId;
+  }
+  // disabled: blocks login (see currentSession()) without deleting the
+  // account - anyone who could otherwise manage this person can toggle it
+  // (same gate as tag/pay rate above), matching reset-password's model of
+  // "no extra confirmation beyond canManageTarget".
+  if (body.disabled !== undefined) user.disabled = !!body.disabled;
+  // storeAccess: which stores an admin can see/manage - only the owner or a
+  // Global Admin may grant/restrict this (canManageTarget already limits a
+  // Global Admin to acting on Local Admin targets, never another Global
+  // Admin), and only for an admin account. An empty array or omitting the
+  // field entirely both mean "unrestricted" going forward.
+  if (body.storeAccess !== undefined && user.role === "admin") {
+    if (session.role !== "owner" && !(session.role === "admin" && accessibleStoreIds(session) === null)) {
+      return sendJson(res, 403, { error: "Only the owner or a Global Admin can change an admin's store access" });
+    }
+    const storeAccess = Array.isArray(body.storeAccess) ? body.storeAccess.map(Number).filter(Number.isFinite) : [];
+    user.storeAccess = storeAccess.length ? storeAccess : null;
+  }
   writeJson(USERS_FILE, users);
+  sendJson(res, 200, publicUser(user));
+});
+
+/** Changing someone's role is more sensitive than tag/pay rate/store, so it
+ *  gets its own route rather than living in the general PATCH above -
+ *  gated by allowedRolesToCreate() (the same tiers that govern who may
+ *  CREATE a given role also govern who may PROMOTE/DEMOTE into it), on
+ *  top of the usual canManageTarget() check for the account being edited. */
+route("PATCH", /^\/api\/users\/(?<id>\d+)\/role\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+
+  const targetUser = findUserById(Number(params.id));
+  if (!canManageTarget(session, targetUser)) {
+    return sendJson(res, 403, { error: "Your account can't edit that person" });
+  }
+  if (targetUser.id === session.userId) {
+    return sendJson(res, 400, { error: "You can't change your own role" });
+  }
+
+  const body = await readBody(req);
+  const newRole = String(body.role || "");
+  if (!allowedRolesToCreate(session).includes(newRole)) {
+    return sendJson(res, 403, { error: `Your account can't assign the "${newRole}" role` });
+  }
+
+  const users = readJson(USERS_FILE, []);
+  const user = users.find((u) => u.id === targetUser.id);
+  user.role = newRole;
+  // storeId/storeAccess/tag/payRate are each only meaningful for certain
+  // roles (see createUser()) - moving between tiers clears whichever no
+  // longer applies rather than leaving stale values behind.
+  user.storeId = ["employee", "manager"].includes(newRole) ? (user.storeId ?? 1) : null;
+  user.storeAccess = newRole === "admin" ? user.storeAccess : null;
+  if (!["employee", "manager"].includes(newRole)) {
+    user.tag = "";
+    user.payRateType = null;
+    user.payRate = null;
+  }
+  writeJson(USERS_FILE, users);
+  logAuditEvent(session, "change_role", targetUser);
   sendJson(res, 200, publicUser(user));
 });
 
@@ -1404,43 +1738,162 @@ route("GET", /^\/api\/stores\/?$/, async (req, res) => {
   sendJson(res, 200, readJson(STORES_FILE, []));
 });
 
+/** Lets a customer/guest (or a fully anonymous visitor, before any session
+ *  exists) pick which physical location they're ordering from - no login
+ *  required. Deliberately minimal (id/name/address only, no branding
+ *  overrides) - do NOT reuse the staff-only GET /api/stores above. */
+route("GET", /^\/api\/stores\/public\/?$/, async (req, res) => {
+  const stores = readJson(STORES_FILE, []).map((s) => ({ id: s.id, name: s.name, address: s.address || "", lat: s.lat ?? null, lng: s.lng ?? null }));
+  sendJson(res, 200, stores);
+});
+
 route("POST", /^\/api\/stores\/?$/, async (req, res) => {
-  if (!requireRole(req, res, ["owner"])) return; // only the owner opens a new store
+  // Opening a new store is franchise structure, a Global Admin's lane - not
+  // owner (read-only outside adding Global Admins).
+  if (!requireGlobalAdmin(req, res)) return;
   const body = await readBody(req);
   const name = String(body.name || "").trim();
   if (!name) return sendJson(res, 400, { error: "Store name is required" });
   const stores = readJson(STORES_FILE, []);
   const nextId = stores.length ? Math.max(...stores.map((s) => s.id)) + 1 : 1;
-  const store = { id: nextId, name, address: String(body.address || "").trim() };
+  const store = {
+    id: nextId,
+    name,
+    address: String(body.address || "").trim(),
+    phone: "",
+    operations: { ...DEFAULT_STORE_OPERATIONS },
+    payments: { cgstRate: null, sgstRate: null, serviceChargeRate: null, tipEnabled: null, tipAmount: null, currencySymbol: null, currencyCode: null }
+  };
   stores.push(store);
   writeJson(STORES_FILE, stores);
   sendJson(res, 201, store);
 });
 
-// Per-store branding override (shopName/logo/hero/colors/footer/etc,
-// anything Branding & Content also sets globally) - fields left unset here
-// fall back to the global config, see configForSession() above. Owner-only,
-// same as opening a new store - this is a business-structure change, not
-// day-to-day config a manager should be able to touch.
+// A store's own record: contact info (address/phone/lat/lng), an optional
+// homePicks override, a tax/currency override, and its own operations
+// (tables/arcade) - NOT branding/theme (that's global-only now, see
+// mergeStoreOverrides()). Renaming/franchise-structure stays Global-Admin
+// territory (matches POST/DELETE /api/stores); day-to-day contact/
+// picks/payments-override/operations are editable by whoever actually
+// runs that store (canManageStore()) - a manager fixing their own
+// location's address/hours shouldn't need to go through a Global Admin.
+// Owner never writes here at all (read-only outside adding Global Admins).
 route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, ["owner"])) return;
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  if (session.role === "owner") {
+    return sendJson(res, 403, { error: "Owner has read-only access to store settings" });
+  }
   const stores = readJson(STORES_FILE, []);
   const store = stores.find((s) => s.id === Number(params.id));
   if (!store) return sendJson(res, 404, { error: "Store not found" });
+  if (!canManageStore(session, store.id)) {
+    return sendJson(res, 403, { error: "You don't have access to that store" });
+  }
+  const isGlobalAdmin = session.role === "admin" && accessibleStoreIds(session) === null;
   const body = await readBody(req);
   if (typeof body.name === "string") {
+    if (!isGlobalAdmin) return sendJson(res, 403, { error: "Only a Global Admin can rename a store" });
     const name = body.name.trim();
     if (!name) return sendJson(res, 400, { error: "Store name is required" });
     store.name = name.slice(0, 60);
   }
   if (typeof body.address === "string") store.address = body.address.trim().slice(0, 200);
-  if (body.branding && typeof body.branding === "object") {
-    store.branding = { ...store.branding, ...body.branding };
-    if (body.branding.colors) store.branding.colors = { ...(store.branding.colors || {}), ...body.branding.colors };
-    if (body.branding.footer) store.branding.footer = { ...(store.branding.footer || {}), ...body.branding.footer };
+  if (typeof body.phone === "string") store.phone = body.phone.trim().slice(0, 20);
+  // lat/lng: optional coordinates for the store picker's geolocation
+  // sort/"X km away" display (see GET /api/stores/public) - not required,
+  // the picker falls back to a plain list for any store without them.
+  // null/empty explicitly CLEARS the coordinate - Number(null) is 0, which
+  // is a real (equatorial) coordinate, not "unset", so that case has to be
+  // checked before coercing to a number.
+  const parseCoord = (value, min, max) => {
+    if (value === null || value === undefined || value === "") return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= min && n <= max ? n : null;
+  };
+  if (body.lat !== undefined) store.lat = parseCoord(body.lat, -90, 90);
+  if (body.lng !== undefined) store.lng = parseCoord(body.lng, -180, 180);
+  // homePicks: this store's own "This week's picks" override - undefined
+  // input leaves it untouched, an explicit null/empty array clears the
+  // override back to inheriting the franchise-wide default.
+  if (body.homePicks !== undefined) {
+    store.homePicks = body.homePicks === null ? undefined : sanitizeHomePicks(body.homePicks) || [];
+  }
+  // payments: per-field nullable override on top of the franchise-wide
+  // tax/currency defaults (UPI/Razorpay stay global-only, never here).
+  if (body.payments && typeof body.payments === "object") {
+    const p = body.payments;
+    const existing = store.payments || {};
+    const num = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+    store.payments = {
+      cgstRate: "cgstRate" in p ? num(p.cgstRate) : existing.cgstRate ?? null,
+      sgstRate: "sgstRate" in p ? num(p.sgstRate) : existing.sgstRate ?? null,
+      serviceChargeRate: "serviceChargeRate" in p ? num(p.serviceChargeRate) : existing.serviceChargeRate ?? null,
+      tipAmount: "tipAmount" in p ? num(p.tipAmount) : existing.tipAmount ?? null,
+      tipEnabled: "tipEnabled" in p ? (p.tipEnabled === null ? null : Boolean(p.tipEnabled)) : existing.tipEnabled ?? null,
+      currencySymbol: "currencySymbol" in p ? (p.currencySymbol ? String(p.currencySymbol).trim().slice(0, 3) : null) : existing.currencySymbol ?? null,
+      currencyCode: "currencyCode" in p ? (p.currencyCode ? String(p.currencyCode).trim().toUpperCase().slice(0, 3) : null) : existing.currencyCode ?? null
+    };
+  }
+  // operations: fully store-owned (tables/arcade) - no franchise fallback
+  // once a store has this field at all (every store gets one at creation/
+  // migration - see migrateStoresToFranchiseModel() and POST /api/stores).
+  if (body.operations && typeof body.operations === "object") {
+    const existingOps = store.operations || DEFAULT_STORE_OPERATIONS;
+    store.operations = {
+      tableCount: body.operations.tableCount !== undefined ? sanitizeTableCount(body.operations.tableCount, existingOps.tableCount) : existingOps.tableCount,
+      arcade: body.operations.arcade !== undefined ? sanitizeArcade(body.operations.arcade, existingOps.arcade) : existingOps.arcade
+    };
   }
   writeJson(STORES_FILE, stores);
   sendJson(res, 200, store);
+});
+
+/** Closing a store, owner-only (same tier as opening one). Its employees/
+ *  managers can't be left pointing at a store that no longer exists, so
+ *  the caller must say what happens to them: reassign everyone to another
+ *  store (`reassignToStoreId`), or deactivate their accounts (default,
+ *  matching "deactivated or relocated") - a disabled account can't log in
+ *  (see currentSession()) but its order/payroll history is untouched. Any
+ *  admin scoped to this store also has it quietly dropped from their
+ *  storeAccess so they're never left "restricted to a store that doesn't
+ *  exist" (which would otherwise look identical to "unrestricted"). */
+route("DELETE", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  // Closing a store is franchise structure too - Global Admin's lane, same
+  // as opening one.
+  if (!requireGlobalAdmin(req, res)) return;
+  const storeId = Number(params.id);
+  const stores = readJson(STORES_FILE, []);
+  const store = stores.find((s) => s.id === storeId);
+  if (!store) return sendJson(res, 404, { error: "Store not found" });
+  if (stores.length <= 1) return sendJson(res, 400, { error: "Can't remove the only store" });
+
+  const body = await readBody(req);
+  const reassignToStoreId = Number(body.reassignToStoreId);
+  const willReassign = Number.isFinite(reassignToStoreId) && stores.some((s) => s.id === reassignToStoreId && s.id !== storeId);
+  if (body.reassignToStoreId != null && !willReassign) {
+    return sendJson(res, 400, { error: "Pick a valid store to move staff to, or leave it blank to deactivate them" });
+  }
+
+  const users = readJson(USERS_FILE, []);
+  const affected = users.filter((u) => ["employee", "manager"].includes(u.role) && u.storeId === storeId);
+  affected.forEach((u) => {
+    if (willReassign) {
+      u.storeId = reassignToStoreId;
+    } else {
+      u.disabled = true;
+    }
+  });
+  users.forEach((u) => {
+    if (u.role === "admin" && Array.isArray(u.storeAccess)) {
+      const filtered = u.storeAccess.filter((id) => id !== storeId);
+      u.storeAccess = filtered.length ? filtered : null;
+    }
+  });
+  writeJson(USERS_FILE, users);
+
+  writeJson(STORES_FILE, stores.filter((s) => s.id !== storeId));
+  sendJson(res, 200, { ok: true, affectedStaff: affected.length, reassigned: willReassign });
 });
 
 route("GET", /^\/api\/audit-log\/?$/, async (req, res) => {
@@ -1574,7 +2027,11 @@ function periodKey(period) {
 function visibleStaffFor(session) {
   const users = readJson(USERS_FILE, []).filter((u) => PAYROLL_ROLES.includes(u.role));
   if (session.role === "manager") return users.filter((u) => u.storeId === session.storeId);
-  return users; // admin/owner see everyone
+  if (session.role === "admin") {
+    const allowed = accessibleStoreIds(session);
+    return allowed ? users.filter((u) => allowed.includes(u.storeId)) : users;
+  }
+  return users; // owner sees everyone
 }
 
 route("POST", /^\/api\/timeclock\/clock-in\/?$/, async (req, res) => {
@@ -1662,9 +2119,15 @@ route("GET", /^\/api\/payroll\/?$/, async (req, res) => {
   sendJson(res, 200, result);
 });
 
+// "Making payments" (marking a period paid) is a manager's own operational
+// duty specifically - a Local Admin/Global Admin sets pay RATES (via
+// PATCH /api/users/:id) but doesn't execute the payout.
 route("POST", /^\/api\/payroll\/(?<userId>\d+)\/mark-paid\/?$/, async (req, res, params) => {
   const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
+  if (session.role !== "manager") {
+    return sendJson(res, 403, { error: "Only a manager can mark a pay period paid" });
+  }
 
   const targetUser = findUserById(Number(params.userId));
   if (!canManageTarget(session, targetUser)) {
@@ -1797,6 +2260,9 @@ route("DELETE", /^\/api\/attendance\/(?<id>\d+)\/?$/, async (req, res, params) =
 route("POST", /^\/api\/overtime-approvals\/?$/, async (req, res) => {
   const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
+  if (session.role !== "manager") {
+    return sendJson(res, 403, { error: "Only a manager can approve overtime" });
+  }
   const body = await readBody(req);
   const targetUser = findUserById(Number(body.userId));
   if (!canManageTarget(session, targetUser)) {
@@ -1829,8 +2295,25 @@ route("GET", /^\/api\/stats\/public\/?$/, async (req, res) => {
 });
 
 route("GET", /^\/api\/kpi\/?$/, async (req, res, params, url) => {
-  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
-  const orders = readJson(ORDERS_FILE, []);
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  let orders = readJson(ORDERS_FILE, []);
+  // Scoped to whichever stores this session can see (null = unrestricted -
+  // owner, or an admin nobody has scoped down). An order with no storeId at
+  // all (e.g. a customer order placed before store selection existed, or in
+  // a still-single-store deployment) isn't hidden from anyone by this -
+  // only orders explicitly tagged to a DIFFERENT store are filtered out.
+  // An admin/owner can drill into one specific store with ?storeId=;
+  // ignored for manager/employee, who are already locked to their own
+  // single store.
+  const allowed = accessibleStoreIds(session);
+  if (allowed) orders = orders.filter((o) => o.storeId == null || allowed.includes(o.storeId));
+  if (url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId) && (!allowed || allowed.includes(requestedStoreId))) {
+      orders = orders.filter((o) => o.storeId === requestedStoreId);
+    }
+  }
   const requestedRange = url.searchParams.get("range");
   const range = ["7d", "1m", "1y"].includes(requestedRange) ? requestedRange : "7d";
 
@@ -1894,6 +2377,25 @@ route("GET", /^\/api\/kpi\/?$/, async (req, res, params, url) => {
     .slice(0, 5)
     .map(([name, quantity]) => ({ name, quantity }));
 
+  // Cross-store comparison for the Franchise Dashboard - only meaningful
+  // (and only ever requested) when this session can see more than one
+  // store; still computed from the same already-scoped `orders` array, so
+  // a restricted admin never sees a store outside their storeAccess here
+  // either. Orders with no storeId (see the comment above) aren't
+  // attributed to any one store, so they're left out of this breakdown
+  // rather than muddying a specific store's numbers.
+  const storeIdsInView = allowed || readJson(STORES_FILE, []).map((s) => s.id);
+  const storeNames = Object.fromEntries(readJson(STORES_FILE, []).map((s) => [s.id, s.name]));
+  const byStore = storeIdsInView.map((id) => {
+    const storeOrders = orders.filter((o) => o.storeId === id);
+    return {
+      storeId: id,
+      storeName: storeNames[id] || `Store ${id}`,
+      today: { orders: storeOrders.filter((o) => inRange(o, startOfToday)).length, revenue: sumRevenue(storeOrders.filter((o) => inRange(o, startOfToday))) },
+      allTime: { orders: storeOrders.length, revenue: sumRevenue(storeOrders) }
+    };
+  });
+
   sendJson(res, 200, {
     today: { orders: todayOrders.length, revenue: sumRevenue(todayOrders) },
     week: { orders: weekOrders.length, revenue: sumRevenue(weekOrders) },
@@ -1901,7 +2403,8 @@ route("GET", /^\/api\/kpi\/?$/, async (req, res, params, url) => {
     allTime: { orders: orders.length, revenue: sumRevenue(orders) },
     range,
     chart,
-    bestSellers
+    bestSellers,
+    byStore
   });
 });
 
@@ -1968,13 +2471,26 @@ route("GET", /^\/api\/menu\/?$/, async (req, res, params, url) => {
   // The menu itself is shared across every store (per the "branding-only"
   // multi-store decision - see configForSession()), but a store can still
   // be out of stock on a shared item without affecting other locations.
-  // Only applies to a session tied to a store (staff assigned to one) - a
-  // customer/guest browsing has no storeId, so they see the item's plain
-  // global availability regardless of any one store's stock.
+  // Staff (assigned to one store) get this from their own session; a
+  // customer/guest isn't tied to a store (they can walk into any location),
+  // so their chosen store comes from ?storeId= instead (see js/app.js's
+  // menu loader) - with no store picked yet, they see plain global
+  // availability, same as before this existed.
   const session = currentSession(req);
-  if (session && session.storeId != null) {
+  let effectiveStoreId = session && session.storeId != null ? session.storeId : null;
+  // ?storeId= only ever comes from a customer/guest/anonymous visitor's own
+  // chosen store - NOT honored for owner/admin (their storeId is also null,
+  // but because they're unrestricted, not because they're a customer
+  // picking a location; without this check, a customer's local store pick
+  // on the same browser would leak into their own admin view).
+  const isTrackingOrAnonymous = !session || TRACKING_ROLES.includes(session.role);
+  if (effectiveStoreId == null && isTrackingOrAnonymous && url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId)) effectiveStoreId = requestedStoreId;
+  }
+  if (effectiveStoreId != null) {
     items = items.map((i) =>
-      (i.disabledStores || []).includes(session.storeId) ? { ...i, available: false, disabledAtThisStore: true } : i
+      (i.disabledStores || []).includes(effectiveStoreId) ? { ...i, available: false, disabledAtThisStore: true } : i
     );
   }
   sendJson(res, 200, { ...menu, items });
@@ -2245,35 +2761,138 @@ route("DELETE", /^\/api\/combos\/(?<id>\d+)\/?$/, async (req, res, params) => {
 });
 
 // --- Config ---
-// Per-store branding is layered on top of the global config when the
-// requester's own session is tied to a store (staff assigned to a
-// location) - a customer/guest session has no storeId, so they always see
-// the plain global config. This keeps the merge entirely server-side: the
-// client's existing applyBranding()/AdminConfig flow doesn't need to know
-// stores exist at all, it just receives whatever's already effective.
-function configForSession(session) {
-  const config = readJson(CONFIG_FILE, {});
-  if (!session || session.storeId == null) return config;
-  const store = readJson(STORES_FILE, []).find((s) => s.id === session.storeId);
-  if (!store || !store.branding) return config;
+// Franchise governance: branding/theme/shop-identity/loyalty/footer are all
+// global-only now (Global Admin's lane, consistent everywhere) - a store
+// only owns its own contact info, home-page picks override, tax/currency
+// override, and operations. These three helpers validate/clamp those
+// per-store fields the exact same way the (now-removed) global-only
+// versions used to, shared by PATCH /api/config's franchise-wide defaults
+// and PATCH /api/stores/:id's per-store overrides so the two never drift.
+
+/** Validates a homePicks array against the live menu catalog - shared by
+ *  the franchise-wide default (PATCH /api/config) and a store's own
+ *  override (PATCH /api/stores/:id). Returns undefined (meaning "don't
+ *  touch this field") when the input isn't an array at all. */
+function sanitizeHomePicks(rawPicks) {
+  if (!Array.isArray(rawPicks)) return undefined;
+  const menu = readJson(MENU_FILE, { items: [] });
+  const validItemIds = new Set(menu.items.map((i) => i.id));
+  return rawPicks
+    .filter((p) => p && validItemIds.has(Number(p.itemId)))
+    .slice(0, 3)
+    .map((p) => ({
+      itemId: Number(p.itemId),
+      tag: String(p.tag || "").replace(/[\r\n\t]/g, " ").trim().slice(0, 40)
+    }));
+}
+
+function sanitizeTableCount(value, fallback = 10) {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, 200) : fallback;
+}
+
+function sanitizeArcade(rawArcade, existing) {
+  const merged = { ...existing, ...(rawArcade && typeof rawArcade === "object" ? rawArcade : {}) };
+  merged.enabled = merged.enabled !== false;
+  const hours = Number(merged.sessionHours);
+  merged.sessionHours = Number.isFinite(hours) && hours > 0 ? Math.min(hours, 24) : 2;
+  return merged;
+}
+
+const DEFAULT_STORE_OPERATIONS = { tableCount: 10, arcade: { enabled: true, sessionHours: 2 } };
+
+/** Resolves a store's own settings on top of the franchise-wide config:
+ *  payments/tax fields fall back to the franchise default when the store
+ *  hasn't overridden them (nullable per field); operations (tables/arcade)
+ *  is fully store-owned with no franchise fallback once migrated; homePicks
+ *  falls back to the franchise-wide picks when the store hasn't curated its
+ *  own; contact (address/phone) always wins over the franchise default the
+ *  same way address already did. Shared by configForSession() (client-
+ *  facing reads) and everywhere tax/table-count is actually used for real
+ *  money/logic (computeOrder, billing-settle, table-session routes) so
+ *  those two can never disagree about what a store's effective settings are. */
+// A missing `store` (no store context at all - an owner/Global Admin's own
+// view, or an order/session that was never tied to a store) is NOT the same
+// as "use plain global config" - tableCount/arcade were removed from global
+// config entirely in the franchise-governance redesign (they're fully
+// per-store now, see DEFAULT_STORE_OPERATIONS), so a naive `if (!store)
+// return config` leaves config.tableCount/config.arcade undefined and
+// crashes the first caller that reads `.arcade.enabled` (confirmed via
+// GET /api/arcade/access on a storeless guest order). Every field below is
+// therefore resolved with `store &&` guards instead of short-circuiting on
+// the whole function, so the DEFAULT_STORE_OPERATIONS fallback always
+// applies even with no store at all.
+function mergeStoreOverrides(config, store) {
+  const payments = (store && store.payments) || {};
+  const operations = (store && store.operations) || DEFAULT_STORE_OPERATIONS;
   return {
     ...config,
-    ...store.branding,
-    colors: { ...config.colors, ...(store.branding.colors || {}) },
-    footer: { ...config.footer, ...(store.branding.footer || {}) }
+    cgstRate: payments.cgstRate ?? config.cgstRate,
+    sgstRate: payments.sgstRate ?? config.sgstRate,
+    serviceChargeRate: payments.serviceChargeRate ?? config.serviceChargeRate,
+    tipEnabled: payments.tipEnabled ?? config.tipEnabled,
+    tipAmount: payments.tipAmount ?? config.tipAmount,
+    currencySymbol: payments.currencySymbol ?? config.currencySymbol,
+    currencyCode: payments.currencyCode ?? config.currencyCode,
+    tableCount: operations.tableCount ?? DEFAULT_STORE_OPERATIONS.tableCount,
+    arcade: operations.arcade || DEFAULT_STORE_OPERATIONS.arcade,
+    homePicks: store && store.homePicks !== undefined ? store.homePicks : config.homePicks,
+    footer: {
+      ...config.footer,
+      ...(store && store.address ? { address: store.address } : {}),
+      ...(store && store.phone ? { phone: store.phone } : {})
+    }
   };
 }
 
-route("GET", /^\/api\/config\/?$/, async (req, res) => {
-  sendJson(res, 200, configForSession(currentSession(req)));
+// A customer/guest session has no storeId of its own (they can walk into
+// any location), so `explicitStoreId` lets one be passed in from the
+// client's own chosen store instead (see GET /api/config below) - this
+// keeps the merge entirely server-side either way: the client's existing
+// applyBranding()/AdminConfig flow doesn't need to know stores exist at
+// all, it just receives whatever's already effective.
+function configForSession(session, explicitStoreId = null) {
+  const config = readJson(CONFIG_FILE, {});
+  const storeId = session && session.storeId != null ? session.storeId : explicitStoreId;
+  if (storeId == null) return config;
+  const store = readJson(STORES_FILE, []).find((s) => s.id === storeId);
+  return mergeStoreOverrides(config, store);
+}
+
+// Never send the raw Razorpay key secret to the client - only whether it's
+// configured (for the admin UI's own display) and the public key id (safe,
+// it's meant for the client-side checkout widget). The secret only ever
+// needs to leave this process when calling Razorpay's API server-to-server.
+function maskSecrets(config) {
+  const { razorpayKeySecret, ...rest } = config;
+  return { ...rest, razorpaySecretConfigured: !!razorpayKeySecret };
+}
+
+route("GET", /^\/api\/config\/?$/, async (req, res, params, url) => {
+  const session = currentSession(req);
+  // A session already tied to a store (staff) always wins - the ?storeId=
+  // param only matters for a customer/guest/anonymous visitor picking their
+  // own store client-side. NOT honored for owner/admin: their storeId is
+  // also null, but because they're unrestricted, not because they're a
+  // customer - without this role check, a customer's local store pick on
+  // the same browser would leak into their own admin view.
+  const isTrackingOrAnonymous = !session || TRACKING_ROLES.includes(session.role);
+  let explicitStoreId = null;
+  if (session?.storeId == null && isTrackingOrAnonymous && url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId)) explicitStoreId = requestedStoreId;
+  }
+  sendJson(res, 200, maskSecrets(configForSession(session, explicitStoreId)));
 });
 
 route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const body = await readBody(req);
   const config = readJson(CONFIG_FILE, {});
   const allowed = [
     "shopName",
+    "currencySymbol",
+    "currencyCode",
     "gstNumber",
     "heroTagline",
     "heroBadgeText",
@@ -2286,11 +2905,13 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "theme",
     "heroImageUrl",
     "logoUrl",
+    "logoWideUrl",
     "upiVpa",
     "upiPayeeName",
-    "tableCount",
     "defaultNavLayout",
-    "heroCaptionLabel"
+    "heroCaptionLabel",
+    "razorpayEnabled",
+    "razorpayKeyId"
   ];
   for (const key of allowed) {
     if (body[key] !== undefined) config[key] = body[key];
@@ -2303,16 +2924,29 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     config.loyalty.pointsPerRupeeSpent = Number.isFinite(per) && per >= 0 ? per : 0.1;
     config.loyalty.rupeeValuePerPoint = Number.isFinite(val) && val >= 0 ? val : 0.5;
   }
-  if (config.tableCount !== undefined) {
-    const n = parseInt(config.tableCount, 10);
-    config.tableCount = Number.isFinite(n) && n >= 0 ? Math.min(n, 200) : 10;
-  }
   if (config.defaultNavLayout !== undefined && config.defaultNavLayout !== "rail" && config.defaultNavLayout !== "topbar") {
     config.defaultNavLayout = "rail";
+  }
+  if (config.razorpayEnabled !== undefined) config.razorpayEnabled = Boolean(config.razorpayEnabled);
+  if (typeof config.razorpayKeyId === "string") config.razorpayKeyId = config.razorpayKeyId.trim().slice(0, 100);
+  // Never echoed back by GET /api/config (see maskSecrets()) - only ever
+  // updated when a real new value is actually typed, so re-saving the rest
+  // of this form (which never receives the real secret to redisplay) can't
+  // accidentally wipe it with an empty string.
+  if (typeof body.razorpayKeySecret === "string" && body.razorpayKeySecret.trim()) {
+    config.razorpayKeySecret = body.razorpayKeySecret.trim().slice(0, 200);
   }
   // shopName/heroTagline are rendered directly into the home page - cap
   // length and strip control chars so a bad paste can't break layout.
   if (typeof config.shopName === "string") config.shopName = config.shopName.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 60);
+  if (typeof config.currencySymbol === "string") {
+    const trimmed = Array.from(config.currencySymbol).filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; }).join("").trim().slice(0, 3);
+    config.currencySymbol = trimmed || "₹";
+  }
+  if (typeof config.currencyCode === "string") {
+    const code = config.currencyCode.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 3);
+    config.currencyCode = code.length === 3 ? code : "INR";
+  }
   if (typeof config.gstNumber === "string") config.gstNumber = Array.from(config.gstNumber).filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; }).join("").trim().toUpperCase().slice(0, 20);
   if (typeof config.receiptFooterText === "string") config.receiptFooterText = config.receiptFooterText.trim().slice(0, 120);
   if (typeof config.heroCaptionLabel === "string") {
@@ -2363,41 +2997,37 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     config.customFooterFields = body.customFooterFields
       .filter((f) => f && (f.label || f.value))
       .slice(0, 6)
-      .map((f) => ({
-        label: String(f.label || "").trim().slice(0, 30),
-        value: String(f.value || "").trim().slice(0, 100)
-      }));
+      .map((f) => {
+        // url: only accepted as an actual http(s) link - anything else
+        // (javascript:, empty, malformed) just renders as plain text
+        // instead, same as before this field existed.
+        const rawUrl = String(f.url || "").trim();
+        let url = "";
+        try {
+          const parsed = new URL(rawUrl);
+          if (parsed.protocol === "http:" || parsed.protocol === "https:") url = rawUrl.slice(0, 300);
+        } catch (e) {
+          // not a valid absolute URL - leave url blank
+        }
+        return {
+          label: String(f.label || "").trim().slice(0, 30),
+          value: String(f.value || "").trim().slice(0, 100),
+          url,
+          type: ["social", "career"].includes(f.type) ? f.type : "other"
+        };
+      });
   }
   if (body.customIcons && typeof body.customIcons === "object") {
     config.customIcons = { ...config.customIcons, ...body.customIcons };
   }
-  if (body.arcade && typeof body.arcade === "object") {
-    config.arcade = { ...config.arcade, ...body.arcade };
-    config.arcade.enabled = config.arcade.enabled !== false;
-    const hours = Number(config.arcade.sessionHours);
-    config.arcade.sessionHours = Number.isFinite(hours) && hours > 0 ? Math.min(hours, 24) : 2;
-  }
   // Home page "This week's picks" - which items feature there and what tag
   // each shows (e.g. "House favourite"). Replaced wholesale (not merged like
   // colors/footer above) since it's an ordered, curated list, not a bag of
-  // independent keys - a partial update wouldn't make sense here. Falls back
-  // to the original auto-picked-from-first-section behavior on the client
-  // (see renderPopularPicks() in app.js) whenever this is empty/unset, so a
-  // fresh install with no curation yet still shows something.
-  if (Array.isArray(body.homePicks)) {
-    const menu = readJson(MENU_FILE, { items: [] });
-    const validItemIds = new Set(menu.items.map((i) => i.id));
-    config.homePicks = body.homePicks
-      .filter((p) => p && validItemIds.has(Number(p.itemId)))
-      .slice(0, 3)
-      .map((p) => ({
-        itemId: Number(p.itemId),
-        tag: String(p.tag || "")
-          .replace(/[\r\n\t]/g, " ")
-          .trim()
-          .slice(0, 40)
-      }));
-  }
+  // independent keys - a partial update wouldn't make sense here. This is
+  // the franchise-wide DEFAULT - a store overrides it via its own
+  // PATCH /api/stores/:id body.homePicks (see mergeStoreOverrides()).
+  const sanitizedHomePicks = sanitizeHomePicks(body.homePicks);
+  if (sanitizedHomePicks !== undefined) config.homePicks = sanitizedHomePicks;
   // Home page "How we roast" story steps - was a hardcoded array in app.js
   // (renderHomeRoastSteps), same reasoning as homePicks: replaced wholesale
   // since it's an ordered story, not independent keys. Empty/unset falls
@@ -2422,15 +3052,15 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     }
   }
   writeJson(CONFIG_FILE, config);
-  sendJson(res, 200, config);
+  sendJson(res, 200, maskSecrets(config));
 });
 
 route("DELETE", /^\/api\/config\/custom-icons\/(?<key>[\w-]+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const config = readJson(CONFIG_FILE, {});
   if (config.customIcons) delete config.customIcons[params.key];
   writeJson(CONFIG_FILE, config);
-  sendJson(res, 200, config);
+  sendJson(res, 200, maskSecrets(config));
 });
 
 // ---------------------------------------------------------------------------
@@ -2576,9 +3206,11 @@ route("GET", /^\/api\/admin\/backup\/?$/, async (req, res) => {
   res.end(body);
 });
 
+// Whole-instance restore is the single most destructive route in the app -
+// tightened to Global Admin only (owner keeps read/download above, but
+// never writes here, matching read-only-outside-adding-Global-Admins).
 route("POST", /^\/api\/admin\/restore\/?$/, async (req, res) => {
-  const session = requireRole(req, res, ["owner"]);
-  if (!session) return;
+  if (!requireGlobalAdmin(req, res)) return;
   let body;
   try {
     body = await readBody(req, 20 * 1024 * 1024); // backups can be a few MB with enough order history
@@ -2601,34 +3233,220 @@ route("POST", /^\/api\/admin\/restore\/?$/, async (req, res) => {
   sendJson(res, 200, { ok: true, restoredCount });
 });
 
+// ---------------------------------------------------------------------------
+// Per-store backup/restore - same flat JSON files as the whole-instance
+// backup above (no physical per-store split, see the Phase 6 design notes),
+// filtered/restored to just one store's own records via each entity's own
+// storeId (or, for payroll/attendance/overtime which don't carry storeId
+// directly, a join on the record's userId -> users.json[].storeId).
+// ---------------------------------------------------------------------------
+
+// Entities that carry their own storeId field directly.
+const STORE_SCOPED_DIRECT_FILES = {
+  "orders.json": ORDERS_FILE,
+  "table-sessions.json": TABLE_SESSIONS_FILE,
+  "timeclock.json": TIMECLOCK_FILE
+};
+
+// Entities scoped via a join on userId (they predate storeId entirely, and
+// adding it retroactively would mean re-attributing history no differently
+// than this join already does).
+const STORE_SCOPED_VIA_USER_FILES = {
+  "payroll.json": PAYROLL_FILE,
+  "attendance.json": ATTENDANCE_FILE,
+  "overtime-approvals.json": OVERTIME_APPROVALS_FILE
+};
+
+function scopedBackupForStore(storeId) {
+  const stores = readJson(STORES_FILE, []);
+  const store = stores.find((s) => s.id === storeId);
+  if (!store) return null;
+
+  const files = {};
+  for (const [name, filePath] of Object.entries(STORE_SCOPED_DIRECT_FILES)) {
+    files[name] = readJson(filePath, []).filter((r) => r.storeId === storeId);
+  }
+  // Only this store's own local discounts - a franchise-wide coupon
+  // (storeId null) belongs to the whole-instance backup, not here.
+  files["coupons.json"] = readJson(COUPONS_FILE, []).filter((c) => c.storeId === storeId);
+
+  const users = readJson(USERS_FILE, []);
+  const staffIdsAtStore = new Set(users.filter((u) => u.storeId === storeId).map((u) => u.id));
+  for (const [name, filePath] of Object.entries(STORE_SCOPED_VIA_USER_FILES)) {
+    files[name] = readJson(filePath, []).filter((r) => staffIdsAtStore.has(r.userId));
+  }
+
+  return {
+    exportedAt: new Date().toISOString(),
+    storeId,
+    storeName: store.name,
+    store: {
+      address: store.address || "",
+      phone: store.phone || "",
+      lat: store.lat ?? null,
+      lng: store.lng ?? null,
+      homePicks: store.homePicks,
+      payments: store.payments || null,
+      operations: store.operations || null
+    },
+    files
+  };
+}
+
+/** Reassigns any incoming record's id that collides with a record already
+ *  belonging to a DIFFERENT store (ids are shared global counters/random
+ *  strings today, not per-store) - and force-stamps storeId on every
+ *  incoming record regardless of what the file itself claims, so a doctored
+ *  backup can never restore itself into a different store than the URL
+ *  says. idStyle picks the right id shape to generate on collision: this
+ *  app's own id formats (see POST /api/orders, /api/table-sessions,
+ *  /api/coupons, timeclock's clock-in handler). */
+function reassignStoreScopedIds(otherStoreRecords, incomingRecords, storeId, idStyle) {
+  const usedIds = new Set(otherStoreRecords.map((r) => r.id));
+  let nextNumericId = usedIds.size ? Math.max(0, ...[...usedIds].filter((id) => typeof id === "number")) + 1 : 1;
+  const genId = () => (idStyle === "numeric" ? nextNumericId++ : `${idStyle}${crypto.randomBytes(3).toString("hex").toUpperCase()}`);
+  return incomingRecords.map((r) => {
+    let id = r.id;
+    if (id === undefined || usedIds.has(id)) id = genId();
+    usedIds.add(id);
+    return { ...r, id, storeId };
+  });
+}
+
+route("GET", /^\/api\/admin\/backup\/store\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const storeId = Number(params.id);
+  if (!canManageStore(session, storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store" });
+  }
+  const backup = scopedBackupForStore(storeId);
+  if (!backup) return sendJson(res, 404, { error: "Store not found" });
+  const body = JSON.stringify(backup, null, 2);
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Disposition": `attachment; filename="backup-store-${storeId}-${new Date().toISOString().slice(0, 10)}.json"`
+  });
+  res.end(body);
+});
+
+route("POST", /^\/api\/admin\/restore\/store\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  if (session.role === "owner") {
+    return sendJson(res, 403, { error: "Owner has read-only access to store data" });
+  }
+  const storeId = Number(params.id);
+  if (!canManageStore(session, storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store" });
+  }
+  const stores = readJson(STORES_FILE, []);
+  const store = stores.find((s) => s.id === storeId);
+  if (!store) return sendJson(res, 404, { error: "Store not found" });
+
+  let body;
+  try {
+    body = await readBody(req, 20 * 1024 * 1024);
+  } catch (e) {
+    return sendJson(res, 413, { error: "Backup file too large" });
+  }
+  if (!body.confirmYes) return sendJson(res, 400, { error: "Missing confirmation" });
+  if (!body.files || typeof body.files !== "object") {
+    return sendJson(res, 400, { error: "That doesn't look like a store backup file" });
+  }
+
+  const users = readJson(USERS_FILE, []);
+  const staffIdsAtStore = new Set(users.filter((u) => u.storeId === storeId).map((u) => u.id));
+  const warnings = [];
+  let restoredCount = 0;
+
+  const idStyles = { "orders.json": "SB-", "table-sessions.json": "TBL-", "timeclock.json": "numeric" };
+  for (const [name, filePath] of Object.entries(STORE_SCOPED_DIRECT_FILES)) {
+    if (!Array.isArray(body.files[name])) continue;
+    const existing = readJson(filePath, []);
+    const otherStoreRecords = existing.filter((r) => r.storeId !== storeId);
+    const incoming = reassignStoreScopedIds(otherStoreRecords, body.files[name], storeId, idStyles[name]);
+    writeJson(filePath, [...otherStoreRecords, ...incoming]);
+    restoredCount += incoming.length;
+  }
+
+  if (Array.isArray(body.files["coupons.json"])) {
+    const existingCoupons = readJson(COUPONS_FILE, []);
+    const otherCoupons = existingCoupons.filter((c) => c.storeId !== storeId);
+    const incoming = reassignStoreScopedIds(otherCoupons, body.files["coupons.json"], storeId, "numeric");
+    writeJson(COUPONS_FILE, [...otherCoupons, ...incoming]);
+    restoredCount += incoming.length;
+  }
+
+  // Payroll/attendance/overtime: a record whose user no longer exists (or
+  // has since moved to a different store) can't be safely re-attributed -
+  // dropped with a warning rather than guessed at, since this can only ever
+  // be restored correctly onto the same users.json state it was backed up
+  // against.
+  for (const [name, filePath] of Object.entries(STORE_SCOPED_VIA_USER_FILES)) {
+    if (!Array.isArray(body.files[name])) continue;
+    const existing = readJson(filePath, []);
+    const keep = existing.filter((r) => !staffIdsAtStore.has(r.userId));
+    const incoming = [];
+    for (const r of body.files[name]) {
+      if (!staffIdsAtStore.has(r.userId)) {
+        warnings.push(`${name}: skipped a record for a user no longer at this store (userId ${r.userId})`);
+        continue;
+      }
+      incoming.push(r);
+    }
+    writeJson(filePath, [...keep, ...incoming]);
+    restoredCount += incoming.length;
+  }
+
+  if (body.store && typeof body.store === "object") {
+    const s = body.store;
+    if (typeof s.address === "string") store.address = s.address.slice(0, 200);
+    if (typeof s.phone === "string") store.phone = s.phone.slice(0, 20);
+    if (s.lat !== undefined) store.lat = s.lat;
+    if (s.lng !== undefined) store.lng = s.lng;
+    if (s.homePicks !== undefined) store.homePicks = sanitizeHomePicks(s.homePicks);
+    if (s.payments && typeof s.payments === "object") store.payments = { ...store.payments, ...s.payments };
+    if (s.operations && typeof s.operations === "object") store.operations = { ...store.operations, ...s.operations };
+    writeJson(STORES_FILE, stores);
+  }
+
+  sendJson(res, 200, { ok: true, restoredCount, warnings });
+});
+
 route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
   // Resets ONLY the visual branding fields back to the original hardcoded
   // look - shop name, tax rates, and footer/store-details are untouched.
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const config = readJson(CONFIG_FILE, {});
   config.theme = DEFAULT_BRANDING.theme;
   config.colors = { ...DEFAULT_BRANDING.colors };
   config.heroImageUrl = DEFAULT_BRANDING.heroImageUrl;
   config.logoUrl = DEFAULT_BRANDING.logoUrl;
+  config.logoWideUrl = DEFAULT_BRANDING.logoWideUrl;
   config.textStyles = {
     adminTabs: { ...DEFAULT_BRANDING.textStyles.adminTabs },
     adminHelp: { ...DEFAULT_BRANDING.textStyles.adminHelp },
     adminLabels: { ...DEFAULT_BRANDING.textStyles.adminLabels }
   };
   writeJson(CONFIG_FILE, config);
-  sendJson(res, 200, config);
+  sendJson(res, 200, maskSecrets(config));
 });
 
 // --- Branding profiles ("holiday themes" the admin can save and switch between) ---
+// Viewing the saved-profiles list is not itself a franchise-wide-settings
+// WRITE - anyone reaching the admin panel can see what's saved (matches
+// GET /api/config, already universally readable); only activating/saving/
+// deleting a profile is Global-Admin-only (see below).
 route("GET", /^\/api\/branding-profiles\/?$/, async (req, res) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
   sendJson(res, 200, readJson(BRANDING_PROFILES_FILE, {}));
 });
 
 route("POST", /^\/api\/branding-profiles\/?$/, async (req, res) => {
   // Saves the CURRENT live branding (theme/colors/hero/logo) as a named,
   // reusable profile - e.g. "Diwali", "Christmas" - to switch to later.
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const body = await readBody(req);
   const name = String(body.name || "").trim();
   if (!name) return sendJson(res, 400, { error: "Profile name is required" });
@@ -2639,14 +3457,15 @@ route("POST", /^\/api\/branding-profiles\/?$/, async (req, res) => {
     theme: config.theme,
     colors: config.colors,
     heroImageUrl: config.heroImageUrl,
-    logoUrl: config.logoUrl
+    logoUrl: config.logoUrl,
+    logoWideUrl: config.logoWideUrl
   };
   writeJson(BRANDING_PROFILES_FILE, profiles);
   sendJson(res, 201, profiles);
 });
 
 route("POST", /^\/api\/branding-profiles\/(?<name>[^/]+)\/activate\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const profiles = readJson(BRANDING_PROFILES_FILE, {});
   const name = decodeURIComponent(params.name);
   const profile = profiles[name];
@@ -2657,12 +3476,13 @@ route("POST", /^\/api\/branding-profiles\/(?<name>[^/]+)\/activate\/?$/, async (
   config.colors = profile.colors;
   config.heroImageUrl = profile.heroImageUrl;
   config.logoUrl = profile.logoUrl;
+  config.logoWideUrl = profile.logoWideUrl;
   writeJson(CONFIG_FILE, config);
-  sendJson(res, 200, config);
+  sendJson(res, 200, maskSecrets(config));
 });
 
 route("DELETE", /^\/api\/branding-profiles\/(?<name>[^/]+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MENU_ADMIN_ROLES)) return;
+  if (!requireGlobalAdmin(req, res)) return;
   const profiles = readJson(BRANDING_PROFILES_FILE, {});
   const name = decodeURIComponent(params.name);
   delete profiles[name];
@@ -2671,10 +3491,30 @@ route("DELETE", /^\/api\/branding-profiles\/(?<name>[^/]+)\/?$/, async (req, res
 });
 
 // --- Orders ---
-route("GET", /^\/api\/orders\/?$/, async (req, res) => {
-  // Full order list is for staff running the register/kitchen/admin views only.
-  if (!requireRole(req, res, KITCHEN_ROLES)) return;
-  sendJson(res, 200, readJson(ORDERS_FILE, []));
+route("GET", /^\/api\/orders\/?$/, async (req, res, params, url) => {
+  // Full order list is for staff running the register/kitchen/admin views
+  // (this one endpoint backs both the live Kitchen board and the admin
+  // Order History screen) - scoped to whichever stores this session can
+  // see (accessibleStoreIds() - null means unrestricted, e.g. owner). A
+  // customer isn't tied to one store (they can walk into any location), so
+  // customer/guest orders commonly have no storeId until Phase 2's store
+  // picker sets one - those stay visible everywhere rather than nowhere.
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  let orders = readJson(ORDERS_FILE, []);
+  const allowed = accessibleStoreIds(session);
+  if (allowed) orders = orders.filter((o) => o.storeId == null || allowed.includes(o.storeId));
+  // Order History's optional store drill-down (?storeId=) for an
+  // admin/owner who can see more than one store - ignored (has no further
+  // effect) for a manager/employee, whose `allowed` above is already just
+  // their own single store.
+  if (url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId) && (!allowed || allowed.includes(requestedStoreId))) {
+      orders = orders.filter((o) => o.storeId === requestedStoreId);
+    }
+  }
+  sendJson(res, 200, orders);
 });
 
 route("GET", /^\/api\/orders\/mine\/?$/, async (req, res) => {
@@ -2696,6 +3536,27 @@ route("GET", /^\/api\/orders\/mine\/?$/, async (req, res) => {
   mine = mine.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10).map((o) => ({ ...o, status: orderStatusOf(o) }));
 
   sendJson(res, 200, mine);
+});
+
+// No login required - the token itself (from the QR code shown at checkout,
+// see trackingToken above) is the credential, same trust model as a
+// password-reset link. Returns only what a customer needs to see their own
+// order's progress, never the full order record (no phone/customer id/
+// internal ids beyond the display number).
+route("GET", /^\/api\/orders\/track\/(?<token>[a-f0-9]+)\/?$/, async (req, res, params) => {
+  const orders = readJson(ORDERS_FILE, []);
+  const order = orders.find((o) => o.trackingToken === params.token);
+  if (!order) return sendJson(res, 404, { error: "Order not found" });
+  sendJson(res, 200, {
+    orderNumber: order.orderNumber || order.id,
+    status: orderStatusOf(order),
+    isPaid: order.isPaid,
+    total: order.total,
+    orderType: order.orderType,
+    tableNumber: order.tableNumber,
+    createdAt: order.createdAt,
+    items: order.items.map((i) => ({ name: i.name, quantity: i.quantity }))
+  });
 });
 
 route("POST", /^\/api\/orders\/?$/, async (req, res) => {
@@ -2741,6 +3602,17 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     if (staffEnteredUser && staffEnteredUser.role === "customer") matchedCustomer = staffEnteredUser;
   }
 
+  // A customer/guest isn't tied to one store (they can walk into any
+  // location) - their chosen store comes from the request body instead,
+  // validated against real stores so an arbitrary/stale id can't sneak
+  // in. Staff always keep their own session's storeId, unchanged.
+  const allStores = readJson(STORES_FILE, []);
+  let effectiveStoreId = session.storeId != null ? session.storeId : null;
+  if (effectiveStoreId == null && body.storeId != null) {
+    const requestedStoreId = Number(body.storeId);
+    if (allStores.some((s) => s.id === requestedStoreId)) effectiveStoreId = requestedStoreId;
+  }
+
   let computed;
   try {
     const customerId = session.role === "customer" ? session.userId : matchedCustomer ? matchedCustomer.id : null;
@@ -2748,26 +3620,52 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
       couponCode: body.couponCode || null,
       redeemPoints: parseInt(body.redeemPoints, 10) || 0,
       customerId,
-      storeId: session.storeId != null ? session.storeId : null
+      storeId: effectiveStoreId
     });
   } catch (e) {
     return sendJson(res, 400, { error: e.message });
   }
 
   const orders = readJson(ORDERS_FILE, []);
-  const multiStore = readJson(STORES_FILE, []).length > 1;
+  const multiStore = allStores.length > 1;
   // Staff placing an order at the counter on a customer's behalf can mark it
   // paid immediately (cash already collected) instead of having to find it
   // in Order History afterwards - customers/guests can never self-mark paid.
   const staffMarkedPaid = KITCHEN_ROLES.includes(session.role) && body.markPaidNow === true;
+
+  const orderId = `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  const orderNumber = generateOrderNumber(orders, effectiveStoreId, multiStore);
+  // Lets a customer track this one order (GET /api/orders/track/:token,
+  // no login needed) by scanning a QR code - an alternative to the
+  // phone-based guest lookup for someone who doesn't want to type a phone
+  // number back in later or is on a different device. Long and random
+  // enough that guessing another order's token isn't practical.
+  const trackingToken = crypto.randomBytes(12).toString("hex");
+
+  // Real payment verification (Razorpay) - only attempted when an owner has
+  // actually enabled it and saved both keys (Admin -> Payments & Tax). Off
+  // or unconfigured, this is a no-op and behavior is exactly what it always
+  // was: an ONLINE order is trust-based paid immediately, same as the UPI
+  // QR flow below. createRazorpayOrder() itself also falls back to null on
+  // any API failure, so a misconfigured/unreachable gateway never blocks
+  // someone from placing an order.
+  const razorpay = method === "ONLINE" && !staffMarkedPaid ? await createRazorpayOrder(computed.total, orderId, readJson(CONFIG_FILE, {})) : null;
+
   const order = {
-    id: `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
-    orderNumber: generateOrderNumber(orders, session.storeId, multiStore),
-    storeId: session.storeId != null ? session.storeId : null,
+    id: orderId,
+    orderNumber,
+    trackingToken,
+    storeId: effectiveStoreId,
     createdAt: new Date().toISOString(),
     method,
-    isPaid: method === "ONLINE" || staffMarkedPaid, // still trust-based until a real payment webhook is wired up - see README
-    paymentMethod: method === "ONLINE" ? "UPI" : staffMarkedPaid ? "Cash" : null,
+    // Real verification (see POST .../verify-payment below) gates isPaid
+    // when Razorpay actually created an order - still trust-based only in
+    // the fallback case, same as before.
+    isPaid: razorpay ? false : method === "ONLINE" || staffMarkedPaid,
+    paymentMethod: razorpay ? null : method === "ONLINE" ? "UPI" : staffMarkedPaid ? "Cash" : null,
+    razorpayOrderId: razorpay ? razorpay.razorpayOrderId : null,
+    razorpayKeyId: razorpay ? razorpay.razorpayKeyId : null,
+    razorpayCurrency: razorpay ? razorpay.razorpayCurrency : null,
     tipApplied,
     serviceChargeActive,
     orderType,
@@ -2887,6 +3785,115 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
     if (typeof body.tableNumber === "string") {
       order.tableNumber = body.tableNumber.trim().slice(0, 20) || null;
     }
+  } else if (body.action === "adjustBill") {
+    // Staff toggling service charge/tip and applying a coupon/loyalty
+    // redemption from the Billing page, for an order that reached billing
+    // without them (a guest checkout, or one staff placed without asking).
+    // Recomputed the same way computeOrder() prices a fresh cart - just
+    // starting from this order's already-locked subtotal/items instead of a
+    // live cart, so re-adjusting (or clearing) it repeatedly is always safe.
+    if (order.isPaid) return sendJson(res, 400, { error: "This bill is already settled" });
+    const config = mergeStoreOverrides(
+      readJson(CONFIG_FILE, {}),
+      order.storeId != null ? readJson(STORES_FILE, []).find((s) => s.id === order.storeId) : null
+    );
+
+    // Undo this order's CURRENT coupon/loyalty side effects first, so a
+    // second adjustment (or removing what was just applied) never double-
+    // counts against the coupon's usage limit or the customer's balance.
+    if (order.couponId) {
+      const coupons = readJson(COUPONS_FILE, []);
+      const c = coupons.find((x) => x.id === order.couponId);
+      if (c) {
+        c.usedCount = Math.max(0, (c.usedCount || 0) - 1);
+        writeJson(COUPONS_FILE, coupons);
+      }
+    }
+    if (order.customerId && (order.loyaltyPointsRedeemed > 0 || order.loyaltyPointsEarned > 0)) {
+      const users = readJson(USERS_FILE, []);
+      const user = users.find((u) => u.id === order.customerId);
+      if (user) {
+        user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) + (order.loyaltyPointsRedeemed || 0) - (order.loyaltyPointsEarned || 0));
+        writeJson(USERS_FILE, users);
+      }
+    }
+
+    const serviceChargeActive = body.serviceChargeActive !== false;
+    const tipApplied = !!body.tipApplied;
+    const couponCodeInput = typeof body.couponCode === "string" ? body.couponCode.trim() : "";
+    const redeemPointsInput = parseInt(body.redeemPoints, 10) || 0;
+
+    const hasPromoItem = order.items.some((i) => i.promoDiscount);
+    let coupon = null;
+    if (couponCodeInput) {
+      if (hasPromoItem) return sendJson(res, 400, { error: "Coupon codes can't be combined with promotional items" });
+      const coupons = readJson(COUPONS_FILE, []);
+      coupon = findValidCoupon(couponCodeInput, coupons, order.storeId ?? null);
+      if (!coupon) return sendJson(res, 400, { error: "Invalid or expired code" });
+    }
+    const couponDiscount = coupon ? computeCouponDiscount(coupon, order.subtotal) : 0;
+
+    const loyaltyConfig = config.loyalty || {};
+    let loyaltyPointsRedeemed = 0;
+    let loyaltyDiscount = 0;
+    if (order.customerId && redeemPointsInput > 0 && loyaltyConfig.enabled) {
+      const users = readJson(USERS_FILE, []);
+      const user = users.find((u) => u.id === order.customerId);
+      const available = user ? user.loyaltyPoints || 0 : 0;
+      const requested = Math.min(Math.max(0, redeemPointsInput), available);
+      const rupeeValuePerPoint = loyaltyConfig.rupeeValuePerPoint ?? 0.5;
+      const remaining = Math.max(0, order.subtotal - couponDiscount);
+      const candidateDiscount = round2(requested * rupeeValuePerPoint);
+      if (candidateDiscount > remaining && rupeeValuePerPoint > 0) {
+        loyaltyPointsRedeemed = Math.floor(remaining / rupeeValuePerPoint);
+        loyaltyDiscount = round2(loyaltyPointsRedeemed * rupeeValuePerPoint);
+      } else {
+        loyaltyPointsRedeemed = requested;
+        loyaltyDiscount = candidateDiscount;
+      }
+    }
+
+    const discountAmount = round2(couponDiscount + loyaltyDiscount);
+    const taxableAmount = Math.max(0, order.subtotal - discountAmount);
+    const loyaltyPointsEarned = order.customerId && loyaltyConfig.enabled ? Math.floor(taxableAmount * (loyaltyConfig.pointsPerRupeeSpent ?? 0.1)) : 0;
+
+    const cgst = taxableAmount * (config.cgstRate ?? 0.05);
+    const sgst = taxableAmount * (config.sgstRate ?? 0.05);
+    const serviceCharge = serviceChargeActive ? taxableAmount * (config.serviceChargeRate ?? 0.02) : 0;
+    const tipAmount = config.tipEnabled && tipApplied ? config.tipAmount || 0 : 0;
+    const total = taxableAmount + cgst + sgst + serviceCharge + tipAmount;
+
+    order.serviceChargeActive = serviceChargeActive;
+    order.tipApplied = tipApplied;
+    order.couponCode = coupon ? coupon.code : null;
+    order.couponId = coupon ? coupon.id : null;
+    order.discountAmount = discountAmount;
+    order.loyaltyPointsRedeemed = loyaltyPointsRedeemed;
+    order.loyaltyDiscount = loyaltyDiscount;
+    order.loyaltyPointsEarned = loyaltyPointsEarned;
+    order.cgst = round2(cgst);
+    order.sgst = round2(sgst);
+    order.serviceCharge = round2(serviceCharge);
+    order.tipAmount = round2(tipAmount);
+    order.total = round2(total);
+
+    // Re-apply the new side effects with the freshly recomputed numbers.
+    if (order.couponId) {
+      const coupons = readJson(COUPONS_FILE, []);
+      const c = coupons.find((x) => x.id === order.couponId);
+      if (c) {
+        c.usedCount = (c.usedCount || 0) + 1;
+        writeJson(COUPONS_FILE, coupons);
+      }
+    }
+    if (order.customerId && (order.loyaltyPointsRedeemed > 0 || order.loyaltyPointsEarned > 0)) {
+      const users = readJson(USERS_FILE, []);
+      const user = users.find((u) => u.id === order.customerId);
+      if (user) {
+        user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) - order.loyaltyPointsRedeemed + order.loyaltyPointsEarned);
+        writeJson(USERS_FILE, users);
+      }
+    }
   } else {
     return sendJson(res, 400, { error: "Unknown action" });
   }
@@ -2925,6 +3932,39 @@ route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/feedback\/?$/, async (req, res, pa
   order.feedbackAt = new Date().toISOString();
   writeJson(ORDERS_FILE, orders);
   sendJson(res, 200, { rating: order.rating, comment: order.feedbackComment });
+});
+
+/** Called by the client once Razorpay's checkout widget reports a completed
+ *  payment - verifies the signature server-side before trusting it (the
+ *  actual fix for "online payments are still trust-based", see README).
+ *  Anyone who placed the order (staff or the customer/guest themselves) can
+ *  complete this - it only ever flips isPaid true after a real signature
+ *  check, never on the client's say-so. */
+route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/verify-payment\/?$/, async (req, res, params) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const body = await readBody(req);
+  const orders = readJson(ORDERS_FILE, []);
+  const order = orders.find((o) => o.id === params.id);
+  if (!order) return sendJson(res, 404, { error: "Order not found" });
+  if (!order.razorpayOrderId) return sendJson(res, 400, { error: "This order isn't a Razorpay payment" });
+  if (order.isPaid) return sendJson(res, 200, order); // already verified - idempotent
+
+  const config = readJson(CONFIG_FILE, {});
+  if (!config.razorpayKeySecret) return sendJson(res, 400, { error: "Razorpay isn't configured" });
+
+  const { razorpay_payment_id: paymentId, razorpay_signature: signature } = body;
+  if (!paymentId || !signature) return sendJson(res, 400, { error: "Missing payment verification fields" });
+
+  const verified = verifyRazorpaySignature(order.razorpayOrderId, paymentId, signature, config.razorpayKeySecret);
+  if (!verified) return sendJson(res, 400, { error: "Payment could not be verified" });
+
+  order.isPaid = true;
+  order.paymentMethod = "Razorpay";
+  order.razorpayPaymentId = paymentId;
+  writeJson(ORDERS_FILE, orders);
+  broadcastOrdersChanged();
+  sendJson(res, 200, order);
 });
 
 route("GET", /^\/api\/favorites\/?$/, async (req, res) => {
@@ -2994,12 +4034,18 @@ route("PATCH", /^\/api\/user-preferences\/?$/, async (req, res) => {
 // fixed number of redemptions.
 // ---------------------------------------------------------------------------
 
-function findValidCoupon(code, coupons) {
+/** storeId is the order's own store (null for a customer/guest with no
+ *  store chosen). A franchise-wide coupon (coupon.storeId == null) redeems
+ *  anywhere; a Local Admin/manager's local discount (coupon.storeId set)
+ *  only redeems at that one store - so a discount created for Store 2
+ *  can't be used at Store 1's checkout. */
+function findValidCoupon(code, coupons, storeId = null) {
   const normalized = String(code || "").trim().toUpperCase();
   if (!normalized) return null;
   const coupon = coupons.find((c) => c.code === normalized);
   if (!coupon || !coupon.active) return null;
   if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) return null;
+  if (coupon.storeId != null && coupon.storeId !== storeId) return null;
   return coupon;
 }
 
@@ -3010,10 +4056,16 @@ function computeCouponDiscount(coupon, subtotal) {
 }
 
 route("GET", /^\/api\/coupons\/?$/, async (req, res) => {
-  // Manager/owner only - returns everything, including private/stopped/
-  // exhausted codes. The public listing below is a separate, filtered route.
-  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
-  sendJson(res, 200, readJson(COUPONS_FILE, []));
+  // Everything including private/stopped/exhausted codes, but scoped like
+  // orders/KPI: a Local Admin/manager only sees franchise-wide coupons
+  // (storeId null) plus their own store's local discounts, never another
+  // store's. The public listing below is a separate, filtered route.
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
+  const allowed = accessibleStoreIds(session);
+  let coupons = readJson(COUPONS_FILE, []);
+  if (allowed) coupons = coupons.filter((c) => c.storeId == null || allowed.includes(c.storeId));
+  sendJson(res, 200, coupons);
 });
 
 /** Lets a customer self-serve the list of codes worth trying at checkout.
@@ -3031,6 +4083,9 @@ route("GET", /^\/api\/coupons\/public\/?$/, async (req, res) => {
 route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
   const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
+  if (session.role === "owner") {
+    return sendJson(res, 403, { error: "Owner has read-only access to discounts" });
+  }
   const body = await readBody(req);
   const coupons = readJson(COUPONS_FILE, []);
 
@@ -3045,6 +4100,23 @@ route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
   if (type === "percent" && value > 100) return sendJson(res, 400, { error: "Percent discount can't exceed 100" });
   if (usageLimit !== null && (!Number.isFinite(usageLimit) || usageLimit <= 0)) return sendJson(res, 400, { error: "Usage limit must be a positive number, or left blank for unlimited" });
 
+  // storeId: null = franchise-wide coupon (Global Admin's lane). A manager
+  // always creates a local discount for their own store; a Local Admin
+  // must say which of their accessible stores it's for; a Global Admin/
+  // owner may target one store too, or omit it for franchise-wide.
+  let storeId = null;
+  if (session.role === "manager") {
+    storeId = session.storeId;
+  } else if (body.storeId !== undefined && body.storeId !== null && body.storeId !== "") {
+    const requested = Number(body.storeId);
+    if (!Number.isFinite(requested) || !canManageStore(session, requested)) {
+      return sendJson(res, 403, { error: "You don't have access to that store" });
+    }
+    storeId = requested;
+  } else if (session.role === "admin" && accessibleStoreIds(session) !== null) {
+    return sendJson(res, 400, { error: "Pick which store this local discount is for" });
+  }
+
   const coupon = {
     id: coupons.length ? Math.max(...coupons.map((c) => c.id)) + 1 : 1,
     code,
@@ -3054,6 +4126,7 @@ route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
     usedCount: 0,
     active: true,
     private: !!body.private, // default false = public, listed in GET /api/coupons/public
+    storeId,
     createdBy: session.name,
     createdAt: new Date().toISOString()
   };
@@ -3063,11 +4136,22 @@ route("POST", /^\/api\/coupons\/?$/, async (req, res) => {
 });
 
 route("PATCH", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
   const body = await readBody(req);
   const coupons = readJson(COUPONS_FILE, []);
   const coupon = coupons.find((c) => c.id === Number(params.id));
   if (!coupon) return sendJson(res, 404, { error: "Coupon not found" });
+  // Franchise-wide (storeId null) is Global Admin's lane, same as Loyalty -
+  // canManageStore() only gates LOCAL discounts, so a franchise-wide one
+  // needs its own check here.
+  if (coupon.storeId == null) {
+    if (session.role !== "admin" || accessibleStoreIds(session) !== null) {
+      return sendJson(res, 403, { error: "Only a Global Admin can manage a franchise-wide discount" });
+    }
+  } else if (session.role === "owner" || !canManageStore(session, coupon.storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's discount" });
+  }
 
   if (body.active !== undefined) coupon.active = Boolean(body.active);
   if (body.private !== undefined) coupon.private = Boolean(body.private);
@@ -3076,10 +4160,18 @@ route("PATCH", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
 });
 
 route("DELETE", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const session = requireRole(req, res, MANAGER_UP_ROLES);
+  if (!session) return;
   const coupons = readJson(COUPONS_FILE, []);
   const idx = coupons.findIndex((c) => c.id === Number(params.id));
   if (idx === -1) return sendJson(res, 404, { error: "Coupon not found" });
+  if (coupons[idx].storeId == null) {
+    if (session.role !== "admin" || accessibleStoreIds(session) !== null) {
+      return sendJson(res, 403, { error: "Only a Global Admin can manage a franchise-wide discount" });
+    }
+  } else if (session.role === "owner" || !canManageStore(session, coupons[idx].storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's discount" });
+  }
   coupons.splice(idx, 1);
   writeJson(COUPONS_FILE, coupons);
   sendJson(res, 200, { ok: true });
@@ -3089,10 +4181,17 @@ route("DELETE", /^\/api\/coupons\/(?<id>\d+)\/?$/, async (req, res, params) => {
  *  and discount amount without redeeming it (redemption/usedCount happens
  *  only at real order creation, so previewing never burns a use). */
 route("POST", /^\/api\/coupons\/validate\/?$/, async (req, res) => {
-  if (!requireSession(req, res)) return;
+  const session = requireSession(req, res);
+  if (!session) return;
   const body = await readBody(req);
   const coupons = readJson(COUPONS_FILE, []);
-  const coupon = findValidCoupon(body.code, coupons);
+  // storeId: the session's own store for staff, or the customer/guest's
+  // chosen store passed in the body (mirrors how POST /api/orders resolves
+  // effectiveStoreId) - a preview must apply the same store-scoping rule
+  // real redemption does, or it'd show a discount that then fails at
+  // checkout for a store-scoped local discount.
+  const previewStoreId = session.storeId != null ? session.storeId : Number.isFinite(Number(body.storeId)) ? Number(body.storeId) : null;
+  const coupon = findValidCoupon(body.code, coupons, previewStoreId);
   if (!coupon) return sendJson(res, 404, { error: "Invalid or expired coupon code" });
   const subtotal = Number(body.subtotal) || 0;
   sendJson(res, 200, { code: coupon.code, type: coupon.type, value: coupon.value, discountAmount: computeCouponDiscount(coupon, subtotal) });
@@ -3112,11 +4211,6 @@ function arcadeOwnerKey(session) {
 }
 
 function arcadeAccessInfo(session) {
-  const config = readJson(CONFIG_FILE, {});
-  const arcadeConfig = config.arcade || { enabled: true, sessionHours: 2 };
-  if (!arcadeConfig.enabled) {
-    return { allowed: false, reason: "The arcade isn't available right now." };
-  }
   const orders = readJson(ORDERS_FILE, []);
   let mine = [];
   if (session.role === "customer") mine = orders.filter((o) => o.customerId === session.userId);
@@ -3125,6 +4219,14 @@ function arcadeAccessInfo(session) {
     return { allowed: false, reason: "Place an order to unlock the arcade." };
   }
   const latest = mine.reduce((a, b) => (new Date(a.createdAt) > new Date(b.createdAt) ? a : b));
+  // Arcade is per-store now (see mergeStoreOverrides()) - eligibility is
+  // gated by the arcade settings of the store the qualifying order was
+  // actually placed at, not a franchise-wide default.
+  const store = latest.storeId != null ? readJson(STORES_FILE, []).find((s) => s.id === latest.storeId) : null;
+  const arcadeConfig = mergeStoreOverrides(readJson(CONFIG_FILE, {}), store).arcade;
+  if (!arcadeConfig.enabled) {
+    return { allowed: false, reason: "The arcade isn't available right now." };
+  }
   const expiresAt = new Date(new Date(latest.createdAt).getTime() + arcadeConfig.sessionHours * 3600000);
   const allowed = expiresAt.getTime() > Date.now();
   return {
@@ -3669,11 +4771,21 @@ function computeTableSessionBill(session, allOrders) {
   return { ...session, orderCount: orders.length, items: mergedItems, subtotal, cgst, sgst, serviceCharge, tipAmount, total };
 }
 
+// Table count is now fully per-store (see mergeStoreOverrides()), so table
+// sessions need a storeId to know whose table-count limit and "already
+// open" check applies - previously missing entirely, which meant two
+// stores couldn't both have a "Table 1" open at once.
 route("POST", /^\/api\/table-sessions\/?$/, async (req, res) => {
   const session = requireRole(req, res, KITCHEN_ROLES);
   if (!session) return;
   const body = await readBody(req);
-  const config = readJson(CONFIG_FILE, {});
+  const allStores = readJson(STORES_FILE, []);
+  let effectiveStoreId = session.storeId != null ? session.storeId : null;
+  if (effectiveStoreId == null && body.storeId != null) {
+    const requestedStoreId = Number(body.storeId);
+    if (allStores.some((s) => s.id === requestedStoreId)) effectiveStoreId = requestedStoreId;
+  }
+  const config = mergeStoreOverrides(readJson(CONFIG_FILE, {}), allStores.find((s) => s.id === effectiveStoreId));
   const tableNumber = parseInt(body.tableNumber, 10);
   const tableCount = config.tableCount ?? 10;
   if (!Number.isFinite(tableNumber) || tableNumber < 1 || tableNumber > tableCount) {
@@ -3681,12 +4793,13 @@ route("POST", /^\/api\/table-sessions\/?$/, async (req, res) => {
   }
 
   const sessions = readJson(TABLE_SESSIONS_FILE, []);
-  if (sessions.some((s) => s.tableNumber === tableNumber && s.status === "open")) {
+  if (sessions.some((s) => s.tableNumber === tableNumber && s.status === "open" && s.storeId === effectiveStoreId)) {
     return sendJson(res, 400, { error: `Table ${tableNumber} already has an open tab` });
   }
 
   const tableSession = {
     id: `TBL-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+    storeId: effectiveStoreId,
     tableNumber,
     note: sanitizeNotes(body.note || ""),
     // Optional - lets staff identify a repeat/known customer for discounts,
@@ -3711,19 +4824,22 @@ route("PATCH", /^\/api\/table-sessions\/(?<id>[\w-]+)\/?$/, async (req, res, par
   const session = requireRole(req, res, KITCHEN_ROLES);
   if (!session) return;
   const body = await readBody(req);
-  const config = readJson(CONFIG_FILE, {});
-  const tableCount = config.tableCount ?? 10;
   const sessions = readJson(TABLE_SESSIONS_FILE, []);
   const tableSession = sessions.find((s) => s.id === params.id);
   if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
   if (tableSession.status !== "open") return sendJson(res, 400, { error: "Table is already closed" });
+  const config = mergeStoreOverrides(readJson(CONFIG_FILE, {}), readJson(STORES_FILE, []).find((s) => s.id === tableSession.storeId));
+  const tableCount = config.tableCount ?? 10;
 
   if (body.tableNumber !== undefined) {
     const newNumber = parseInt(body.tableNumber, 10);
     if (!Number.isFinite(newNumber) || newNumber < 1 || newNumber > tableCount) {
       return sendJson(res, 400, { error: `Table number must be between 1 and ${tableCount}` });
     }
-    if (newNumber !== tableSession.tableNumber && sessions.some((s) => s.tableNumber === newNumber && s.status === "open")) {
+    if (
+      newNumber !== tableSession.tableNumber &&
+      sessions.some((s) => s.tableNumber === newNumber && s.status === "open" && s.storeId === tableSession.storeId)
+    ) {
       return sendJson(res, 400, { error: `Table ${newNumber} already has an open tab` });
     }
     tableSession.tableNumber = newNumber;
@@ -3737,8 +4853,13 @@ route("PATCH", /^\/api\/table-sessions\/(?<id>[\w-]+)\/?$/, async (req, res, par
 });
 
 route("GET", /^\/api\/table-sessions\/?$/, async (req, res, params, url) => {
-  if (!requireRole(req, res, KITCHEN_ROLES)) return;
-  const sessions = readJson(TABLE_SESSIONS_FILE, []);
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const allowed = accessibleStoreIds(session);
+  let sessions = readJson(TABLE_SESSIONS_FILE, []);
+  // Older sessions predating this field (storeId undefined) stay visible to
+  // everyone, same "unscoped means visible" fallback orders/KPI already use.
+  if (allowed) sessions = sessions.filter((s) => s.storeId == null || allowed.includes(s.storeId));
   const orders = readJson(ORDERS_FILE, []);
   const statusFilter = url.searchParams.get("status");
   const filtered = statusFilter ? sessions.filter((s) => s.status === statusFilter) : sessions;

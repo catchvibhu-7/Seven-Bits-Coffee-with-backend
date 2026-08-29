@@ -13,20 +13,27 @@
             icons from arbitrary URLs - those are admin-trusted content, not
             user-submitted, so allowing https broadly here is a deliberate tradeoff
             rather than an oversight. http:// (unencrypted) sources are still blocked.
-            script-src and style-src still need 'unsafe-inline' because this codebase
-            uses onclick="..."/style="..." attributes throughout every dynamically
-            generated screen (menu, checkout, admin, kitchen) rather than
-            addEventListener - removing unsafe-inline would break all of those clicks.
-            Fully closing that gap means migrating every onclick attribute to
-            addEventListener + CSS classes; flagging it here as the next hardening
-            step rather than doing a full UI rewrite under this change.
+            script-src no longer needs 'unsafe-inline' - every onclick="..."/onchange="..."
+            attribute (and the one inline <script> block, the walking-cat mascot) has been
+            migrated to addEventListener/external files, so an injected inline <script>
+            or event-handler attribute can no longer execute. style-src still needs
+            'unsafe-inline' because this codebase uses style="..." attributes throughout
+            every dynamically generated screen (menu, checkout, admin, kitchen) - moving
+            those to CSS classes is a separate, much larger visual-styling refactor, not
+            attempted here.
             Clickjacking protection is handled instead by the X-Frame-Options header
             server.js sends - the frame-ancestors directive doesn't work in a <meta>
             tag, only in a real HTTP header.
+            checkout.razorpay.com/api.razorpay.com/lumberjack.razorpay.com/
+            cdn.razorpay.com are allowlisted for the optional Razorpay
+            integration (Admin > Payments) - its checkout.js widget loads a
+            script from and opens an iframe/XHR to those origins (cdn.razorpay.com
+            specifically for its own bundled risk-detection script) only when an
+            admin has actually turned Razorpay on.
         -->
         <meta
             http-equiv="Content-Security-Policy"
-            content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self';" />
+            content="default-src 'self'; script-src 'self' https://checkout.razorpay.com https://cdn.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src https://api.razorpay.com https://checkout.razorpay.com; connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com;" />
         <link rel="stylesheet" href="css/theme.css" />
         <link rel="stylesheet" href="css/iconsvg.css" />
         <link rel="stylesheet" href="css/cat.css" />
@@ -47,9 +54,9 @@
         <!-- SYSTEM NAVIGATION: Persistent header for page switching -->
         <nav class="system-nav">
             <img id="site-logo" src="" alt="" style="display:none; height: 28px; margin-right: 8px; align-self: center;" />
-            <button onclick="showPage('home')">HOME</button>
-            <button onclick="showPage('menu')">MENU</button>
-            <button onclick="showPage('arcade')">ARCADE</button>
+            <button data-nav-page="home">HOME</button>
+            <button data-nav-page="menu">MENU</button>
+            <button data-nav-page="arcade">ARCADE</button>
             <!-- ORDERS/ADMIN/Clock-In-Out used to live here, but anyone who
                  could ever see any of them (KITCHEN_ROLES and its
                  PAYROLL_ROLES subset) always has the staff shell active
@@ -57,7 +64,7 @@
                  that session) - this customer nav is never visible to them
                  anymore, so those buttons moved into the shell rather than
                  staying here as unreachable dead markup. -->
-            <button id="nav-account" onclick="window.handleAccountClick()" style="margin-left:auto;">LOGIN</button>
+            <button id="nav-account" style="margin-left:auto;">LOGIN</button>
         </nav>
 
         <!-- PAGE: STAFF HOME (new dashboard for employee/manager/admin/owner -
@@ -81,13 +88,13 @@
                             don't just brew; we process flavor with low-latency precision.
                         </p>
                         <div class="home-hero-actions">
-                            <button class="btn-primary" onclick="showPage('menu')">[ START ORDER ]</button>
+                            <button id="home-hero-start-btn" class="btn-primary">[ START ORDER ]</button>
                             <!-- Hidden until ArcadeSystem.checkAccess() (called from
                                  refreshHomeArcadeButton() in app.js) confirms the arcade is
                                  actually unlocked - same server-enforced window used to gate
                                  the Arcade page itself, so this never invites a click that
                                  just bounces to a "place an order to unlock" message. -->
-                            <button id="home-hero-arcade-btn" class="home-hero-secondary" onclick="showPage('arcade')" style="display:none;">Arcade</button>
+                            <button id="home-hero-arcade-btn" class="home-hero-secondary" style="display:none;">Arcade</button>
                         </div>
                     </div>
                     <div class="home-hero-image">
@@ -180,20 +187,20 @@
                          isn't known until then. -->
                     <div id="menu-cat-chips" class="menu-cat-chips"></div>
                     <div class="menu-view-toggle-group">
-                        <button type="button" id="menu-view-grid-btn" onclick="window.setViewMode('grid')">&#9638; Grid</button>
-                        <button type="button" id="menu-view-list-btn" onclick="window.setViewMode('list')">&#9776; List</button>
+                        <button type="button" id="menu-view-grid-btn">&#9638; Grid</button>
+                        <button type="button" id="menu-view-list-btn">&#9776; List</button>
                     </div>
                 </div>
             </div>
 
             <div class="menu-controls">
-                <label id="favorites-filter-label" onclick="window.toggleFavoritesFilter()" style="display:none; align-items:center; gap:5px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace; user-select:none;">
-                    <span id="favorites-filter-star" style="font-size:11pt; line-height:1; color: var(--color-text-muted);">&#9734;</span> FAVORITES ONLY
-                </label>
+                <button type="button" id="favorites-filter-label" style="display:none; align-items:center; gap:5px; font-size: 8pt; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace; user-select:none; background:none; border:none; padding:0;">
+                    <span id="favorites-filter-star" aria-hidden="true" style="font-size:11pt; line-height:1; color: var(--color-text-muted);">&#9734;</span> FAVORITES ONLY
+                </button>
                 <!-- Search is wired via window.initSearchBar() in app.js (debounced), not an inline
                      handler - the old oninput="renderMenu(...)" called a function that was never
                      attached to window, so it silently errored on every keystroke. -->
-                <input type="text" id="menu-search" placeholder="SEARCH_BITS...">
+                <input type="text" id="menu-search" placeholder="SEARCH_BITS..." aria-label="Search menu items">
             </div>
 
             <div id="menu-root"></div>
@@ -207,14 +214,14 @@
                 <div id="jump-menu" class="jump-overlay"></div>
 
                 <!-- CART BAR -->
-                <div id="cart-status" class="cart-bar" onclick="window.handleCartStatusClick()">
+                <div id="cart-status" class="cart-bar">
                     <span>BITS IN CART:</span>
                     <span id="cart-count">0</span>
                 </div>
 
                 <!-- JUMP BUTTON -->
-                <button class="btn-jump-fab" onclick="window.toggleJumpMenu(event)">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3">
+                <button id="jump-menu-fab-btn" class="btn-jump-fab" aria-label="Jump to category">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3" aria-hidden="true">
                         <path d="M3 12h18M3 6h18M3 18h18"/>
                     </svg>
                 </button>
@@ -239,6 +246,12 @@
             </div>
         </div>
 
+        <!-- PAGE: ORDER TRACKING (no login - reached via ?track=<token> from
+             the QR code shown at checkout; see js/ui/track-page.js) -->
+        <div id="page-track" class="page">
+            <div id="track-root" style="padding:26px 28px 44px; max-width:520px; margin:0 auto;"></div>
+        </div>
+
         <!-- PAGE: ORDERS (Kitchen Display System / KOT Management) -->
         <div id="page-kitchen" class="page">
             <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
@@ -247,21 +260,21 @@
                      it's another way of tracking active orders - just grouped by
                      table instead of by station. -->
                 <div class="kitchen-tabs admin-tabs">
-                    <button class="admin-tab-btn active" data-station="MASTER" onclick="filterKitchen('MASTER')">ALL STATIONS</button>
-                    <button class="admin-tab-btn" data-station="BARISTA" onclick="filterKitchen('BARISTA')">BARISTA</button>
-                    <button class="admin-tab-btn" data-station="KITCHEN" onclick="filterKitchen('KITCHEN')">KITCHEN</button>
-                    <button class="admin-tab-btn" data-station="DESSERTS" onclick="window.filterKitchen('DESSERTS')">DESSERTS</button>
-                    <button class="admin-tab-btn" data-station="TABLES" onclick="window.filterKitchen('TABLES')">TABLES / TABS</button>
+                    <button class="admin-tab-btn active" data-station="MASTER">ALL STATIONS</button>
+                    <button class="admin-tab-btn" data-station="BARISTA">BARISTA</button>
+                    <button class="admin-tab-btn" data-station="KITCHEN">KITCHEN</button>
+                    <button class="admin-tab-btn" data-station="DESSERTS">DESSERTS</button>
+                    <button class="admin-tab-btn" data-station="TABLES">TABLES / TABS</button>
                 </div>
 
                 <!-- Active vs. history filter + date sort - not relevant to the Tables view -->
                 <div class="kitchen-toolbar" id="kitchen-status-toolbar">
                     <div class="kitchen-status-filter">
-                        <button class="admin-btn active" data-status-filter="active" onclick="window.setKitchenStatusFilter('active')">ACTIVE</button>
-                        <button class="admin-btn" data-status-filter="history" onclick="window.setKitchenStatusFilter('history')">HISTORY</button>
-                        <button class="admin-btn" data-status-filter="all" onclick="window.setKitchenStatusFilter('all')">SHOW ALL</button>
+                        <button class="admin-btn active" data-status-filter="active">ACTIVE</button>
+                        <button class="admin-btn" data-status-filter="history">HISTORY</button>
+                        <button class="admin-btn" data-status-filter="all">SHOW ALL</button>
                     </div>
-                    <select id="kitchen-sort" onchange="window.setKitchenSort(this.value)"
+                    <select id="kitchen-sort"
                         style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:8pt;">
                         <option value="newest">NEWEST FIRST</option>
                         <option value="oldest">OLDEST FIRST</option>
@@ -314,76 +327,10 @@
              to find #held-item) but before app.js, which is just where it's
              placed - a plain non-module script always runs synchronously as
              the parser reaches it, so no DOMContentLoaded wrapper is needed
-             here since the container HTML is already above it in the file. -->
-        <script>
-            const itemClasses = [
-                'icon-americano',
-                'icon-matcha-drink',
-                'icon-cookie',
-                'icon-ice-cream',
-                'icon-ice-latte',
-                'icon-latte-svg'
-            ];
-            const heldItem = document.getElementById('held-item');
-            const mover = document.querySelector('.kitty-mover');
-            const biped = document.querySelector('.kitty-biped');
-            const quad = document.querySelector('.kitty-quad');
-            const kittyStage = document.querySelector('.pixel-kitty-container');
-
-            function randomizeItem() {
-                heldItem.classList.remove(...itemClasses);
-                const randomClass = itemClasses[Math.floor(Math.random() * itemClasses.length)];
-                heldItem.classList.add(randomClass);
-            }
-
-            randomizeItem(); // give the cat a random item immediately on page load
-
-            mover.addEventListener('animationiteration', (event) => {
-                // .kitty-mover actually runs several looping animations (opacity
-                // toggles, flip physics) that also fire 'animationiteration' -
-                // only re-randomize on the one that represents a full walk cycle.
-                if (event.animationName === 'move-and-tumble') {
-                    randomizeItem();
-                }
-            });
-
-            // cat.css's move-and-tumble keyframes cover the walk-right leg
-            // (0%-35% of the loop) over a distance of (stage width - 50px) -
-            // see .kitty-mover's left:-70px -> left:calc(100% - 120px). With
-            // a single fixed 15s loop duration, that same 35%-of-15s time
-            // budget has to cover far more ground on a wide desktop hero
-            // than on a phone, so the cat visibly sprints on big screens.
-            // Scaling the loop duration by the stage's actual width keeps
-            // the walking speed - not the loop's wall-clock length -
-            // constant, so it reads as the same casual pace everywhere.
-            const CASUAL_WALK_PX_PER_SEC = 80;
-            const WALK_RIGHT_FRACTION = 0.35; // matches the 0%-35% keyframe span
-            const MIN_LOOP_SECONDS = 8; // guards against a near-zero duration on a tiny/hidden stage
-
-            function applyCasualWalkPace() {
-                const stageWidth = kittyStage.getBoundingClientRect().width;
-                if (!stageWidth) return; // page not visible right now (e.g. display:none) - keep the last-known pace
-                const walkDistance = Math.max(stageWidth - 50, 50);
-                const loopSeconds = Math.max(walkDistance / (CASUAL_WALK_PX_PER_SEC * WALK_RIGHT_FRACTION), MIN_LOOP_SECONDS);
-                const loop = `${loopSeconds}s`;
-                // Only move-and-tumble/toggle-*/item-fly (the loop-position and
-                // sync animations) scale with the stage - walk-biped/walk-quad
-                // (the 1.4s leg-frame cycle) stay fixed so the actual stride
-                // cadence still looks like a normal walk, just covering more
-                // steps over the now-longer loop instead of shuffling faster.
-                mover.style.animationDuration = loop;
-                heldItem.style.animationDuration = loop;
-                biped.style.animationDuration = `1.4s, ${loop}`;
-                quad.style.animationDuration = `1.4s, ${loop}`;
-            }
-
-            applyCasualWalkPace();
-            let resizePaceTimer = null;
-            window.addEventListener('resize', () => {
-                clearTimeout(resizePaceTimer);
-                resizePaceTimer = setTimeout(applyCasualWalkPace, 200);
-            });
-        </script>
+             here since the container HTML is already above it in the file.
+             External file (not inline) so script-src doesn't need
+             'unsafe-inline' just for this. -->
+        <script src="js/cat-mascot.js"></script>
 
         <!-- Main JS entry point (Module type required for ES6 imports) -->
         <script type="module" src="js/app.js"></script>

@@ -37,11 +37,11 @@ export function renderImagePickerModal({ onSelect }) {
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 26px; width: min(640px, 92vw); max-height: 85vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">CHOOSE IMAGE</h2>
-            <p id="ip-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 8px;"></p>
+            <p id="ip-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 8px;"></p>
 
             <label for="ip-file-input" class="admin-btn" style="display:inline-block; cursor:pointer; margin-bottom:16px;">[ UPLOAD NEW IMAGE ]</label>
             <input id="ip-file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="display:none;" />
-            <span id="ip-upload-status" style="font-size:8pt; color:var(--color-text-muted); margin-left:8px;"></span>
+            <span id="ip-upload-status" aria-live="polite" style="font-size:8pt; color:var(--color-text-muted); margin-left:8px;"></span>
 
             <div style="font-size:9px; letter-spacing:.12em; color:var(--color-text-muted); text-transform:uppercase; margin: 12px 0 8px; border-left:3px solid var(--color-accent); padding-left:8px;">Bucket</div>
             <div id="ip-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px; min-height:60px;">
@@ -67,10 +67,10 @@ export function renderImagePickerModal({ onSelect }) {
             .map(
                 (u) => `
             <div style="position:relative; border:1px solid var(--color-border); background:var(--color-bg);">
-                <button type="button" class="ip-pick" data-url="${escapeHtml(u.url)}" title="${escapeHtml(u.originalName)}" style="display:block; width:100%; padding:0; border:none; background:none; cursor:pointer;">
-                    <img src="${escapeHtml(u.url)}" style="width:100%; height:80px; object-fit:cover; display:block;" />
+                <button type="button" class="ip-pick" data-url="${escapeHtml(u.url)}" title="${escapeHtml(u.originalName)}" aria-label="Use image: ${escapeHtml(u.originalName)}" style="display:block; width:100%; padding:0; border:none; background:none; cursor:pointer;">
+                    <img src="${escapeHtml(u.url)}" alt="${escapeHtml(u.originalName)}" style="width:100%; height:80px; object-fit:cover; display:block;" />
                 </button>
-                <button type="button" class="ip-delete" data-id="${escapeHtml(u.id)}" title="Delete" style="position:absolute; top:2px; right:2px; width:20px; height:20px; line-height:18px; padding:0; background:var(--color-danger); color:#000; border:none; cursor:pointer; font-weight:bold;">&times;</button>
+                <button type="button" class="ip-delete" data-id="${escapeHtml(u.id)}" title="Delete" aria-label="Delete image: ${escapeHtml(u.originalName)}" style="position:absolute; top:2px; right:2px; width:20px; height:20px; line-height:18px; padding:0; background:var(--color-danger); color:#000; border:none; cursor:pointer; font-weight:bold;">&times;</button>
             </div>
         `
             )

@@ -49,6 +49,13 @@ is what "Guest" login uses to find your order afterwards - a guest can only
 ever see orders placed under the exact phone number they typed in, nothing
 else. A logged-in customer sees orders tied to their account instead.
 
+Every order also gets a QR code on its confirmation screen that opens a
+no-login tracking page (`?track=<token>`) - useful for checking on an
+order from a different device, or without remembering a phone number/
+password later. The token only ever resolves that one order's status
+(number, items, paid/pending, total) - never a customer's full order
+history or any personal info.
+
 This was designed so it drops into a real database later with no rework:
 every place that reads/writes users, menu items, config, or orders goes
 through a small set of functions (`readJson`/`writeJson`, `findUserById`,
@@ -93,30 +100,20 @@ single coffee shop's volume. **Back these files up** - there's no
 replication, so if the machine running this dies, you lose order and
 account history unless you're backing up `./data/`.
 
-## Known limitation worth knowing about: online payments are still trust-based
+## Online payments: real verification via Razorpay (optional)
 
-Marking an `ONLINE` order as paid currently happens automatically when the
-order is created - there's no verification that money actually arrived,
-because that requires integrating a real UPI/payment-gateway webhook
-(Razorpay, Cashfree, PhonePe Business, etc.), which needs a merchant
-account and credentials only you can set up. The QR code requests the
-*correct amount* (fixed from the original build), but a customer could
-still show "payment pending" at the counter without having actually paid.
-Wiring up a real payment gateway's server-to-server confirmation is the
-natural next step - happy to help with that once you've picked a provider.
+By default, marking an `ONLINE` order as paid happens automatically when
+the order is created - there's no verification that money actually
+arrived, and a customer could show "payment pending" at the counter
+without having actually paid. Turning on Razorpay (Admin -> Payments &
+Tax -> enter your merchant Key ID/Secret and enable it) closes this gap:
+the server creates a real Razorpay order and only marks it paid once
+Razorpay's checkout widget hands back a payment that passes signature
+verification server-side. Off or unconfigured, nothing changes - it falls
+back to the original UPI-QR trust-based flow exactly as before.
 
 ## Good next steps (not done yet)
 
-- Real payment verification (see above) - Razorpay is the target gateway
-  once you have a merchant account and API keys
-- Migrate the remaining `onclick=""` handlers to `addEventListener` so the
-  Content-Security-Policy can drop `unsafe-inline` entirely
-- Real multi-currency - the currency symbol is stored in config but not
-  actually threaded through every price display; today it's really
-  "configurable symbol, hardcoded formatting"
-- QR-code order tracking - a customer scans a code at checkout to watch
-  their own order status without logging in, instead of the phone-based
-  guest flow that exists today
 - **SMS/WhatsApp order-ready and low-stock alerts** - currently these only
   show in-app (staff dashboard, order status widget). Wiring up a real
   provider (Twilio, MSG91, or Meta's WhatsApp Business API) needs an
