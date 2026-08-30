@@ -1024,20 +1024,11 @@ function updateCartUI() {
  * here, so the printed receipt can never drift from what was actually
  * charged/quoted.
  */
-window.printBill = (order) => {
-    const printWindow = window.open("", "_blank");
-    printWindow.document.write(`
-        <html>
-        <head>
-            <style>
-                body { font-family: 'Courier New', monospace; width: 80mm; padding: 10px; color: #000; }
-                .center { text-align: center; }
-                .hr { border-bottom: 1px dashed #000; margin: 10px 0; }
-                .row { display: flex; justify-content: space-between; font-size: 9pt; margin: 3px 0; }
-                .total { font-weight: bold; font-size: 12pt; border-top: 1px solid #000; padding-top: 5px; }
-            </style>
-        </head>
-        <body onload="window.print(); window.close();">
+/** The receipt content itself - shared by the print window (printBill) and
+ *  the on-screen preview (showBillPreview) so clicking an order number ever
+ *  shows anything other than exactly what would come out of the printer. */
+function billReceiptBodyHtml(order) {
+    return `
             <div class="center">
                 ${siteConfig.logoUrl ? `<img src="${escapeHtml(siteConfig.logoUrl)}" style="max-width:120px; max-height:60px; margin-bottom:6px;" />` : ""}
                 <h3>${escapeHtml(siteConfig.shopName || "SEVEN BITS COFFEE")}</h3>
@@ -1080,10 +1071,58 @@ window.printBill = (order) => {
             </div>`
                     : ""
             }
+    `;
+}
+
+/** `.bill-receipt` (not a bare `body` selector) so this same rule block is
+ *  safe to reuse inline in the main page's own DOM (showBillPreview) as well
+ *  as inside the print window's isolated document (printBill) - a bare
+ *  `body{...}` rule would otherwise leak out and restyle the whole app. */
+const RECEIPT_STYLE_TAG = `
+    <style>
+        .bill-receipt { font-family: 'Courier New', monospace; width: 80mm; max-width: 100%; box-sizing: border-box; padding: 10px; color: #000; margin: 0 auto; }
+        .bill-receipt .center { text-align: center; }
+        .bill-receipt .hr { border-bottom: 1px dashed #000; margin: 10px 0; }
+        .bill-receipt .row { display: flex; justify-content: space-between; font-size: 9pt; margin: 3px 0; }
+        .bill-receipt .total { font-weight: bold; font-size: 12pt; border-top: 1px solid #000; padding-top: 5px; }
+    </style>
+`;
+
+window.printBill = (order) => {
+    const printWindow = window.open("", "_blank");
+    printWindow.document.write(`
+        <html>
+        <head>${RECEIPT_STYLE_TAG}</head>
+        <body class="bill-receipt" onload="window.print(); window.close();">
+            ${billReceiptBodyHtml(order)}
         </body>
         </html>
     `);
     printWindow.document.close();
+};
+
+/** On-screen bill preview - clicking an order/bill number (My Orders, Order
+ *  History) shows exactly this same receipt markup instead of immediately
+ *  triggering a print dialog, with PRINT/CLOSE actions of its own. */
+window.showBillPreview = (order) => {
+    document.getElementById("bill-preview-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "bill-preview-overlay";
+    overlay.className = "modal-overlay";
+    overlay.style.zIndex = "5200";
+    overlay.innerHTML = `
+        <div class="modal-content" style="background:#fff; padding:0; width:min(360px, 92vw); max-height:88vh; overflow-y:auto; border: 2px solid var(--color-accent);">
+            ${RECEIPT_STYLE_TAG}
+            <div class="bill-receipt" style="padding:16px; width:auto;">${billReceiptBodyHtml(order)}</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:0 16px 16px;">
+                <button type="button" id="bill-preview-print" style="padding:11px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-weight:bold; cursor:pointer; text-transform:uppercase; font-family:'Courier New', monospace;">Print</button>
+                <button type="button" id="bill-preview-close" style="padding:11px; background:#ddd; color:#000; border:none; cursor:pointer; text-transform:uppercase; font-family:'Courier New', monospace;">Close</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById("bill-preview-print").addEventListener("click", () => window.printBill(order));
+    document.getElementById("bill-preview-close").addEventListener("click", () => overlay.remove());
 };
 
 window.printKOT = (order) => {

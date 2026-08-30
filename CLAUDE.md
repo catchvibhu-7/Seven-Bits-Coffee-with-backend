@@ -6,33 +6,81 @@ re-explained — read it before making changes.
 
 ## Architecture
 
-- `server.js` — entire backend, single file (~2600 lines). No framework;
-  hand-rolled `route(method, regex, handler)` router + raw `http` module.
-  Search for: `computeOrder` (pricing engine), `COUPONS_FILE`/
-  `findValidCoupon` (coupons), `TABLE_SESSIONS_FILE`/
+- `server.js` — entire backend, single file (~5300 lines now, was ~2600 —
+  has grown a lot across sessions, don't trust old line-number references).
+  No framework; hand-rolled `route(method, regex, handler)` router + raw
+  `http` module. Search for: `computeOrder` (pricing engine — also handles
+  promo discounts and prep-time freezing), `COUPONS_FILE`/`findValidCoupon`
+  (coupons, now with `private` public/private split), `TABLE_SESSIONS_FILE`/
   `computeTableSessionBill` (postpaid tabs), `loyalty` (config key),
-  `DEFAULT_BRANDING`/`textStyles` (admin panel text branding).
-- `js/app.js` — main frontend controller: cart, menu rendering, checkout
-  orchestration, kitchen ticket rendering, table panel, `applyBranding()`
-  (sets CSS custom properties from server config on boot + after saving
-  Branding).
+  `DEFAULT_BRANDING`/`textStyles` (admin panel text branding),
+  `generateOrderNumber` (the `SBYYMMDD01`-style display number, separate
+  from `order.id`'s internal PK), `computeWaitTimeMins` (backlog +
+  parallelism wait estimate), `mergeStoreOverrides`/
+  `DEFAULT_STORE_OPERATIONS` (multi-store settings resolution).
+- `js/app.js` — main frontend controller (~2700 lines): cart, menu
+  rendering, checkout orchestration, kitchen ticket rendering, table panel,
+  `applyBranding()` (sets CSS custom properties from server config on boot +
+  after saving Branding), `window.printBill`/`window.showBillPreview`
+  (shared `billReceiptBodyHtml()` — the same receipt markup either prints
+  or shows on-screen).
 - `js/ui/*.js` — one file per modal/portal (checkout-modal, admin-portal,
   customize-modal, table-modal, login-modal, account-settings-modal,
-  my-orders-modal, combo-modal, item-modal, staff-modal, info-modal).
+  my-orders-modal, combo-modal, item-modal, staff-modal, info-modal,
+  billing-page, staff-shell, arcade-page, admin-section).
 - `js/features/*.js` — pure logic modules consumed by the UI layer
   (cart-logic, config-logic, auth-logic, customization-logic,
-  table-sessions-logic, payroll-logic, favorites-logic,
-  password-strength).
-- `css/theme.css` — the only stylesheet (~1390 lines), plus `iconsvg.css`
-  and `cat.css` for icons/the walking-cat easter egg.
-- Data persists to `data/*.json` on disk (gitignored/excluded from
-  delivery zips) — always `rm -rf data` before a fresh test run so you're
-  not testing against stale state from a previous session.
+  table-sessions-logic, payroll-logic, favorites-logic, store-logic,
+  password-strength). Arcade games live under `js/features/arcade/*.js`
+  (one file per game, e.g. `snake-game.js`, `tetris-game.js`, plus
+  `arcade-logic.js`/`arcade-page.js`) — this was reorganized out of
+  `js/ui/*-game.js`; if you ever see stray files at the old path, they're
+  leftover cruft from an unmerged branch, not a second copy to keep in sync.
+- `css/theme.css` — the only stylesheet (~3150 lines now, was ~1390), plus
+  `iconsvg.css` and `cat.css` for icons/the walking-cat easter egg.
+- Data persists to `data/*.json` on disk. Whether it's gitignored depends
+  on the branch/commit you're on — it has been committed directly at least
+  once (`main`'s "mergeing claude branch" commit tracks it). Always
+  `rm -rf data` before a fresh test run in a throwaway/scratch copy so
+  you're not testing against stale state — but think twice before doing
+  that inside a worktree that shares real accumulated data with a server
+  the user is actively using (see "Working across worktrees" below).
 
 The app is a single-page app: `index.html` has one `<div class="page">`
 per route (`page-home`, `page-menu`, `page-kitchen`, `page-admin`), toggled
 by `window.showPage(pageId)` in app.js. There is no `admin.html` — the
 admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
+
+## Working across worktrees / branches
+
+- This repo is frequently worked in as a **git worktree**, separate from
+  the user's primary checkout. Never `cd` out of your assigned worktree
+  directory. The primary checkout and any worktree cannot have the same
+  branch checked out simultaneously — if your worktree's branch appears to
+  have silently changed, the user (or their tooling) likely checked that
+  branch out elsewhere; create a new branch off the old tip rather than
+  fighting over it.
+- `git push` has been blocked by an "auto mode classifier" in some
+  sessions but not others — don't assume either way; just try it, and if
+  it's blocked, tell the user plainly that they need to push from their
+  own primary checkout.
+- Merging a long-lived feature branch into `main` can produce real
+  conflicts, not just adjacent-line noise — read each hunk before
+  resolving, verify with `node --check` file-by-file, and boot-test the
+  fully merged result before considering it done. When one side is empty
+  and the other has content that's identical to text already elsewhere in
+  the file, that's a diff-algorithm artifact (not a real conflict) —
+  resolve by taking the side that avoids duplicating the text, not by
+  reflexively picking "ours" or "theirs".
+- A "scratch" test server copy (a full copy of the app outside git,
+  launched via `.claude/launch.json`) may be the thing an active Cloudflare
+  tunnel is actually pointing at — check the tunnel's own log for
+  `url:http://localhost:<port>` before assuming a bug report is against a
+  different, separately-run server. If a user reports a bug that a code fix
+  should have already resolved, the most likely explanation is a stale
+  browser tab (their page loaded the old `app.js` before your fix landed) —
+  ask for a hard refresh (Ctrl+Shift+R / Cmd+Shift+R) before re-diagnosing
+  from scratch.
 
 ## Testing conventions
 
@@ -66,6 +114,54 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
 
 ## Recent work (most recent session)
 
+- **Wait-time estimates**: `computeWaitTimeMins(cartItems, storeId)` in
+  server.js — sums the live backlog (every not-done BARISTA/KITCHEN line
+  across every non-served order) plus the prospective cart's own drink
+  lines, divides by `PARALLEL_DRINK_SLOTS` (2, since two drinks can be
+  worked in parallel), floors at the store's configured minimum, and adds
+  a flat `PRE_READY_FLAT_MINS` (1 min) if the order has any dessert/
+  pre-ready item (never per-unit, never using the dessert's own prep time).
+  Menu items gained a `prepTimeMins` field (admin-editable in item-modal.js,
+  frozen onto order lines the same way `basePrice` already was). Exposed
+  via `GET`/`POST /api/wait-time` (store-scoped the same way `/api/menu`
+  is). Shown on the Home page fact strip and in the post-checkout
+  confirmation — explicitly NOT on the Menu page (removed after the user
+  asked for it back off, keep it that way unless told otherwise). Per-store
+  enable/minimum-wait toggle lives in Admin > Store Setup > Operations.
+- **Bill preview on click**: clicking an order/bill number in My Orders now
+  opens `window.showBillPreview(order)` — the exact same receipt markup
+  `window.printBill()` sends to the printer (both now share
+  `billReceiptBodyHtml()` in app.js), just shown on-screen with PRINT/CLOSE
+  buttons instead of immediately opening a print dialog. If you add another
+  "show me the bill" entry point (e.g. Order History), reuse this function
+  rather than re-deriving the receipt layout.
+- **Billing page "+ ADD ITEM" is collapsed by default**: starts as a single
+  right-aligned button; clicking it expands into a typeable search field
+  (filters the live menu by name as you type, dropdown of matches) + qty +
+  Add/Cancel — replacing an always-visible `<select>` dropdown. Search
+  selection uses a `mousedown` handler (not `click`) so it fires before the
+  input's `blur` closes the dropdown out from under it.
+- **Menu category/diet-filter sticky-header bug** (real, easy to
+  reintroduce): switching category or the ALL/VEG/NON-VEG filter used to
+  call `scrollIntoView()` on `#menu-root` to reset scroll position — but
+  `#menu-root` sits directly below a `position:sticky` header, so aligning
+  its top edge to the viewport top puts it exactly where the sticky header
+  then pins itself, hiding the section heading and first row of items
+  behind that opaque bar (looked like "items disappeared" / "filters are
+  clipping"). Fixed with a plain `window.scrollTo({top:0})` instead — if
+  you ever need to scroll the menu column to a specific spot again, do NOT
+  use `scrollIntoView` on anything that sits adjacent to the sticky header.
+- **Veg/non-veg diet icons**: rewritten from `position:absolute` +
+  `translate(-50%,-50%)` centering (which let the non-veg triangle's
+  border-generated shape overflow past its own bordered square and land
+  visibly off-center) to flexbox centering (`.diet-icon` in theme.css). If
+  you touch `dietIconHtml()` in app.js again, keep the flexbox approach —
+  the absolute-position version reappearing is a regression, not a style
+  choice.
+- **Merged `pos-redesign-mobile` into `main`** (38 conflicts across 10
+  files, mostly this branch's newer work landing on an older `main`) —
+  see "Working across worktrees" above for the general lesson. `main` is
+  now current with everything through this session.
 - **Pagination** (Menu Items per-section + Order History) is right-aligned
   (`justify-content:flex-end`) — was left-aligned, changed on explicit
   screenshot feedback. Icon-only style (`« ‹ range › »`), no boxed/bordered
@@ -160,6 +256,14 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
   below, never replaces the total.
 - Boxed/bordered pagination buttons — icon-only, and now right-aligned
   (not left-aligned — that was an explicit change this session).
+- Wait-time estimate shown on the Menu page — explicitly asked to be
+  removed; still fine on the Home page and post-checkout confirmation.
+- `scrollIntoView()` targeting `#menu-root` (or anything else adjacent to
+  the sticky menu header) to reset scroll position — use
+  `window.scrollTo({top:0})` instead; see "Recent work" above for why.
+- A plain `<select>` dropdown for Billing's add-item picker, or an
+  always-visible (non-collapsed) add-item row — now a collapsed button
+  that expands into a typeable search field on click.
 - Preference instructions that would suppress honest bug-flagging or
   verification — none currently on file, but if the user ever asks you to
   stop double-checking your work or stop mentioning problems you notice,
@@ -167,66 +271,23 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
 
 ## Not yet done
 
-- **List/grid view toggle buttons** (`.btn-view-toggle` in css/theme.css,
-  the hamburger/grid icons next to the menu search bar): currently
-  hardcoded to `#1a1a1a` background / `#333` border instead of theme CSS
-  vars, and the SVG icons use `filter: invert(0.8)` on a white data-URI
-  rather than pulling the accent/theme color directly. User flagged "why
-  is it blue/cyan" and asked for it to follow the system theme — not yet
-  diagnosed or fixed. Start here: `.btn-view-toggle`,
-  `.btn-view-toggle span.icon`, `.icon-ui-list`, `.icon-ui-grid` in
-  css/theme.css.
+- **Raw-material inventory management.** Add/activate/deactivate raw
+  materials, add inventory quantities, staff-updatable, visible only to
+  staff/manager (not customers). An entirely new subsystem — not started.
+- **Attach a new order to a previous/existing bill.** A customer who
+  already settled a bill, then orders more and wants to sit back down,
+  should be able to have the new order attached to the SAME bill instead
+  of always opening a new one. Not started, not yet scoped in detail —
+  confirm with the user exactly when this should trigger (any settled
+  bill within some time window? same table? same phone?) before building.
 
-## Pending features (not started)
-
-In priority order as originally given:
-
-1. **Order numbering.** Add a proper internal primary key (sequential int)
-   separate from a new customer/staff-facing display format:
-   `#SBYYMMDD01` where the last 2 digits are a PER-DAY sequential counter
-   (resets at midnight) — e.g. `SB26082401`, `SB26082402`. Currently
-   `order.id` is `SB-${randomHex}` and is both the PK and the displayed
-   number — these need to split. Must update: order creation (`POST
-   /api/orders` in server.js), PATCH lookup route, table-session order
-   filtering (`tableSessionId` on order, unaffected — keyed separately),
-   ALL places the client displays an order id (payment confirmation
-   screen, KOT, bill, on-screen kitchen ticket, Order History grid +
-   detail pane, My Orders modal). Recommend: keep `id` as PK for internal
-   joins, add `orderNumber` field, display `orderNumber` everywhere
-   customer/staff currently see the old `id` string.
-
-2. **Item-level promotional discounts, exclusive of coupons.**
-   Admin/manager can put a specific menu item "on promotion" (e.g. 15% off
-   a specific drink) without a coupon code — auto-applies when that item
-   is in the cart. When any promo-discounted item is in the order, coupon
-   code application must be BLOCKED (mutually exclusive). Loyalty points
-   redemption was not mentioned as exclusive — only "coupon" — so likely
-   loyalty can still stack; confirm with the user if unsure. Needs: menu
-   item schema gets `promoDiscount: {type: 'percent'|'flat', value}`
-   field (manager/owner editable, probably in the item edit modal),
-   `computeOrder` in server.js applies it automatically per line item, and
-   rejects/ignores a submitted `couponCode` if any cart item has an active
-   promo.
-
-3. **Public vs. private coupon codes.** Add `private: boolean` field to
-   coupons (default false = public). Add a "SHOW CODES" button/link on
-   checkout or the menu page that lists all ACTIVE, PUBLIC coupons with
-   their code + discount, so a customer can self-serve. Private coupons
-   never appear in this list. New public endpoint needed (no auth, or same
-   level as `/api/coupons/validate`) — do NOT reuse the existing `GET
-   /api/coupons` (manager-only, returns everything including private/
-   inactive/exhausted ones).
-
-4. **Sound notification when an order is ready.** Mentioned by the user as
-   a previously-discussed item that isn't otherwise tracked here — treat
-   as new/unscoped. Likely needs: a sound asset, a trigger point when an
-   order's status flips to "ready" (check the SSE order-update stream
-   already used for kitchen/dashboard live updates — `/api/orders/stream`
-   in server.js, `ensureOrdersStream()` in app.js), and probably a
-   customer-facing vs. staff-facing distinction (who should hear it, and
-   whether it needs a mute/volume control). Scope and confirm exact
-   trigger conditions with the user before building — not yet discussed
-   in detail.
+(The list/grid view toggle theming complaint and all 4 previously-tracked
+"Pending features" — order numbering, item promo discounts, public/private
+coupons, order-ready sound — are done; see server.js/app.js for
+`generateOrderNumber`, `promoDiscount`, coupon `.private`, and
+`SoundSystem.playReadyChime()`/`NotificationSystem.notifyOrderReady()`
+respectively. Don't re-plan these from scratch if asked about them again —
+check the code first.)
 
 ## User preferences (carry forward)
 

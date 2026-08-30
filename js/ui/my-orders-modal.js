@@ -57,7 +57,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
                   (order) => `
             <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 10px 0; font-size: 9pt;">
                 <div style="display:flex; justify-content: space-between;">
-                    <span>#${order.orderNumber || order.id} <span style="color:var(--color-text-muted); font-size:7pt;">${new Date(order.createdAt).toLocaleDateString()}</span></span>
+                    <button type="button" class="mo-bill-number-btn" data-order-id="${order.id}" style="background:none; border:none; padding:0; cursor:pointer; color:var(--color-text); font-family:inherit; font-size:inherit; text-decoration:underline; text-underline-offset:2px;">#${order.orderNumber || order.id} <span style="color:var(--color-text-muted); font-size:7pt; text-decoration:none;">${new Date(order.createdAt).toLocaleDateString()}</span></button>
                     <span style="font-weight:bold;">${currencySymbol()}${order.total.toFixed(2)}</span>
                 </div>
                 <div style="font-size:8pt; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
@@ -79,6 +79,12 @@ export function renderMyOrdersModal(orders, { onReorder }) {
 
     document.body.appendChild(overlay);
     document.getElementById("mo-close").addEventListener("click", () => overlay.remove());
+    overlay.querySelectorAll(".mo-bill-number-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const order = orders.find((o) => o.id === btn.dataset.orderId);
+            if (order) window.showBillPreview?.(order);
+        });
+    });
     overlay.querySelectorAll(".mo-reorder-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
             const order = orders.find((o) => o.id === btn.dataset.orderId);

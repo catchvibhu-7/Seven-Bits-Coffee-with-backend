@@ -363,12 +363,8 @@ async function renderBillDetail() {
             ${
                 itemsEditable
                     ? `
-            <div style="display:flex; gap:8px; align-items:center; padding:10px 14px; flex-wrap:wrap;">
-                <select id="billing-add-item-select" style="flex:1 1 140px; min-width:120px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;">
-                    ${menuItemsForPicker.map((m) => `<option value="${m.id}">${escapeHtml(m.name)} (${money(m.price)})</option>`).join("")}
-                </select>
-                <input id="billing-add-item-qty" type="number" min="1" value="1" style="width:52px; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;" />
-                <button type="button" id="billing-add-item-btn" style="flex:none; padding:7px 14px; background:var(--color-border); color:var(--color-text); border:none; font-size:9.5px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;">+ Add item</button>
+            <div id="billing-add-item-row" style="padding:10px 14px; display:flex; justify-content:flex-end;">
+                <button type="button" id="billing-add-item-toggle" style="padding:7px 14px; background:var(--color-border); color:var(--color-text); border:none; font-size:9.5px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;">+ Add item</button>
             </div>`
                     : ""
             }
@@ -442,22 +438,86 @@ async function renderBillDetail() {
             submitItemEdit(rawItems);
         });
     });
-    detail.querySelector("#billing-add-item-btn")?.addEventListener("click", () => {
-        const select = detail.querySelector("#billing-add-item-select");
-        const qtyInput = detail.querySelector("#billing-add-item-qty");
-        const id = Number(select?.value);
-        const quantity = Math.max(1, parseInt(qtyInput?.value, 10) || 1);
-        if (!id) return;
-        const rawItems = order.items.map(lineToRawItem);
-        // "regular"/"regular", no extras/notes - the same default shape the
-        // customer-facing ADD BIT stepper uses (see defaultCartKey() in
-        // app.js) - merges into an existing plain line for the same item
-        // instead of always adding a new row, matching that same behavior.
-        const isDefault = (c) => (c.size === "regular" || !c.size) && (c.milk === "regular" || !c.milk) && !(c.extras || []).length && !c.notes;
-        const existing = rawItems.find((r) => r.id === id && isDefault(r.customization));
-        if (existing) existing.quantity += quantity;
-        else rawItems.push({ id, quantity, customization: { size: "regular", milk: "regular", extras: [], notes: "" } });
-        submitItemEdit(rawItems);
+    // The add-item control starts as just a right-aligned button - expanding
+    // it into a search field + qty + confirm only on click keeps the bill
+    // detail visually calm when nobody's actively adding anything, matching
+    // every other "EDIT" section in this app that opens a form on demand
+    // rather than always showing one.
+    const addItemRow = detail.querySelector("#billing-add-item-row");
+    addItemRow?.querySelector("#billing-add-item-toggle")?.addEventListener("click", () => {
+        addItemRow.innerHTML = `
+            <div style="flex:1 1 160px; min-width:140px; position:relative;">
+                <input id="billing-add-item-search" type="text" autocomplete="off" placeholder="Search item..." style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;" />
+                <div id="billing-add-item-results" style="display:none; position:absolute; top:100%; left:0; right:0; margin-top:2px; z-index:20; background:var(--color-surface); border:1px solid var(--color-accent); box-shadow:4px 4px 0 rgba(0,0,0,0.4); max-height:180px; overflow-y:auto;"></div>
+            </div>
+            <input id="billing-add-item-qty" type="number" min="1" value="1" style="width:52px; flex:none; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;" />
+            <button type="button" id="billing-add-item-btn" style="flex:none; padding:7px 14px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-size:9.5px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;">Add</button>
+            <button type="button" id="billing-add-item-cancel" style="flex:none; padding:7px 10px; background:none; border:none; color:var(--color-text-muted); font-size:9.5px; text-transform:uppercase; cursor:pointer;">Cancel</button>
+        `;
+        addItemRow.style.cssText = "padding:10px 14px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;";
+
+        const searchInput = addItemRow.querySelector("#billing-add-item-search");
+        const resultsEl = addItemRow.querySelector("#billing-add-item-results");
+        let selectedItem = null;
+
+        const renderResults = (query) => {
+            const q = query.trim().toLowerCase();
+            const matches = (q ? menuItemsForPicker.filter((m) => m.name.toLowerCase().includes(q)) : menuItemsForPicker).slice(0, 8);
+            if (!matches.length) {
+                resultsEl.style.display = "none";
+                resultsEl.innerHTML = "";
+                return;
+            }
+            resultsEl.innerHTML = matches
+                .map(
+                    (m) => `
+                <button type="button" class="billing-add-item-result" data-id="${m.id}" style="display:block; width:100%; text-align:left; padding:8px 10px; background:none; border:none; border-bottom:1px solid var(--color-border); color:var(--color-text); font-family:inherit; font-size:10px; cursor:pointer;">${escapeHtml(m.name)} <span style="color:var(--color-text-muted);">(${money(m.price)})</span></button>
+            `
+                )
+                .join("");
+            resultsEl.style.display = "block";
+            resultsEl.querySelectorAll(".billing-add-item-result").forEach((btn) => {
+                // mousedown (not click) fires before the input's blur, so the
+                // dropdown doesn't close itself out from under the click.
+                btn.addEventListener("mousedown", (e) => {
+                    e.preventDefault();
+                    selectedItem = menuItemsForPicker.find((m) => m.id === Number(btn.dataset.id));
+                    searchInput.value = selectedItem?.name || "";
+                    resultsEl.style.display = "none";
+                });
+            });
+        };
+
+        searchInput.addEventListener("input", () => {
+            selectedItem = null; // typing invalidates whatever was picked before
+            renderResults(searchInput.value);
+        });
+        searchInput.addEventListener("focus", () => renderResults(searchInput.value));
+        searchInput.addEventListener("blur", () => {
+            setTimeout(() => (resultsEl.style.display = "none"), 150);
+        });
+
+        addItemRow.querySelector("#billing-add-item-cancel").addEventListener("click", () => renderBillDetail());
+        addItemRow.querySelector("#billing-add-item-btn").addEventListener("click", () => {
+            const qtyInput = addItemRow.querySelector("#billing-add-item-qty");
+            const quantity = Math.max(1, parseInt(qtyInput?.value, 10) || 1);
+            if (!selectedItem) {
+                searchInput.style.borderColor = "var(--color-danger)";
+                searchInput.focus();
+                return;
+            }
+            const rawItems = order.items.map(lineToRawItem);
+            // "regular"/"regular", no extras/notes - the same default shape the
+            // customer-facing ADD BIT stepper uses (see defaultCartKey() in
+            // app.js) - merges into an existing plain line for the same item
+            // instead of always adding a new row, matching that same behavior.
+            const isDefault = (c) => (c.size === "regular" || !c.size) && (c.milk === "regular" || !c.milk) && !(c.extras || []).length && !c.notes;
+            const existing = rawItems.find((r) => r.id === selectedItem.id && isDefault(r.customization));
+            if (existing) existing.quantity += quantity;
+            else rawItems.push({ id: selectedItem.id, quantity, customization: { size: "regular", milk: "regular", extras: [], notes: "" } });
+            submitItemEdit(rawItems);
+        });
+        searchInput.focus();
     });
 
     // Enter in either field applies the same update as clicking the button -
