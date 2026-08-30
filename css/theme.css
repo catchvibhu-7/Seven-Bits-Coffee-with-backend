@@ -507,46 +507,176 @@ header {
     }
 }
 
-/* Rail collapses to a horizontal scrollable strip on narrow screens rather
-   than eating half the viewport width beside the content - logo/status/
-   auth footer drop to keep the strip compact, nav buttons scroll instead of
-   wrapping or overflowing the page itself. */
-@media (max-width: 720px) {
-    #app-shell {
-        flex-direction: column;
+/* ==========================================================================
+   MOBILE NAV: hamburger bar + slide-in drawer (js/ui/staff-shell.js's
+   renderMobileBar()/renderMobileDrawer()), replacing the rail/top-bar
+   entirely below 720px - modeled on the pattern most people already know
+   from apple.com's own mobile nav (a persistent minimal bar with a single
+   menu toggle; every nav destination lives inside the panel it opens,
+   nothing is ever fighting for space in the bar itself). Previously the
+   rail just collapsed into a horizontal scrollable strip here, which kept
+   every tab technically reachable but left LOGIN/the account button
+   fighting the tab list for the same cramped row (see the earlier fix
+   giving LOGIN a guaranteed-visible slot) - a dedicated drawer sidesteps
+   that class of bug entirely, since nothing in the bar itself needs to
+   shrink or scroll to fit: the bar only ever holds a logo and one button. */
+.mobile-nav-bar {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    z-index: 200;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    box-sizing: border-box;
+}
+.mobile-nav-bar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+}
+.mobile-nav-bar-logo-mark {
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: var(--color-accent);
+    font-family: "Courier New", monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mobile-nav-toggle-btn {
+    background: none;
+    border: 1px solid var(--color-border);
+    width: 40px;
+    height: 40px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+}
+.mobile-nav-toggle-icon,
+.mobile-nav-toggle-icon::before,
+.mobile-nav-toggle-icon::after {
+    width: 18px;
+    height: 2px;
+    background: var(--color-accent);
+    transition: transform 0.2s, opacity 0.2s;
+}
+.mobile-nav-toggle-icon {
+    position: relative;
+    display: block;
+}
+.mobile-nav-toggle-icon::before,
+.mobile-nav-toggle-icon::after {
+    content: "";
+    position: absolute;
+    left: 0;
+}
+.mobile-nav-toggle-icon::before {
+    top: -6px;
+}
+.mobile-nav-toggle-icon::after {
+    top: 6px;
+}
+/* Hamburger -> X, same morph apple.com's own toggle uses to show the panel
+   is open rather than relying on a second icon or a text label. */
+.mobile-nav-toggle-btn[aria-expanded="true"] .mobile-nav-toggle-icon {
+    background: transparent;
+}
+.mobile-nav-toggle-btn[aria-expanded="true"] .mobile-nav-toggle-icon::before {
+    top: 0;
+    transform: rotate(45deg);
+}
+.mobile-nav-toggle-btn[aria-expanded="true"] .mobile-nav-toggle-icon::after {
+    top: 0;
+    transform: rotate(-45deg);
+}
+
+.mobile-nav-drawer {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 4600; /* above every ordinary modal-overlay (3000+) so the drawer can always navigate away from one if needed */
+}
+.mobile-nav-drawer.open {
+    display: block;
+}
+.mobile-nav-drawer-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+}
+.mobile-nav-drawer-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(85vw, 320px);
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+}
+.mobile-nav-drawer.open .mobile-nav-drawer-panel {
+    transform: translateX(0);
+}
+@media (prefers-reduced-motion: reduce) {
+    .mobile-nav-drawer-panel {
+        transition: none;
     }
-    /* The rail drops out of position:fixed below (back to a normal-flow
-       row), so #app-main's fixed-rail margin-left (set in JS - see
-       setMainOffsetForLayout() in staff-shell.js) needs overriding back to
-       0 here; !important because it's fighting an inline style. */
+}
+.mobile-nav-drawer .staff-nav-list {
+    flex-direction: column;
+    margin: 16px 0;
+}
+.mobile-nav-drawer .staff-auth-section {
+    position: static;
+    width: auto;
+    border: none;
+    padding: 0;
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+@media (max-width: 720px) {
+    .staff-rail,
+    .staff-topbar,
+    .system-nav {
+        display: none !important;
+    }
+    .mobile-nav-bar {
+        display: flex;
+    }
+    /* Bar is fixed (not in #app-shell's flex flow, same as the rail/top-bar
+       it replaces here), so #app-main needs a matching top offset instead
+       of rendering underneath it - and the rail's own fixed-left offset
+       must be zeroed since the rail itself is hidden now. */
     #app-main {
         margin-left: 0 !important;
+        margin-top: 56px !important;
     }
-    .staff-rail {
-        width: 100%;
-        min-width: 0;
-        flex-shrink: 1; /* the base rule's flex:none (shrink:0) would otherwise force the page itself wider instead of scrolling inside this strip */
-        border-right: none;
-        border-bottom: 1px solid var(--color-border);
-        flex-direction: row;
-        align-items: center;
-        overflow-x: auto;
-        overscroll-behavior: contain;
-        padding: 10px;
-        /* Collapsed to a horizontal strip here - undo the desktop rail's
-           full-viewport-height pin, it should only be as tall as its row of
-           nav buttons. */
-        position: static;
-        height: auto;
-    }
-    .staff-rail-logo,
-    .staff-rail-status,
-    .staff-auth-section {
-        display: none;
-    }
-    .staff-nav-list {
-        flex-direction: row;
-        min-width: 0;
+}
+@media (min-width: 721px) {
+    .mobile-nav-bar,
+    .mobile-nav-drawer {
+        display: none !important;
     }
 }
 

@@ -60,6 +60,13 @@
              instead - see StaffShell in staff-shell.js for the switch. -->
         <div id="app-shell" style="display:flex; min-height:100vh;">
             <aside id="staff-rail" class="staff-rail" style="display:none;"></aside>
+            <!-- MOBILE NAV: below 720px this replaces the rail/top-bar entirely
+                 (see the mobile-nav-* rules in theme.css) - a persistent bar
+                 with just a logo and one toggle, plus the drawer it opens
+                 (js/ui/staff-shell.js's renderMobileBar()/renderMobileDrawer()),
+                 modeled on apple.com's own mobile nav pattern. -->
+            <header id="mobile-nav-bar" class="mobile-nav-bar"></header>
+            <div id="mobile-nav-drawer" class="mobile-nav-drawer"></div>
             <div id="app-main" style="flex:1; min-width:0; display:flex; flex-direction:column;">
 
         <!-- SYSTEM NAVIGATION: Persistent header for page switching -->

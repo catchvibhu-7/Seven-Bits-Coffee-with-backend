@@ -276,26 +276,33 @@ window.updateTimeclockWidget = updateTimeclockWidget; // staff-shell.js calls th
 async function updateTimeclockWidget() {
     // Lives inside the staff shell (js/ui/staff-shell.js), not the customer
     // nav - anyone who can see this (PAYROLL_ROLES) is always a KITCHEN_ROLES
-    // member too, so they always have the shell active.
-    const btn = document.getElementById("staff-timeclock-btn");
-    if (!btn) return;
+    // member too, so they always have the shell active. The rail/top-bar AND
+    // the mobile drawer all render unconditionally now (see StaffShell.render()),
+    // so there can be more than one of these in the DOM at once - update
+    // every copy via the shared class, not just whichever a plain
+    // getElementById happened to find first (the others would otherwise be
+    // stuck on their blank initial state forever).
+    const btns = document.querySelectorAll(".js-timeclock-btn");
+    if (!btns.length) return;
 
     if (!PAYROLL_ROLES.includes(session.role)) {
-        btn.style.display = "none";
+        btns.forEach((btn) => (btn.style.display = "none"));
         return;
     }
 
-    btn.style.display = "";
     const status = await PayrollSystem.clockStatus();
-    btn.dataset.clockedIn = status.clockedIn ? "1" : "0";
-    btn.textContent = status.clockedIn ? "\u23f9 CLOCK OUT" : "\u23f5 CLOCK IN";
-    btn.style.background = status.clockedIn ? "var(--color-danger)" : "var(--color-success)";
-    btn.style.color = "#000";
-    btn.style.border = "none";
+    btns.forEach((btn) => {
+        btn.style.display = "";
+        btn.dataset.clockedIn = status.clockedIn ? "1" : "0";
+        btn.textContent = status.clockedIn ? "\u23f9 CLOCK OUT" : "\u23f5 CLOCK IN";
+        btn.style.background = status.clockedIn ? "var(--color-danger)" : "var(--color-success)";
+        btn.style.color = "#000";
+        btn.style.border = "none";
+    });
 }
 
 window.handleTimeclockClick = async () => {
-    const btn = document.getElementById("staff-timeclock-btn");
+    const btn = document.querySelector(".js-timeclock-btn");
     const clockedIn = btn.dataset.clockedIn === "1";
     try {
         if (clockedIn) {
@@ -595,7 +602,7 @@ async function refreshOrderStatusWidget() {
     // instead of a fixed home-page card, so it's visible from any page - see
     // staff-shell.js's renderRail()/renderTopbar(), which call this after
     // every render (login, logout, layout switch, page navigation).
-    const targets = [document.getElementById("rail-order-widget"), document.getElementById("topbar-order-widget")].filter(Boolean);
+    const targets = [document.getElementById("rail-order-widget"), document.getElementById("topbar-order-widget"), document.getElementById("mobile-nav-order-widget")].filter(Boolean);
     if (targets.length === 0) return;
 
     if (!TRACKING_ROLES.includes(session.role)) {
