@@ -283,6 +283,16 @@ export const StaffShell = {
             if (rail) rail.innerHTML = "";
             this.renderTopbar(tabs, identityHtml);
         }
+        // Independent of the rail/top-bar preference above - which one of
+        // those is showing is a desktop-width choice, but below 720px
+        // neither renders at all (see theme.css) and this bar+drawer takes
+        // over instead, so it always needs its own up-to-date content. Its
+        // own identityHtml() call (distinct suffix) keeps its account
+        // button's id from colliding with the rail/top-bar's copy above,
+        // which renders unconditionally alongside it now rather than being
+        // cleared - see identityHtml()'s own comment for why that matters.
+        this.renderMobileBar();
+        this.renderMobileDrawer(tabs, this.identityHtml("-mobile"));
     },
 
     navButtonsHtml(tabs, { topbar } = {}) {
@@ -324,8 +334,19 @@ export const StaffShell = {
      *  instead - window.handleAccountClick() already branches on
      *  session.authenticated the same way the classic customer nav's own
      *  account button does. */
-    identityHtml() {
+    /** `idSuffix` keeps the id unique when this markup is inserted into more
+     *  than one container at once (rail/top-bar AND the mobile drawer all
+     *  render on every update now, regardless of which one is actually
+     *  visible at the current width - see render()) - window.renderAccountMenu()
+     *  positions its dropdown via document.getElementById() on whatever id
+     *  wireButtons() tells it was actually clicked, so two elements sharing
+     *  one id would let it resolve to the wrong (possibly hidden,
+     *  zero-sized) copy and open the dropdown at (0,0), the exact bug a
+     *  layout-switch used to cause here before ids were kept unique per
+     *  container. */
+    identityHtml(idSuffix = "") {
         const s = this.session || {};
+        const id = `staff-account-btn${idSuffix}`;
         if (!s.role) {
             // window.storeIndicatorHtml() (app.js) adds a compact "pick your
             // store" pill above LOGIN for a fully anonymous visitor - empty
@@ -335,13 +356,13 @@ export const StaffShell = {
             // account even matters.
             return `
                 ${window.storeIndicatorHtml?.() || ""}
-                <button type="button" id="staff-account-btn" class="staff-auth-identity"><span class="staff-auth-name">LOGIN</span></button>
+                <button type="button" id="${id}" class="staff-auth-identity"><span class="staff-auth-name">LOGIN</span></button>
             `;
         }
         const name = s.name || s.role.toUpperCase();
         const role = s.role.toUpperCase();
         return `
-            <button type="button" id="staff-account-btn" class="staff-auth-identity">
+            <button type="button" id="${id}" class="staff-auth-identity">
                 <span class="staff-auth-name">${escapeHtml(name)}</span>
                 <span class="staff-auth-role">${escapeHtml(role)}</span>
             </button>
@@ -356,8 +377,8 @@ export const StaffShell = {
             <div class="staff-rail-logo" style="display:flex; flex-direction:column; gap:2px;">
                 ${
                     wideLogo
-                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="${escapeHtml(shopDisplayName())}" style="max-width:100%; max-height:40px; object-fit:contain; align-self:flex-start; margin-bottom:6px;" />`
-                        : `<div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="${escapeHtml(shopDisplayName())}" class="shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="max-width:100%; max-height:40px; object-fit:contain; align-self:flex-start; margin-bottom:6px; cursor:pointer;" />`
+                        : `<div class="shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="display:flex; align-items:center; gap:8px; min-width:0; cursor:pointer;">
                             ${logoImageHtml(28)}
                             <div class="staff-rail-logo-mark">${shopDisplayName()}<span style="color:var(--color-text);">_</span></div>
                         </div>`
@@ -375,7 +396,7 @@ export const StaffShell = {
                  partly below the fold on a short window. -->
             <div class="staff-auth-section">
                 <div id="rail-order-widget" class="nav-order-widget"></div>
-                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none;"></button>
+                <button type="button" class="staff-logout-btn js-timeclock-btn" style="display:none;"></button>
                 ${identityHtml}
             </div>
         `;
@@ -390,27 +411,124 @@ export const StaffShell = {
         nav.classList.add("staff-topbar");
         const wideLogo = AdminConfig.settings.logoWideUrl;
         nav.innerHTML = `
-            <div class="staff-topbar-logo">
+            <div class="staff-topbar-logo shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="cursor:pointer;">
                 ${
                     wideLogo
                         ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="${escapeHtml(shopDisplayName())}" style="max-height:28px; object-fit:contain;" />`
                         : `${logoImageHtml(28)}
                            <span style="font-size:17px; font-weight:bold; letter-spacing:2px; color:var(--color-accent);">${shopShortForm()}</span>`
                 }
-                <span style="font-size:9px; letter-spacing:.18em; color:var(--color-text-muted);">${this.isStaffSession() ? "POS" : "ORDER"}</span>
+                <span class="staff-topbar-sublabel" style="font-size:9px; letter-spacing:.18em; color:var(--color-text-muted);">${this.isStaffSession() ? "POS" : "ORDER"}</span>
             </div>
             <nav class="staff-topbar-nav" aria-label="Site navigation">
                 ${this.navButtonsHtml(tabs, { topbar: true })}
             </nav>
             <div class="staff-topbar-identity">
                 <div id="topbar-order-widget" class="nav-order-widget"></div>
-                <button type="button" id="staff-timeclock-btn" class="staff-logout-btn" style="display:none;"></button>
+                <button type="button" class="staff-logout-btn js-timeclock-btn" style="display:none;"></button>
                 ${identityHtml}
             </div>
         `;
         this.wireButtons(nav);
         window.updateTimeclockWidget?.();
         window.refreshOrderStatusWidget?.();
+    },
+
+    /** Persistent mobile-width bar (<720px, see theme.css) - just a logo and
+     *  one toggle button, modeled on apple.com's own mobile nav: the bar
+     *  itself never needs to fit a tab list or an account button, so it can
+     *  never overflow no matter how many tabs exist or how long the shop
+     *  name is. Every actual destination lives in the drawer this opens -
+     *  see renderMobileDrawer(). */
+    renderMobileBar() {
+        const bar = document.getElementById("mobile-nav-bar");
+        if (!bar) return;
+        bar.innerHTML = `
+            <div class="mobile-nav-bar-logo shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="cursor:pointer;">
+                ${logoImageHtml(24)}
+                <span class="mobile-nav-bar-logo-mark">${shopDisplayName()}</span>
+            </div>
+            <button type="button" id="mobile-nav-toggle-btn" class="mobile-nav-toggle-btn" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-nav-drawer">
+                <span class="mobile-nav-toggle-icon" aria-hidden="true"></span>
+            </button>
+        `;
+        bar.querySelector("#mobile-nav-toggle-btn").addEventListener("click", () => this.toggleMobileDrawer());
+        // Wires .shell-logo-btn (see wireButtons()) - harmlessly no-ops for
+        // the tab/account/timeclock selectors it also looks for, since none
+        // of those exist in this bar's minimal logo+toggle markup.
+        this.wireButtons(bar);
+    },
+
+    /** The drawer's actual content - same tab list + identity/order-widget
+     *  footer the rail shows, just laid out for a slide-in panel instead of
+     *  a permanent sidebar. Rebuilt on every render() (not just when opened)
+     *  so an already-open drawer picks up a badge count or session change
+     *  immediately, same as the rail/top-bar always have. */
+    renderMobileDrawer(tabs, identityHtml) {
+        const drawer = document.getElementById("mobile-nav-drawer");
+        if (!drawer) return;
+        const wasOpen = drawer.classList.contains("open");
+        drawer.innerHTML = `
+            <div class="mobile-nav-drawer-backdrop"></div>
+            <div class="mobile-nav-drawer-panel">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <div class="mobile-nav-bar-logo-mark shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="cursor:pointer;">${shopDisplayName()}</div>
+                    <button type="button" id="mobile-nav-close-btn" class="mobile-nav-toggle-btn" aria-label="Close menu">
+                        <span class="mobile-nav-toggle-icon" style="background:transparent;"></span>
+                    </button>
+                </div>
+                <div class="staff-rail-sub">${this.isStaffSession() ? "Staff Terminal" : "Order Terminal"}</div>
+                <nav class="staff-nav-list" aria-label="Site navigation">
+                    ${this.navButtonsHtml(tabs)}
+                </nav>
+                <div class="staff-auth-section">
+                    <div id="mobile-nav-order-widget" class="nav-order-widget"></div>
+                    <button type="button" class="staff-logout-btn js-timeclock-btn" style="display:none;"></button>
+                    ${identityHtml}
+                </div>
+            </div>
+        `;
+        if (wasOpen) drawer.classList.add("open");
+        drawer.querySelector(".mobile-nav-drawer-backdrop").addEventListener("click", () => this.closeMobileDrawer());
+        // Every button inside the panel closes the drawer as a side effect
+        // of whatever it actually does (navigate a tab, open the account
+        // menu, open the order-status/My Orders popup, clock in/out) - not
+        // just the tab buttons. The order-status popup in particular sits at
+        // a LOWER z-index than this drawer (see theme.css's comment on
+        // .mobile-nav-drawer), so leaving the drawer open after opening it
+        // from in here rendered the popup invisibly behind the still-open
+        // panel - closing first avoids relying on z-index ordering alone.
+        // Delegated (one listener on the panel, not one per button) because
+        // the order-widget's own button is injected later, asynchronously,
+        // by window.refreshOrderStatusWidget() below - a direct per-button
+        // listener attached here would miss it entirely.
+        drawer.querySelector(".mobile-nav-drawer-panel").addEventListener("click", (e) => {
+            if (e.target.closest("button")) this.closeMobileDrawer();
+        });
+        this.wireButtons(drawer);
+        window.updateTimeclockWidget?.();
+        window.refreshOrderStatusWidget?.();
+    },
+
+    toggleMobileDrawer() {
+        const drawer = document.getElementById("mobile-nav-drawer");
+        if (!drawer) return;
+        if (drawer.classList.contains("open")) this.closeMobileDrawer();
+        else this.openMobileDrawer();
+    },
+
+    openMobileDrawer() {
+        const drawer = document.getElementById("mobile-nav-drawer");
+        const toggleBtn = document.getElementById("mobile-nav-toggle-btn");
+        drawer?.classList.add("open");
+        toggleBtn?.setAttribute("aria-expanded", "true");
+    },
+
+    closeMobileDrawer() {
+        const drawer = document.getElementById("mobile-nav-drawer");
+        const toggleBtn = document.getElementById("mobile-nav-toggle-btn");
+        drawer?.classList.remove("open");
+        toggleBtn?.setAttribute("aria-expanded", "false");
     },
 
     wireButtons(root) {
@@ -425,17 +543,43 @@ export const StaffShell = {
                 });
             });
         });
-        root.querySelector("#staff-account-btn")?.addEventListener("click", () => {
+        const accountBtn = root.querySelector('[id^="staff-account-btn"]');
+        accountBtn?.addEventListener("click", () => {
             // Anonymous visitor (no session at all) - open login/guest
             // instead of an account dropdown they don't have yet.
             if (!this.session?.role) {
                 window.handleAccountClick?.();
             } else {
-                window.renderAccountMenu?.("staff-account-btn");
+                // Passes THIS button's own (possibly suffixed) id rather than
+                // a hardcoded string - see identityHtml()'s comment on why
+                // more than one copy can exist in the DOM at once now.
+                window.renderAccountMenu?.(accountBtn.id);
             }
         });
-        root.querySelector("#staff-timeclock-btn")?.addEventListener("click", () => window.handleTimeclockClick?.());
+        root.querySelector(".js-timeclock-btn")?.addEventListener("click", () => window.handleTimeclockClick?.());
         root.querySelector("#anon-store-indicator")?.addEventListener("click", () => window.openStorePicker?.());
+        // The logo/shop-name mark, in whichever of rail/top-bar/mobile-bar/
+        // drawer this root is - a plain div (not a real <button>) so it
+        // needs its own keyboard handling and focus-visible styling (see
+        // .shell-logo-btn in theme.css), matching this app's existing
+        // precedent for other div-as-button nav elements.
+        root.querySelectorAll(".shell-logo-btn").forEach((el) => {
+            el.addEventListener("click", () => this.goHome());
+            el.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    this.goHome();
+                }
+            });
+        });
+    },
+
+    /** Wherever the logo/shop name is clicked - closes the drawer first
+     *  (if open) since this always navigates away from whatever the drawer
+     *  was showing. */
+    goHome() {
+        this.closeMobileDrawer();
+        window.showPage(this.isStaffSession() ? "staff-home" : "home");
     },
 
     // Snapshot of the customer nav's markup, captured once on first load

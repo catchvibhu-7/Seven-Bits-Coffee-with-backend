@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sbtest_redesign",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:\\Users\\kumar\\AppData\\Local\\Temp\\claude\\C--Users-kumar-Documents-GitHub-Seven-Bits-Coffee-with-backend--claude-worktrees-claude-md-context-217d78\\0736f94e-a1aa-4f7c-8c57-2a7beda60fc1\\scratchpad\\sbtest_redesign\\server.js"],
+      "env": { "PORT": "3050" },
+      "port": 3050
+    }
+  ]
+}

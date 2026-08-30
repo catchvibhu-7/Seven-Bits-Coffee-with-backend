@@ -78,6 +78,18 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
             <label style="font-size: 7pt; color: var(--color-text-muted);">STOCK COUNT (blank = unlimited, not tracked)</label>
             <input id="im-stock-count" type="number" min="0" step="1" placeholder="Unlimited" value="${item?.stockCount ?? ""}" style="${fieldStyle}" />
 
+            <label style="font-size: 7pt; color: var(--color-text-muted);">PREP TIME, MINS (used for the customer wait-time estimate - blank = default)</label>
+            <input id="im-prep-time" type="number" min="0" max="60" step="1" placeholder="3" value="${item?.prepTimeMins ?? ""}" style="${fieldStyle}" />
+
+            <label style="font-size: 7pt; color: var(--color-text-muted);">DIET</label>
+            <div style="display:flex; gap:8px; margin: 4px 0 12px;">
+                <button type="button" id="im-diet-veg" data-veg="true" class="admin-btn${item && item.isVeg === false ? "" : " admin-btn-primary"}" style="flex:1;">&#x1F7E2; VEG</button>
+                <button type="button" id="im-diet-nonveg" data-veg="false" class="admin-btn${item && item.isVeg === false ? " admin-btn-primary" : ""}" style="flex:1;">&#x1F534; NON-VEG</button>
+            </div>
+
+            <label style="font-size: 7pt; color: var(--color-text-muted);">ALLERGENS (optional - shown as a badge on the item card only when set)</label>
+            <input id="im-allergens" type="text" maxlength="120" placeholder="e.g. Contains nuts, dairy" value="${item?.allergens || ""}" style="${fieldStyle}" />
+
             <div style="display: grid; gap: 10px; margin-top: 10px;">
                 <button id="im-save" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">${isEdit ? "SAVE CHANGES" : "ADD ITEM"}</button>
                 <button id="im-cancel" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CANCEL</button>
@@ -120,6 +132,22 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
         });
     });
 
+    let isVeg = !(item && item.isVeg === false); // default veg, per the diet toggle's own initial styling above
+    const vegBtn = document.getElementById("im-diet-veg");
+    const nonVegBtn = document.getElementById("im-diet-nonveg");
+    function paintDietToggle() {
+        vegBtn.classList.toggle("admin-btn-primary", isVeg);
+        nonVegBtn.classList.toggle("admin-btn-primary", !isVeg);
+    }
+    vegBtn.addEventListener("click", () => {
+        isVeg = true;
+        paintDietToggle();
+    });
+    nonVegBtn.addEventListener("click", () => {
+        isVeg = false;
+        paintDietToggle();
+    });
+
     document.getElementById("im-promo-type").addEventListener("change", (e) => {
         document.getElementById("im-promo-value").style.display = e.target.value ? "" : "none";
     });
@@ -139,6 +167,8 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
         const promoType = document.getElementById("im-promo-type").value;
         const promoValue = Number(document.getElementById("im-promo-value").value);
         const stockCountRaw = document.getElementById("im-stock-count").value.trim();
+        const allergens = document.getElementById("im-allergens").value.trim();
+        const prepTimeRaw = document.getElementById("im-prep-time").value.trim();
 
         if (!name) return (errorEl.textContent = "Name is required.");
         if (!Number.isFinite(price) || price <= 0) return (errorEl.textContent = "Enter a valid price.");
@@ -147,12 +177,16 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
         if (stockCountRaw && (!Number.isInteger(Number(stockCountRaw)) || Number(stockCountRaw) < 0)) {
             return (errorEl.textContent = "Stock count must be zero or a positive whole number.");
         }
+        if (prepTimeRaw && (!Number.isFinite(Number(prepTimeRaw)) || Number(prepTimeRaw) < 0 || Number(prepTimeRaw) > 60)) {
+            return (errorEl.textContent = "Prep time must be between 0 and 60 minutes.");
+        }
 
         const promoDiscount = promoType ? { type: promoType, value: promoValue } : null;
         const stockCount = stockCountRaw ? Number(stockCountRaw) : null;
+        const prepTimeMins = prepTimeRaw ? Number(prepTimeRaw) : null;
 
         try {
-            await onSave({ name, price, section, icon, story, promoDiscount, imageUrl: imageUrl || null, stockCount });
+            await onSave({ name, price, section, icon, story, promoDiscount, imageUrl: imageUrl || null, stockCount, isVeg, allergens: allergens || null, prepTimeMins });
             overlay.remove();
         } catch (e) {
             errorEl.textContent = e.message || "Could not save item";

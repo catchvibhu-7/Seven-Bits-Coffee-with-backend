@@ -361,7 +361,14 @@ header {
     color: var(--color-accent);
 }
 
-/* Top-bar layout - same tab data as the rail, arranged horizontally. */
+/* Top-bar layout - same tab data as the rail, arranged horizontally.
+   Logo and identity/login are flex:none so they can never be squeezed out
+   or wrapped away - only .staff-topbar-nav (the actual tab list) scrolls
+   horizontally when it doesn't fit (see below). Previously this whole row
+   used flex-wrap:wrap with a fixed height:60px, so once the tabs + identity
+   button stopped fitting on one line, whatever wrapped to a second row
+   rendered outside that fixed height - on a narrow/tablet width that could
+   be the LOGIN button itself, made unreachable rather than just untidy. */
 .staff-topbar {
     display: flex;
     align-items: center;
@@ -370,7 +377,7 @@ header {
     height: 60px;
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     /* Genuinely pinned to the screen (like .staff-rail's position:fixed),
        not just sticky - #app-main gets a matching margin-top whenever this
        layout is active (see setMainOffsetForLayout() in staff-shell.js) so
@@ -396,12 +403,23 @@ header {
     display: flex;
     gap: 8px;
     flex: 1;
-    flex-wrap: wrap;
+    /* Enough for at least a couple of characters of the first tab to peek
+       through and hint "scroll me" - a bare min-width:0 lets the logo and
+       identity buttons squeeze this down to nothing on a real phone width,
+       where it'd otherwise vanish with no visible affordance at all. */
+    min-width: 64px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior: contain;
+    /* Room for the row to actually scroll under a mouse/trackpad, not just
+       touch - matches the rail's own mobile-strip precedent. */
+    padding-bottom: 2px;
 }
 
 .staff-topbar-nav .staff-nav-btn {
     padding: 8px 16px;
     min-height: 40px;
+    flex: none;
 }
 
 .staff-topbar-identity {
@@ -473,46 +491,192 @@ header {
     max-width: 140px;
 }
 
-/* Rail collapses to a horizontal scrollable strip on narrow screens rather
-   than eating half the viewport width beside the content - logo/status/
-   auth footer drop to keep the strip compact, nav buttons scroll instead of
-   wrapping or overflowing the page itself. */
-@media (max-width: 720px) {
-    #app-shell {
-        flex-direction: column;
-    }
-    /* The rail drops out of position:fixed below (back to a normal-flow
-       row), so #app-main's fixed-rail margin-left (set in JS - see
-       setMainOffsetForLayout() in staff-shell.js) needs overriding back to
-       0 here; !important because it's fighting an inline style. */
-    #app-main {
-        margin-left: 0 !important;
-    }
-    .staff-rail {
-        width: 100%;
-        min-width: 0;
-        flex-shrink: 1; /* the base rule's flex:none (shrink:0) would otherwise force the page itself wider instead of scrolling inside this strip */
-        border-right: none;
-        border-bottom: 1px solid var(--color-border);
-        flex-direction: row;
-        align-items: center;
-        overflow-x: auto;
-        overscroll-behavior: contain;
-        padding: 10px;
-        /* Collapsed to a horizontal strip here - undo the desktop rail's
-           full-viewport-height pin, it should only be as tall as its row of
-           nav buttons. */
-        position: static;
-        height: auto;
-    }
-    .staff-rail-logo,
-    .staff-rail-status,
-    .staff-auth-section {
+/* Frees up horizontal room for the scrollable tab strip on a real phone
+   width, where the logo + identity/login buttons alone can already fill
+   most of the viewport - a decorative sublabel isn't worth the space there. */
+@media (max-width: 480px) {
+    .staff-topbar-sublabel {
         display: none;
     }
-    .staff-nav-list {
-        flex-direction: row;
-        min-width: 0;
+    .staff-topbar {
+        gap: 10px;
+        padding: 0 10px;
+    }
+    .staff-topbar-identity .staff-auth-name {
+        max-width: 80px;
+    }
+}
+
+/* ==========================================================================
+   MOBILE NAV: hamburger bar + slide-in drawer (js/ui/staff-shell.js's
+   renderMobileBar()/renderMobileDrawer()), replacing the rail/top-bar
+   entirely below 720px - modeled on the pattern most people already know
+   from apple.com's own mobile nav (a persistent minimal bar with a single
+   menu toggle; every nav destination lives inside the panel it opens,
+   nothing is ever fighting for space in the bar itself). Previously the
+   rail just collapsed into a horizontal scrollable strip here, which kept
+   every tab technically reachable but left LOGIN/the account button
+   fighting the tab list for the same cramped row (see the earlier fix
+   giving LOGIN a guaranteed-visible slot) - a dedicated drawer sidesteps
+   that class of bug entirely, since nothing in the bar itself needs to
+   shrink or scroll to fit: the bar only ever holds a logo and one button. */
+.mobile-nav-bar {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    z-index: 200;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    box-sizing: border-box;
+}
+.mobile-nav-bar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+}
+.mobile-nav-bar-logo-mark {
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: var(--color-accent);
+    font-family: "Courier New", monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mobile-nav-toggle-btn {
+    background: none;
+    border: 1px solid var(--color-border);
+    width: 40px;
+    height: 40px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+}
+.mobile-nav-toggle-icon,
+.mobile-nav-toggle-icon::before,
+.mobile-nav-toggle-icon::after {
+    width: 18px;
+    height: 2px;
+    background: var(--color-accent);
+    transition: transform 0.2s, opacity 0.2s;
+}
+.mobile-nav-toggle-icon {
+    position: relative;
+    display: block;
+}
+.mobile-nav-toggle-icon::before,
+.mobile-nav-toggle-icon::after {
+    content: "";
+    position: absolute;
+    left: 0;
+}
+.mobile-nav-toggle-icon::before {
+    top: -6px;
+}
+.mobile-nav-toggle-icon::after {
+    top: 6px;
+}
+/* Hamburger -> X, same morph apple.com's own toggle uses to show the panel
+   is open rather than relying on a second icon or a text label. */
+.mobile-nav-toggle-btn[aria-expanded="true"] .mobile-nav-toggle-icon {
+    background: transparent;
+}
+.mobile-nav-toggle-btn[aria-expanded="true"] .mobile-nav-toggle-icon::before {
+    top: 0;
+    transform: rotate(45deg);
+}
+.mobile-nav-toggle-btn[aria-expanded="true"] .mobile-nav-toggle-icon::after {
+    top: 0;
+    transform: rotate(-45deg);
+}
+
+.mobile-nav-drawer {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 4600; /* above every ordinary modal-overlay (3000+) so the drawer can always navigate away from one if needed */
+}
+.mobile-nav-drawer.open {
+    display: block;
+}
+.mobile-nav-drawer-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+}
+.mobile-nav-drawer-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(85vw, 320px);
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+}
+.mobile-nav-drawer.open .mobile-nav-drawer-panel {
+    transform: translateX(0);
+}
+@media (prefers-reduced-motion: reduce) {
+    .mobile-nav-drawer-panel {
+        transition: none;
+    }
+}
+.mobile-nav-drawer .staff-nav-list {
+    flex-direction: column;
+    margin: 16px 0;
+}
+.mobile-nav-drawer .staff-auth-section {
+    position: static;
+    width: auto;
+    border: none;
+    padding: 0;
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+@media (max-width: 720px) {
+    .staff-rail,
+    .staff-topbar,
+    .system-nav {
+        display: none !important;
+    }
+    .mobile-nav-bar {
+        display: flex;
+    }
+    /* Bar is fixed (not in #app-shell's flex flow, same as the rail/top-bar
+       it replaces here), so #app-main needs a matching top offset instead
+       of rendering underneath it - and the rail's own fixed-left offset
+       must be zeroed since the rail itself is hidden now. */
+    #app-main {
+        margin-left: 0 !important;
+        margin-top: 56px !important;
+    }
+}
+@media (min-width: 721px) {
+    .mobile-nav-bar,
+    .mobile-nav-drawer {
+        display: none !important;
     }
 }
 
@@ -588,6 +752,18 @@ header {
 @media (max-width: 900px) {
     .menu-cart-panel {
         display: none !important; /* progressive enhancement only - see comment above */
+    }
+    /* Below this width the floating "BITS IN CART" bar (.footer-container,
+       #cart-status) takes over from the sidebar panel - it's sticky, not
+       fixed, but with a tall scrollable list above it (#menu-root) it stays
+       visually pinned near the bottom of the viewport for virtually the
+       entire scroll, which otherwise covers whatever menu item happens to
+       be sitting there. Reserved unconditionally rather than only while the
+       cart bar itself is visible - simpler than keeping a class in sync with
+       cart.length, and the empty space at the very end of the list when the
+       cart's empty is a much smaller cost than covered content. */
+    #menu-root {
+        padding-bottom: 90px;
     }
 }
 @media (min-width: 901px) {
@@ -848,6 +1024,49 @@ header {
 .system-nav.staff-topbar ~ #page-menu .menu-sticky-header {
     top: 60px;
 }
+/* Same problem, mobile's own fixed bar: sticky's top:0 pins relative to the
+   viewport itself, not to #app-main's margin-top offset (margin only moves
+   the element's STARTING position, sticky's stuck position ignores it) - so
+   without this the header stuck at the literal top of the screen, right
+   underneath .mobile-nav-bar, instead of just below it. */
+@media (max-width: 720px) {
+    .menu-sticky-header {
+        top: 56px;
+    }
+    /* iOS Safari auto-zooms the whole page on focusing any text input whose
+       computed font-size is under 16px - this app's compact monospace UI
+       runs most inputs at 8-10pt, so tapping into any of them (search
+       fields, modal forms, the admin customer search) yanked the viewport
+       into a zoomed-in state with no visible cause. 16px is the documented
+       threshold Safari actually checks; !important because these fields'
+       sizes are set by dozens of individual inline styles across the app,
+       not one shared class this could otherwise override normally. */
+    input[type="text"],
+    input[type="password"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="number"],
+    input[type="search"],
+    input[type="date"],
+    input:not([type]),
+    textarea,
+    select {
+        font-size: 16px !important;
+    }
+    /* Every modal (checkout, login, table, my-orders, admin section-edit,
+       etc.) sets its own inline max-height: 85vh/90vh on .modal-content -
+       on iOS Safari with the address bar visible, vh is computed against
+       the LARGER viewport as if the bar were hidden, so 90vh of that is
+       taller than what's actually visible on screen: content gets clipped
+       at both the top and bottom instead of scrolling inside the modal like
+       it does everywhere else. dvh reflects the real, currently-visible
+       viewport - !important because dozens of individual inline styles
+       otherwise win over a plain class rule. */
+    .modal-content {
+        max-height: 90dvh !important;
+        overflow-y: auto !important;
+    }
+}
 .menu-page-header {
     padding: 10px 0 14px;
 }
@@ -957,6 +1176,80 @@ header {
     text-align: left;
 }
 
+/* ALL/VEG/NON-VEG row - own row below the category chips (see
+   renderMenuDietFilter() in app.js), same pill styling as the category
+   chips just smaller since it's a secondary filter, not the primary one. */
+.menu-diet-filter {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0 16px;
+}
+.menu-diet-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-family: "Courier New", monospace;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    min-height: 30px;
+}
+.menu-diet-chip:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+.menu-diet-chip.active {
+    background: rgba(217, 119, 6, 0.1);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+/* Veg/non-veg mark (dietIconHtml() in app.js) - a small bordered square with
+   a centered dot (veg) or triangle (non-veg), on menu item cards and the
+   ALL/VEG/NON-VEG filter row above. Centering the shape via flexbox
+   (instead of the old position:absolute + translate(-50%,-50%) approach)
+   keeps it inside its own border box at any font-size - the old math sized
+   the shape's offset against the parent's content box while the shape's
+   own border-generated triangle wasn't accounted for, so it could poke out
+   past the square's border and also land visibly off-center. */
+.diet-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid #16a34a;
+    vertical-align: middle;
+    margin-right: 5px;
+    flex: none;
+}
+.diet-icon-nonveg {
+    border-color: #b91c1c;
+}
+.diet-icon-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #16a34a;
+}
+.diet-icon-triangle {
+    width: 0;
+    height: 0;
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+    border-bottom: 6px solid #b91c1c;
+    /* A triangle's visual weight sits below its own bounding box's center
+       (the point at top has no "mass"), so centering the box alone still
+       reads as slightly high - this nudges it down a hair to compensate. */
+    margin-top: 1px;
+}
+
 /* Pager below the menu grid/list - reuses .admin-pg-btn (theme.css's Admin
    order-history/menu-items pagination) rather than a one-off style. */
 .menu-pager {
@@ -1033,6 +1326,17 @@ header {
     margin-right: 20px;
     color: var(--color-accent);
     font-weight: bold;
+}
+/* .info (name/story/customize-link) had no flex sizing at all here - as a
+   plain flex item next to the image and .item-controls it sized itself to
+   its own content's natural width instead of sharing the row, so on a
+   narrow screen the row as a whole either overflowed or squeezed
+   .item-controls into whatever was left instead of wrapping its own text.
+   min-width:0 is what actually lets a flex child's text wrap/shrink below
+   its content's natural width - flex:1 alone doesn't do that on its own. */
+.menu-list .info {
+    flex: 1;
+    min-width: 0;
 }
 
 /* Grid View Specifics - mirrors the mockup's product-card layout: a
@@ -1145,6 +1449,16 @@ header {
         margin-right: 5px;
         flex-direction: row;
         align-items: center;
+    }
+    /* A real uploaded item photo (Admin > Menu Items) wasn't covered by the
+       .icon shrink above at all - it's a separate class for the same slot
+       (see .menu-item-photo) - so an item with a real photo stayed full
+       56px width here regardless, eating into the room .info needed to wrap
+       its text properly. */
+    .menu-list .menu-item-photo {
+        width: 40px;
+        height: 40px;
+        margin-right: 8px;
     }
 
     /* Hide story text on small screens to prioritize the Action Row */
@@ -1264,7 +1578,14 @@ header {
        The 100% in the width formula resolves against this element's own
        containing block, so it also can't ever be wider than its parent. */
     margin-left: auto;
-    z-index: 5000;
+    /* Below every .modal-overlay (3000+, and its own 4500-5500 special
+       cases like the order-status/my-orders popups and admin section-edit
+       modal) - this bar only ever needs to float above ordinary menu-page
+       content, never above a dialog. It used to outrank all of those,
+       so checkout/login/any modal opened from the menu page had this bar
+       visibly bleeding through on top of it, un-dimmed by the modal's own
+       backdrop. */
+    z-index: 200;
     display: flex !important;
     flex-direction: row !important;
     align-items: center;
@@ -1335,7 +1656,7 @@ header {
     border: 2px solid #d97706;
     width: 250px;
     display: none;
-    z-index: 5001;
+    z-index: 201; /* one above .footer-container, same relative order as before */
     box-shadow: 8px 8px 0px #000;
 }
 .jump-overlay, .cart-bar, .btn-jump-fab {
@@ -2507,6 +2828,15 @@ input[type="checkbox"]:disabled {
    <textarea> elements, so this keyboard-focusable div had no visible
    focus ring at all despite already being operable via Enter/Space. */
 .arcade-card:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+/* The logo/shop-name mark in every nav layout (rail/top-bar/mobile-bar/
+   drawer) is a plain div with role="button" (see staff-shell.js's
+   goHome()), not a real <button> - the app's global button:focus-visible
+   rule doesn't reach it. */
+.shell-logo-btn:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
 }

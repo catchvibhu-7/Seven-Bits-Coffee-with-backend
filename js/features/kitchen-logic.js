@@ -109,6 +109,23 @@ export const KitchenSystem = {
         return data;
     },
 
+    /** Adds/removes/re-quantities lines on an order that hasn't been paid
+     *  yet - `items` is the same raw cart shape POST /api/orders takes
+     *  (id/quantity/customization, not pre-priced), so the server can
+     *  re-price everything itself rather than trusting client math. */
+    async editItems(orderId, items) {
+        const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "editItems", items })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not update items");
+        await this.fetchOrders();
+        return data;
+    },
+
     async markPaid(orderId, paymentMethod = null) {
         const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
             method: "PATCH",

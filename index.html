@@ -40,6 +40,17 @@
         <title>Seven Bits Coffee // Hazaribagh</title>
     </head>
     <body>
+        <!-- Covers the static #page-home markup below until app.js's boot
+             sequence knows who's actually signed in and has picked the right
+             landing page (staff-home vs. home vs. a tracking deep link) -
+             without this, a reloading staff session (or anyone signed in at
+             all) briefly saw the generic anonymous homepage flash before the
+             swap, since refreshSession() is an async round trip. Removed by
+             app.js right after window.showPage() resolves for the very
+             first time. -->
+        <div id="boot-loading-overlay" style="position:fixed; inset:0; z-index:9999; background:var(--color-bg); color:var(--color-accent); display:flex; align-items:center; justify-content:center; font-family:'Courier New', monospace; font-size:12px; letter-spacing:0.14em; text-transform:uppercase;">
+            LOADING<span class="staff-blink-cursor">_</span>
+        </div>
         <!-- APP SHELL: for a customer/guest (or anyone logged out), #staff-rail
              stays display:none below and this wrapper is visually a no-op -
              the customer experience is byte-for-byte what it was before this
@@ -49,6 +60,13 @@
              instead - see StaffShell in staff-shell.js for the switch. -->
         <div id="app-shell" style="display:flex; min-height:100vh;">
             <aside id="staff-rail" class="staff-rail" style="display:none;"></aside>
+            <!-- MOBILE NAV: below 720px this replaces the rail/top-bar entirely
+                 (see the mobile-nav-* rules in theme.css) - a persistent bar
+                 with just a logo and one toggle, plus the drawer it opens
+                 (js/ui/staff-shell.js's renderMobileBar()/renderMobileDrawer()),
+                 modeled on apple.com's own mobile nav pattern. -->
+            <header id="mobile-nav-bar" class="mobile-nav-bar"></header>
+            <div id="mobile-nav-drawer" class="mobile-nav-drawer"></div>
             <div id="app-main" style="flex:1; min-width:0; display:flex; flex-direction:column;">
 
         <!-- SYSTEM NAVIGATION: Persistent header for page switching -->
@@ -191,6 +209,11 @@
                         <button type="button" id="menu-view-list-btn">&#9776; List</button>
                     </div>
                 </div>
+                <!-- Populated in renderMenuDietFilter() (app.js) - ALL/VEG/NON-VEG,
+                     kept as its own row rather than squeezed into the chips row
+                     above, which already has its own width-measured overflow
+                     logic (see renderMenuCategoryChips()'s own comment). -->
+                <div id="menu-diet-filter" class="menu-diet-filter"></div>
             </div>
 
             <div class="menu-controls">
