@@ -623,6 +623,18 @@ header {
     .menu-cart-panel {
         display: none !important; /* progressive enhancement only - see comment above */
     }
+    /* Below this width the floating "BITS IN CART" bar (.footer-container,
+       #cart-status) takes over from the sidebar panel - it's sticky, not
+       fixed, but with a tall scrollable list above it (#menu-root) it stays
+       visually pinned near the bottom of the viewport for virtually the
+       entire scroll, which otherwise covers whatever menu item happens to
+       be sitting there. Reserved unconditionally rather than only while the
+       cart bar itself is visible - simpler than keeping a class in sync with
+       cart.length, and the empty space at the very end of the list when the
+       cart's empty is a much smaller cost than covered content. */
+    #menu-root {
+        padding-bottom: 90px;
+    }
 }
 @media (min-width: 901px) {
     /* The persistent Cart/KOT panel already shows the running total, so the
@@ -1298,7 +1310,14 @@ header {
        The 100% in the width formula resolves against this element's own
        containing block, so it also can't ever be wider than its parent. */
     margin-left: auto;
-    z-index: 5000;
+    /* Below every .modal-overlay (3000+, and its own 4500-5500 special
+       cases like the order-status/my-orders popups and admin section-edit
+       modal) - this bar only ever needs to float above ordinary menu-page
+       content, never above a dialog. It used to outrank all of those,
+       so checkout/login/any modal opened from the menu page had this bar
+       visibly bleeding through on top of it, un-dimmed by the modal's own
+       backdrop. */
+    z-index: 200;
     display: flex !important;
     flex-direction: row !important;
     align-items: center;
@@ -1369,7 +1388,7 @@ header {
     border: 2px solid #d97706;
     width: 250px;
     display: none;
-    z-index: 5001;
+    z-index: 201; /* one above .footer-container, same relative order as before */
     box-shadow: 8px 8px 0px #000;
 }
 .jump-overlay, .cart-bar, .btn-jump-fab {

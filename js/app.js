@@ -498,17 +498,16 @@ window.showPage = async (pageId) => {
 
     // Keep the shell's highlighted tab in sync no matter what triggered
     // this navigation (its own nav buttons, or e.g. staff-home's "NEW
-    // ORDER" button calling showPage('menu') directly). The shell is active
-    // for ANY real session now (customer/guest included, see
-    // updateStaffShellForSession()), not just staff - this used to check
-    // KITCHEN_ROLES only, a leftover from when it was staff-exclusive, so a
-    // customer's clicked tab updated StaffShell.activeTab in memory (see
-    // wireButtons()) but the nav DOM never actually re-rendered to show it -
-    // Home stayed visually highlighted forever after the first paint.
-    if (session.role) {
-        StaffShell.setActiveFromPageId(pageId);
-        StaffShell.render();
-    }
+    // ORDER" button, or the home hero's "START ORDER" button, calling
+    // showPage('menu') directly). The shell shows for EVERY visitor now,
+    // including a fully anonymous one (see updateStaffShellForSession()) -
+    // this used to gate on session.role, a leftover from when the shell was
+    // staff-exclusive, so an anonymous visitor's tab click updated
+    // StaffShell.activeTab in memory (see wireButtons()) but the nav DOM
+    // never actually re-rendered to show it - Home stayed visually
+    // highlighted forever after the first paint.
+    StaffShell.setActiveFromPageId(pageId);
+    StaffShell.render();
 
     if (pageId === "staff-home") {
         await renderStaffHome(session);
