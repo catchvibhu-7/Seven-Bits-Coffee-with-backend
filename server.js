@@ -3798,6 +3798,91 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
     if (typeof body.tableNumber === "string") {
       order.tableNumber = body.tableNumber.trim().slice(0, 20) || null;
     }
+  } else if (body.action === "editItems") {
+    // Lets staff add/remove lines or change quantities on an order that
+    // hasn't been paid yet - from the Billing page (fixing a discrepancy
+    // before settling) or a table's bill (adding another round mid-meal).
+    // Reuses computeOrder()'s own pricing/tax engine rather than
+    // hand-rolling the math again here, so an edited order is priced
+    // exactly the way a fresh one would be - server-authoritative prices,
+    // live stock checks, the same promo/coupon rules - never trusting
+    // whatever price the client thinks a line costs.
+    if (order.isPaid) return sendJson(res, 400, { error: "This bill is already settled" });
+    if (!Array.isArray(body.items)) return sendJson(res, 400, { error: "items must be an array" });
+
+    // Undo this order's CURRENT coupon/loyalty side effects first (same
+    // reasoning as adjustBill below) - computeOrder() re-validates the
+    // coupon/loyalty balance fresh, which would otherwise double-count
+    // against a balance this order had already debited.
+    if (order.couponId) {
+      const coupons = readJson(COUPONS_FILE, []);
+      const c = coupons.find((x) => x.id === order.couponId);
+      if (c) {
+        c.usedCount = Math.max(0, (c.usedCount || 0) - 1);
+        writeJson(COUPONS_FILE, coupons);
+      }
+    }
+    if (order.customerId && (order.loyaltyPointsRedeemed > 0 || order.loyaltyPointsEarned > 0)) {
+      const users = readJson(USERS_FILE, []);
+      const user = users.find((u) => u.id === order.customerId);
+      if (user) {
+        user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) + (order.loyaltyPointsRedeemed || 0) - (order.loyaltyPointsEarned || 0));
+        writeJson(USERS_FILE, users);
+      }
+    }
+
+    let priced;
+    try {
+      priced = computeOrder(body.items, order.method, order.serviceChargeActive, order.tipApplied, {
+        couponCode: order.couponCode,
+        redeemPoints: order.loyaltyPointsRedeemed,
+        customerId: order.customerId,
+        storeId: order.storeId
+      });
+    } catch (e) {
+      // Re-apply the OLD side effects before failing, since the undo above
+      // already happened - otherwise a rejected edit (bad item, out of
+      // stock) would leave the coupon/loyalty balance permanently wrong.
+      if (order.couponId) {
+        const coupons = readJson(COUPONS_FILE, []);
+        const c = coupons.find((x) => x.id === order.couponId);
+        if (c) {
+          c.usedCount = (c.usedCount || 0) + 1;
+          writeJson(COUPONS_FILE, coupons);
+        }
+      }
+      if (order.customerId && (order.loyaltyPointsRedeemed > 0 || order.loyaltyPointsEarned > 0)) {
+        const users = readJson(USERS_FILE, []);
+        const user = users.find((u) => u.id === order.customerId);
+        if (user) {
+          user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) - order.loyaltyPointsRedeemed + order.loyaltyPointsEarned);
+          writeJson(USERS_FILE, users);
+        }
+      }
+      return sendJson(res, 400, { error: e.message });
+    }
+
+    // Every line resets to isDone:false - an edited check genuinely needs
+    // the kitchen/counter to reconcile against it, the same way an amended
+    // physical KOT would get re-fired rather than assumed still correct.
+    Object.assign(order, priced);
+
+    if (order.couponId) {
+      const coupons = readJson(COUPONS_FILE, []);
+      const c = coupons.find((x) => x.id === order.couponId);
+      if (c) {
+        c.usedCount = (c.usedCount || 0) + 1;
+        writeJson(COUPONS_FILE, coupons);
+      }
+    }
+    if (order.customerId && (order.loyaltyPointsRedeemed > 0 || order.loyaltyPointsEarned > 0)) {
+      const users = readJson(USERS_FILE, []);
+      const user = users.find((u) => u.id === order.customerId);
+      if (user) {
+        user.loyaltyPoints = Math.max(0, (user.loyaltyPoints || 0) - order.loyaltyPointsRedeemed + order.loyaltyPointsEarned);
+        writeJson(USERS_FILE, users);
+      }
+    }
   } else if (body.action === "adjustBill") {
     // Staff toggling service charge/tip and applying a coupon/loyalty
     // redemption from the Billing page, for an order that reached billing

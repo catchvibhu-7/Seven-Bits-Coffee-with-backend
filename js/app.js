@@ -1601,7 +1601,7 @@ function renderMenu(filterQuery = "") {
                 <div class="info">
                     <div class="name">${favButton}${item.name}${isSoldOut ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
-                    ${isUnavailable ? "" : `<button class="btn-customize-link open-customize-btn" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE (SIZE/MILK/EXTRAS)</span></button>`}
+                    ${isUnavailable ? "" : `<button class="btn-customize-link open-customize-btn" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE</span></button>`}
                     ${staffRequestHtml}
                 </div>
                 <div class="item-controls">
@@ -1948,6 +1948,7 @@ async function renderTablesPanel() {
                         </div>
                         <div>
                             <button class="admin-btn" data-edit-table="${t.id}">EDIT</button>
+                            <button class="admin-btn" data-items-table="${t.id}">ITEMS</button>
                             <button class="admin-btn" data-close-table="${t.id}">CLOSE &amp; BILL</button>
                         </div>
                     </div>
@@ -1982,10 +1983,16 @@ async function renderTablesPanel() {
         });
     });
 
-    root.querySelectorAll("[data-close-table]").forEach((btn) => {
+    root.querySelectorAll("[data-close-table], [data-items-table]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-            const table = await TableSessionsSystem.get(btn.dataset.closeTable);
+            const id = btn.dataset.closeTable || btn.dataset.itemsTable;
+            const table = await TableSessionsSystem.get(id);
             if (!table) return;
+            // Same modal either way now - it's the general "manage this
+            // table's bill" view (add/adjust/remove items any time before
+            // it's closed), not exclusively a pre-close confirmation. Only
+            // difference is which button the staff member actually reached
+            // it from; CANCEL always just dismisses without closing.
             renderTableBillModal({
                 table,
                 onClose: async (markPaid) => {
@@ -1995,7 +2002,8 @@ async function renderTablesPanel() {
                     } catch (e) {
                         alert(e.message);
                     }
-                }
+                },
+                onDismiss: () => renderTablesPanel()
             });
         });
     });
@@ -2075,9 +2083,14 @@ function renderKitchen() {
                   ? `<button class="kot-mark-served-btn" style="flex:1; padding:10px; background:var(--color-success); border:2px solid var(--color-success); color:#000; font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;">&gt; Mark served</button>`
                   : `<span style="flex:1; padding:10px; text-align:center; font-size:11px; color:var(--color-text-muted); letter-spacing:.08em; text-transform:uppercase;">// served</span>`;
 
+            // Settling a bill (and now, editing its items) is the Billing
+            // tab's job exclusively - this used to be a one-tap "Bill"
+            // shortcut right here, but that meant two different places could
+            // both mark an order paid with no item-editing safety net either
+            // one. This is a plain status indicator now, not a control.
             const paidActionHtml = order.isPaid
                 ? `<span style="padding:10px 13px; background:none; border:2px solid var(--color-border); color:var(--color-success); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase;">\u2713 Paid</span>`
-                : `<button class="kot-mark-paid-btn" style="padding:10px 13px; background:#000; border:2px solid var(--color-border); color:var(--color-text); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer;">Bill</button>`;
+                : `<span style="padding:10px 13px; background:none; border:2px solid var(--color-border); color:var(--color-text-muted); font-size:11px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase;">Unpaid</span>`;
 
             ticket.innerHTML = `
             <div class="kot-header">
@@ -2106,7 +2119,6 @@ function renderKitchen() {
         `;
             ticket.querySelector(".kot-mark-completed-btn")?.addEventListener("click", () => window.markCompleted(order.id));
             ticket.querySelector(".kot-mark-served-btn")?.addEventListener("click", () => window.markServed(order.id));
-            ticket.querySelector(".kot-mark-paid-btn")?.addEventListener("click", () => window.markPaid(order.id));
             root.appendChild(ticket);
         });
 
@@ -2147,11 +2159,6 @@ function renderKitchenPager(totalOrders, totalPages) {
         });
     });
 }
-
-window.markPaid = async (orderId) => {
-    await KitchenSystem.markPaid(orderId);
-    renderKitchen();
-};
 
 window.markCompleted = async (orderId) => {
     await KitchenSystem.markDone(orderId, currentKitchenStation);

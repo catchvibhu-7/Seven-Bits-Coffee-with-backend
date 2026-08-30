@@ -36,6 +36,36 @@ let selectedMethod = "Cash";
 let billingPage = 1; // 1-based; open-bills list pagination
 const BILLING_PAGE_SIZE = 10;
 let printableBill = null; // set by renderBillDetail() once a bill resolves - what the Print panel's buttons act on
+let menuItemsCache = null; // lazy-loaded once for the "add item" picker below
+async function loadMenuItems() {
+    if (!menuItemsCache) {
+        const res = await fetch("/api/menu", { credentials: "include" });
+        const data = res.ok ? await res.json() : { items: [] };
+        menuItemsCache = (data.items || []).filter((i) => i.available !== false);
+    }
+    return menuItemsCache;
+}
+
+/** Converts one of THIS order's own already-priced lines back into the raw
+ *  cart shape KitchenSystem.editItems()/computeOrder() expect (id/quantity/
+ *  customization) - the server re-prices from scratch rather than trusting
+ *  whatever price the line currently shows, same as a fresh order. A combo
+ *  line's grouping doesn't survive this round-trip (its exploded component
+ *  lines get resubmitted as plain items at their own price, not the combo's
+ *  bundle price) - an accepted gap for now, since this editor exists to fix
+ *  a discrepancy on ordinary lines, not to rebuild a combo. */
+function lineToRawItem(line) {
+    return {
+        id: line.id,
+        quantity: line.quantity,
+        customization: {
+            size: line.size,
+            milk: line.milk,
+            extras: (line.extras || []).map((e) => e.key),
+            notes: line.notes
+        }
+    };
+}
 
 /** Adapts a resolved bill (table-session or standalone-order shape) into
  *  the order-shaped object window.printBill()/window.printKOT() (app.js)
@@ -247,6 +277,16 @@ async function renderBillDetail() {
         </div>`
         : "";
 
+    // A staff member settling a bill needs a way to fix a discrepancy
+    // (wrong quantity, an item that shouldn't have made it on, a forgotten
+    // one) before locking it in - only possible for a standalone order that
+    // hasn't been paid yet, not a table-session bill (its .items are merged
+    // from several separate order records, each needing its own edit
+    // target - out of scope for this pass, see renderTablesPanel's own
+    // "+ ADD ITEMS" instead for adding more to an open table).
+    const itemsEditable = !!(order && !order.isPaid);
+    const menuItemsForPicker = itemsEditable ? await loadMenuItems() : [];
+
     const cfg = AdminConfig.settings || {};
     const cgstPct = ((cfg.cgstRate ?? 0.05) * 100).toFixed(1);
     const sgstPct = ((cfg.sgstRate ?? 0.05) * 100).toFixed(1);
@@ -302,15 +342,36 @@ async function renderBillDetail() {
             </div>
             ${bill.items
                 .map(
-                    (l) => `
+                    (l, i) => `
                 <div style="display:flex; gap:12px; align-items:center; padding:10px 14px; border-bottom:1px dashed var(--color-border); font-size:11px;">
                     <span style="flex:1 1 100px; min-width:80px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(l.name)}</span>
-                    <span style="flex:none; width:32px; text-align:center; color:var(--color-accent); font-weight:bold;">${l.quantity}</span>
+                    ${
+                        itemsEditable
+                            ? `<span style="flex:none; display:flex; align-items:center; gap:4px;">
+                            <button type="button" class="billing-item-qty-btn" data-index="${i}" data-delta="-1" aria-label="Remove one ${escapeHtml(l.name)}" style="width:22px; height:22px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); cursor:pointer; font-family:inherit;">-</button>
+                            <span style="width:18px; text-align:center; color:var(--color-accent); font-weight:bold;">${l.quantity}</span>
+                            <button type="button" class="billing-item-qty-btn" data-index="${i}" data-delta="1" aria-label="Add one ${escapeHtml(l.name)}" style="width:22px; height:22px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); cursor:pointer; font-family:inherit;">+</button>
+                        </span>`
+                            : `<span style="flex:none; width:32px; text-align:center; color:var(--color-accent); font-weight:bold;">${l.quantity}</span>`
+                    }
                     <span style="flex:none; width:64px; text-align:right; font-weight:bold;">${money(l.price * l.quantity)}</span>
+                    ${itemsEditable ? `<button type="button" class="billing-item-remove-btn" data-index="${i}" title="Remove ${escapeHtml(l.name)}" aria-label="Remove ${escapeHtml(l.name)}" style="flex:none; background:none; border:none; color:var(--color-danger); font-size:14px; cursor:pointer; padding:0 2px;">&times;</button>` : ""}
                 </div>
             `
                 )
                 .join("")}
+            ${
+                itemsEditable
+                    ? `
+            <div style="display:flex; gap:8px; align-items:center; padding:10px 14px; flex-wrap:wrap;">
+                <select id="billing-add-item-select" style="flex:1 1 140px; min-width:120px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;">
+                    ${menuItemsForPicker.map((m) => `<option value="${m.id}">${escapeHtml(m.name)} (${money(m.price)})</option>`).join("")}
+                </select>
+                <input id="billing-add-item-qty" type="number" min="1" value="1" style="width:52px; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;" />
+                <button type="button" id="billing-add-item-btn" style="flex:none; padding:7px 14px; background:var(--color-border); color:var(--color-text); border:none; font-size:9.5px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;">+ Add item</button>
+            </div>`
+                    : ""
+            }
             <div style="padding:13px 14px; display:flex; flex-direction:column; gap:6px;">
                 <div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>SUBTOTAL</span><span>${money(bill.subtotal)}</span></div>
                 ${bill.discountAmount ? `<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-success);"><span>DISCOUNT${bill.couponCode ? ` (${escapeHtml(bill.couponCode)})` : ""}</span><span>-${money(bill.discountAmount)}</span></div>` : ""}
@@ -341,6 +402,63 @@ async function renderBillDetail() {
             <button type="button" id="billing-settle-btn" style="width:100%; margin-top:14px; padding:13px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-size:11.5px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; min-height:44px;">[ Settle ${money(bill.total)} by ${selectedMethod} ]</button>
         </div>
     `;
+
+    // Item qty +/-, remove, and add-item all submit the SAME way: take this
+    // order's current lines, apply the one change, convert back to raw
+    // cart shape (see lineToRawItem()), and let the server re-price/re-tax
+    // the whole thing from scratch via editItems().
+    async function submitItemEdit(rawItems) {
+        try {
+            await KitchenSystem.editItems(order.id, rawItems);
+            window.showToast?.("Items updated");
+            await renderBillDetail();
+        } catch (e) {
+            window.showToast?.(e.message || "Could not update items", "error");
+        }
+    }
+    detail.querySelectorAll(".billing-item-qty-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const i = Number(btn.dataset.index);
+            const delta = Number(btn.dataset.delta);
+            const rawItems = order.items.map(lineToRawItem);
+            const nextQty = rawItems[i].quantity + delta;
+            if (nextQty <= 0) {
+                rawItems.splice(i, 1);
+            } else {
+                rawItems[i].quantity = nextQty;
+            }
+            submitItemEdit(rawItems);
+        });
+    });
+    detail.querySelectorAll(".billing-item-remove-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const i = Number(btn.dataset.index);
+            const rawItems = order.items.map(lineToRawItem);
+            rawItems.splice(i, 1);
+            if (rawItems.length === 0) {
+                window.showToast?.("A bill needs at least one item - settle or cancel it instead of removing the last line", "error");
+                return;
+            }
+            submitItemEdit(rawItems);
+        });
+    });
+    detail.querySelector("#billing-add-item-btn")?.addEventListener("click", () => {
+        const select = detail.querySelector("#billing-add-item-select");
+        const qtyInput = detail.querySelector("#billing-add-item-qty");
+        const id = Number(select?.value);
+        const quantity = Math.max(1, parseInt(qtyInput?.value, 10) || 1);
+        if (!id) return;
+        const rawItems = order.items.map(lineToRawItem);
+        // "regular"/"regular", no extras/notes - the same default shape the
+        // customer-facing ADD BIT stepper uses (see defaultCartKey() in
+        // app.js) - merges into an existing plain line for the same item
+        // instead of always adding a new row, matching that same behavior.
+        const isDefault = (c) => (c.size === "regular" || !c.size) && (c.milk === "regular" || !c.milk) && !(c.extras || []).length && !c.notes;
+        const existing = rawItems.find((r) => r.id === id && isDefault(r.customization));
+        if (existing) existing.quantity += quantity;
+        else rawItems.push({ id, quantity, customization: { size: "regular", milk: "regular", extras: [], notes: "" } });
+        submitItemEdit(rawItems);
+    });
 
     // Enter in either field applies the same update as clicking the button -
     // neither field has its own save action, and there's no surrounding
