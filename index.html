@@ -209,6 +209,11 @@
                         <button type="button" id="menu-view-list-btn">&#9776; List</button>
                     </div>
                 </div>
+                <!-- Populated in renderMenuDietFilter() (app.js) - ALL/VEG/NON-VEG,
+                     kept as its own row rather than squeezed into the chips row
+                     above, which already has its own width-measured overflow
+                     logic (see renderMenuCategoryChips()'s own comment). -->
+                <div id="menu-diet-filter" class="menu-diet-filter"></div>
             </div>
 
             <div class="menu-controls">

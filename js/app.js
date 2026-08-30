@@ -40,6 +40,7 @@ let ordersStream = null; // SSE connection, opened once after the first authenti
 let orderStatusPollTimer = null; // fallback poll for customer/guest order status, see ensureOrderStatusPolling()
 let session = { authenticated: false, role: null, name: null, phone: null }; // current login state
 let favoritesFilterActive = false;
+let dietFilter = "all"; // "all" | "veg" | "nonveg"
 let comboData = [];
 let activeCategory = "All"; // menu-cat-chips selection; "All" shows every section
 let menuSectionPages = {}; // { [sectionId]: 1-based page } - each section paginates independently; reset to {} whenever the filtered item set changes
@@ -430,20 +431,29 @@ function doLogout() {
  * save buttons had no feedback at all before, so it looked like clicking
  * them did nothing even when the save succeeded.
  */
+/** Stacks (doesn't replace) - a single #app-toast that removed any earlier
+ *  one meant an order-ready notice could clobber (or get clobbered by) an
+ *  unrelated "Item added"/"Bill updated" toast firing around the same
+ *  moment. Each toast is independent, appended to a shared bottom-right
+ *  column, so several can be visible/passing by at once. */
 window.showToast = (message, tone = "success") => {
-    document.getElementById("app-toast")?.remove();
+    let stack = document.getElementById("app-toast-stack");
+    if (!stack) {
+        stack = document.createElement("div");
+        stack.id = "app-toast-stack";
+        stack.style.cssText = "position: fixed; bottom: 24px; right: 24px; z-index: 9000; display: flex; flex-direction: column-reverse; gap: 8px; align-items: flex-end; pointer-events: none;";
+        document.body.appendChild(stack);
+    }
+    const color = tone === "error" ? "var(--color-danger)" : tone === "info" ? "var(--color-cyan)" : "var(--color-success)";
     const toast = document.createElement("div");
-    toast.id = "app-toast";
-    const color = tone === "error" ? "var(--color-danger)" : "var(--color-success)";
     toast.style.cssText = `
-        position: fixed; bottom: 24px; right: 24px; z-index: 9000;
         background: var(--color-surface); border: 1px solid ${color}; color: ${color};
         padding: 12px 20px; font-family: 'Courier New', monospace; font-size: 9pt;
         font-weight: bold; box-shadow: 4px 4px 0 rgba(0,0,0,0.4);
         transform: translateY(20px); opacity: 0; transition: transform 0.25s ease, opacity 0.25s ease;
     `;
-    toast.textContent = (tone === "error" ? "\u2717 " : "\u2713 ") + message;
-    document.body.appendChild(toast);
+    toast.textContent = (tone === "error" ? "\u2717 " : tone === "info" ? "" : "\u2713 ") + message;
+    stack.appendChild(toast);
     requestAnimationFrame(() => {
         toast.style.transform = "translateY(0)";
         toast.style.opacity = "1";
@@ -667,6 +677,12 @@ async function refreshOrderStatusWidget() {
         if (o.status === "READY" && previousStatus && previousStatus !== "READY") {
             SoundSystem.playReadyChime();
             NotificationSystem.notifyOrderReady(o);
+            // A floating toast alongside the sound/browser-notification -
+            // works even when sound is muted or hasn't been unlocked yet
+            // (see checkout-modal.js's own notify-permission prompt), and
+            // stacks rather than clobbers whatever other toast might be
+            // showing at the same moment (see showToast() above).
+            window.showToast(`Order #${o.orderNumber || o.id} is ready!`, "success");
         }
         lastSeenOrderStatuses[o.id] = o.status;
     }
@@ -1294,6 +1310,51 @@ function itemImageMarkup(item) {
     return iconMarkup(item.icon);
 }
 
+/** Standard Indian veg (green square, green dot) / non-veg (brown square,
+ *  brown triangle) diet mark - shown on every item, not just non-default
+ *  ones, since diet status is always meaningful to a customer regardless
+ *  of which way it goes. Pure CSS shapes, no icon asset needed. */
+function dietIconHtml(item) {
+    if (item.isVeg === false) {
+        return `<span class="diet-icon" role="img" aria-label="Non-vegetarian" title="Non-vegetarian" style="display:inline-block; width:11px; height:11px; border:1.5px solid #b91c1c; vertical-align:middle; margin-right:5px; position:relative; flex:none;"><span style="position:absolute; left:50%; top:52%; transform:translate(-50%,-50%); width:0; height:0; border-left:3.5px solid transparent; border-right:3.5px solid transparent; border-bottom:6px solid #b91c1c;"></span></span>`;
+    }
+    return `<span class="diet-icon" role="img" aria-label="Vegetarian" title="Vegetarian" style="display:inline-block; width:11px; height:11px; border:1.5px solid #16a34a; vertical-align:middle; margin-right:5px; position:relative; flex:none;"><span style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:5px; height:5px; border-radius:50%; background:#16a34a;"></span></span>`;
+}
+
+/** Only rendered when the item actually has allergens set - clicking OR
+ *  hovering shows them. Hover/focus alone (via .field-tooltip's own CSS
+ *  popover, already used for admin tooltips) doesn't reliably work on a
+ *  touch device, so this also wires a real click handler (toast) rather
+ *  than depending on :hover for mobile. */
+function allergenBadgeHtml(allergens) {
+    const escaped = escapeHtml(allergens);
+    return ` <span class="allergen-badge field-tooltip" tabindex="0" role="img" aria-label="Allergens: ${escaped}" title="Allergens: ${escaped}" data-tip="Allergens: ${escaped}" data-allergens="${escaped}" style="font-size:9px;">&#9888;</span>`;
+}
+
+/** ALL/VEG/NON-VEG toggle - its own row below the category chips (see
+ *  index.html's comment on why it's separate from that row's own
+ *  width-measured overflow logic). Rebuilt on every renderMenu() the same
+ *  way the chips are, so the active state always matches dietFilter. */
+function renderMenuDietFilter() {
+    const root = document.getElementById("menu-diet-filter");
+    if (!root) return;
+    const options = [
+        { key: "all", label: "ALL" },
+        { key: "veg", label: `${dietIconHtml({ isVeg: true })} VEG` },
+        { key: "nonveg", label: `${dietIconHtml({ isVeg: false })} NON-VEG` }
+    ];
+    root.innerHTML = options
+        .map((o) => `<button type="button" class="menu-diet-chip${dietFilter === o.key ? " active" : ""}" data-diet="${o.key}">${o.label}</button>`)
+        .join("");
+    root.querySelectorAll(".menu-diet-chip").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            dietFilter = btn.dataset.diet;
+            menuSectionPages = {};
+            renderMenu(document.getElementById("menu-search")?.value || "");
+        });
+    });
+}
+
 /**
  * Category pill row above the menu grid/list, mirroring the mockup's
  * category-chip filter - built fresh each render since it needs to reflect
@@ -1429,6 +1490,7 @@ function renderMenu(filterQuery = "") {
     if (!root) return;
     root.innerHTML = "";
     renderMenuCategoryChips();
+    renderMenuDietFilter();
     document.getElementById("menu-view-grid-btn")?.classList.toggle("active", viewMode === "grid");
     document.getElementById("menu-view-list-btn")?.classList.toggle("active", viewMode === "list");
 
@@ -1493,6 +1555,8 @@ function renderMenu(filterQuery = "") {
             if (item.section !== section.id) return false;
             if (!item.name.toLowerCase().includes(filterQuery.toLowerCase())) return false;
             if (favoritesFilterActive && !FavoritesSystem.isFavorite(item.id)) return false;
+            if (dietFilter === "veg" && item.isVeg === false) return false;
+            if (dietFilter === "nonveg" && item.isVeg !== false) return false;
             return true;
         });
         if (sectionItems.length === 0) return;
@@ -1599,7 +1663,7 @@ function renderMenu(filterQuery = "") {
             itemEl.innerHTML = `
                 <div class="menu-item-banner">${itemImageMarkup(item)}</div>
                 <div class="info">
-                    <div class="name">${favButton}${item.name}${isSoldOut ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
+                    <div class="name">${dietIconHtml(item)}${favButton}${item.name}${item.allergens ? allergenBadgeHtml(item.allergens) : ""}${isSoldOut ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
                     ${isUnavailable ? "" : `<button class="btn-customize-link open-customize-btn" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE</span></button>`}
                     ${staffRequestHtml}
@@ -1614,6 +1678,9 @@ function renderMenu(filterQuery = "") {
             wrapperEl.querySelector(".quick-remove-btn")?.addEventListener("click", () => window.quickRemove(item.id));
             wrapperEl.querySelector(".quick-add-btn")?.addEventListener("click", () => window.quickAdd(item.id));
             wrapperEl.querySelector(".fav-toggle-btn")?.addEventListener("click", () => window.toggleFavorite(item.id));
+            wrapperEl.querySelector(".allergen-badge")?.addEventListener("click", (e) => {
+                window.showToast(e.currentTarget.dataset.allergens, "info");
+            });
             wrapperEl.querySelector(".request-disable-btn")?.addEventListener("click", () => window.requestDisableItem(item.id));
             wrapperEl.querySelector(".open-customize-btn")?.addEventListener("click", () => window.openCustomize(item.id));
             wrapperEl.querySelectorAll(".customized-line-btn").forEach((btn) => {

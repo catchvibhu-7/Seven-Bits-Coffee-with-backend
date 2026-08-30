@@ -2581,7 +2581,9 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
     imageUrl: body.imageUrl ? String(body.imageUrl).trim() : null,
     story: body.story || "",
     promoDiscount: sanitizePromoDiscount(body.promoDiscount),
-    stockCount
+    stockCount,
+    isVeg: body.isVeg !== false, // defaults veg unless explicitly marked non-veg
+    allergens: body.allergens ? String(body.allergens).trim().slice(0, 200) : null
   };
   menu.items.push(item);
   writeJson(MENU_FILE, menu);
@@ -2649,6 +2651,10 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
       .map((id) => Number(id))
       .filter((id) => validIds.has(id));
     item.disabledStores = [...new Set(disabledStores)];
+  }
+  if (body.isVeg !== undefined) item.isVeg = body.isVeg !== false;
+  if (body.allergens !== undefined) {
+    item.allergens = body.allergens ? String(body.allergens).trim().slice(0, 200) || null : null;
   }
   writeJson(MENU_FILE, menu);
   sendJson(res, 200, item);

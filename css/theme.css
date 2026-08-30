@@ -1176,6 +1176,39 @@ header {
     text-align: left;
 }
 
+/* ALL/VEG/NON-VEG row - own row below the category chips (see
+   renderMenuDietFilter() in app.js), same pill styling as the category
+   chips just smaller since it's a secondary filter, not the primary one. */
+.menu-diet-filter {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+.menu-diet-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-family: "Courier New", monospace;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    min-height: 30px;
+}
+.menu-diet-chip:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+.menu-diet-chip.active {
+    background: rgba(217, 119, 6, 0.1);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
 /* Pager below the menu grid/list - reuses .admin-pg-btn (theme.css's Admin
    order-history/menu-items pagination) rather than a one-off style. */
 .menu-pager {
