@@ -68,6 +68,24 @@ async function loadCombos() {
     comboData = res.ok ? await res.json() : [];
 }
 
+/** Current ambient wait estimate (backlog + parallelism, see
+ *  computeWaitTimeMins() server-side) - null when the store has wait times
+ *  turned off in Admin > Operations, or the request fails. Shared by the
+ *  Home page fact strip, the Menu page header, and the post-checkout
+ *  confirmation screen so they always agree with each other. */
+async function fetchCurrentWaitMins() {
+    const storeId = TRACKING_ROLES.includes(session.role) || !session.authenticated ? StoreSystem.getSelectedStoreId() : null;
+    const url = storeId != null ? `/api/wait-time?storeId=${encodeURIComponent(storeId)}` : "/api/wait-time";
+    try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.waitMins ?? null;
+    } catch (e) {
+        return null;
+    }
+}
+
 async function refreshSession() {
     session = await AuthSystem.getSession();
     updateStaffShellForSession();
@@ -1316,9 +1334,9 @@ function itemImageMarkup(item) {
  *  of which way it goes. Pure CSS shapes, no icon asset needed. */
 function dietIconHtml(item) {
     if (item.isVeg === false) {
-        return `<span class="diet-icon" role="img" aria-label="Non-vegetarian" title="Non-vegetarian" style="display:inline-block; width:11px; height:11px; border:1.5px solid #b91c1c; vertical-align:middle; margin-right:5px; position:relative; flex:none;"><span style="position:absolute; left:50%; top:52%; transform:translate(-50%,-50%); width:0; height:0; border-left:3.5px solid transparent; border-right:3.5px solid transparent; border-bottom:6px solid #b91c1c;"></span></span>`;
+        return `<span class="diet-icon diet-icon-nonveg" role="img" aria-label="Non-vegetarian" title="Non-vegetarian"><span class="diet-icon-triangle"></span></span>`;
     }
-    return `<span class="diet-icon" role="img" aria-label="Vegetarian" title="Vegetarian" style="display:inline-block; width:11px; height:11px; border:1.5px solid #16a34a; vertical-align:middle; margin-right:5px; position:relative; flex:none;"><span style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:5px; height:5px; border-radius:50%; background:#16a34a;"></span></span>`;
+    return `<span class="diet-icon diet-icon-veg" role="img" aria-label="Vegetarian" title="Vegetarian"><span class="diet-icon-dot"></span></span>`;
 }
 
 /** Only rendered when the item actually has allergens set - clicking OR
@@ -1351,6 +1369,12 @@ function renderMenuDietFilter() {
             dietFilter = btn.dataset.diet;
             menuSectionPages = {};
             renderMenu(document.getElementById("menu-search")?.value || "");
+            // Plain scroll-to-top, not scrollIntoView(#menu-root) - #menu-root
+            // sits right below the position:sticky header, so aligning ITS
+            // top edge to the viewport top puts it exactly where the sticky
+            // header then pins itself too, hiding the section heading and
+            // first row of items behind that opaque bar.
+            window.scrollTo({ top: 0, behavior: "auto" });
         });
     });
 }
@@ -1378,6 +1402,17 @@ function renderMenuCategoryChips() {
             activeCategory = btn.dataset.cat;
             menuSectionPages = {};
             renderMenu(document.getElementById("menu-search")?.value || "");
+            // Switching category can shrink the page dramatically (e.g. ALL's
+            // long combined list down to one short section) - if the window
+            // was scrolled deep into the old list, the browser force-clamps
+            // scrollY to whatever now fits, which can yank the sticky cart
+            // panel to the literal top of the viewport with no warning.
+            // Deliberately scrolling to the top instead makes every filter
+            // change land in the same predictable spot. Plain window scroll,
+            // not scrollIntoView(#menu-root) - see the comment in
+            // renderMenuDietFilter() for why that hides content behind the
+            // sticky header instead of revealing it.
+            window.scrollTo({ top: 0, behavior: "auto" });
         });
     };
     const chipHtml = (name) => `<button type="button" class="menu-cat-chip${activeCategory === name ? " active" : ""}" data-cat="${escapeHtml(name)}">${escapeHtml(name)}</button>`;
@@ -2472,12 +2507,17 @@ async function renderHomeStoreFacts() {
         stats = null;
     }
 
+    const waitMins = await fetchCurrentWaitMins();
+
     const facts = [
         { label: "Open today", value: siteConfig.footer?.hours || "See hours below", color: "var(--color-success)" },
         { label: "Address", value: siteConfig.footer?.address || "-", color: "var(--color-text)" },
         { label: "Orders today", value: stats ? String(stats.ordersToday) : "-", color: "var(--color-text)" },
         { label: "Bits brewed today", value: stats ? String(stats.itemsServedToday) : "-", color: "var(--color-accent)" }
     ];
+    if (waitMins != null) {
+        facts.push({ label: "Current wait", value: `~${waitMins} min${waitMins === 1 ? "" : "s"}`, color: "var(--color-accent)" });
+    }
     root.innerHTML = facts
         .map(
             (f) => `

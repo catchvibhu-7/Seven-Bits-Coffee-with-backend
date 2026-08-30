@@ -505,9 +505,6 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
         // know the order went through, what it cost, and roughly how long
         // to wait. Staff placing orders at the counter still get the
         // print-oriented flow below (they need the KOT/bill).
-        const totalQty = order.items.reduce((sum, i) => sum + i.quantity, 0);
-        const waitLow = Math.min(20, 5 + totalQty * 2);
-        const waitHigh = waitLow + 5;
         const needsRazorpayPayment = isOnline && !order.isPaid && order.razorpayOrderId;
 
         overlay.innerHTML = `
@@ -520,8 +517,8 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
                 ${
                     needsRazorpayPayment
                         ? `<p id="razorpay-status" style="font-family: 'Courier New', monospace; color: var(--color-text-muted); font-size: 8pt; min-height: 12px; margin: 0 0 10px;">Pay securely via Razorpay to confirm your order.</p>`
-                        : `<p style="font-family: 'Courier New', monospace; color: var(--color-accent); font-size: 9pt; margin: 0 0 20px;">
-                    APPROX. WAIT TIME: ${waitLow}-${waitHigh} MINS
+                        : `<p id="wait-time-line" style="font-family: 'Courier New', monospace; color: var(--color-accent); font-size: 9pt; margin: 0 0 20px;">
+                    CALCULATING WAIT TIME...
                 </p>
                 ${
                     NotificationSystem.permission() === "default"
@@ -544,6 +541,26 @@ export function renderPaymentConfirmation(order, method, { isCustomerFacing = fa
             </div>
         `;
         document.body.appendChild(overlay);
+        // Filled in after the fact rather than blocking the confirmation
+        // screen on a network round-trip - the order's own lines are already
+        // part of the backlog this reads (it was just saved server-side), so
+        // this is the real current queue estimate, not a client-side guess.
+        if (!needsRazorpayPayment) {
+            const waitLine = document.getElementById("wait-time-line");
+            fetch(order.storeId != null ? `/api/wait-time?storeId=${encodeURIComponent(order.storeId)}` : "/api/wait-time")
+                .then((res) => (res.ok ? res.json() : null))
+                .then((data) => {
+                    if (!waitLine) return;
+                    if (data?.waitMins == null) {
+                        waitLine.style.display = "none";
+                    } else {
+                        waitLine.textContent = `APPROX. WAIT TIME: ~${data.waitMins} MIN${data.waitMins === 1 ? "" : "S"}`;
+                    }
+                })
+                .catch(() => {
+                    if (waitLine) waitLine.style.display = "none";
+                });
+        }
         if (needsRazorpayPayment) {
             document.getElementById("btn-razorpay-pay")?.addEventListener("click", () => openRazorpayCheckout(order));
             document.getElementById("btn-pay-at-counter")?.addEventListener("click", () => window.finalizeOrder(false));

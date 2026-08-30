@@ -808,6 +808,22 @@ function isDrinkItem(item) {
   return DRINK_SECTIONS.includes(item.section);
 }
 
+function sanitizePrepTimeMins(value) {
+  if (value === undefined || value === null || value === "") return null; // unset - falls back to DEFAULT_PREP_TIME_MINS at calculation time
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, 60) : null;
+}
+
+// Wait-time estimate constants (see computeWaitTimeMins() below) - a drink
+// with no prepTimeMins set falls back to this; pre-ready (DESSERTS station)
+// items always contribute this flat amount instead, regardless of their
+// own prepTimeMins or quantity; PARALLEL_DRINK_SLOTS models "2 drinks can
+// be prepared in parallel" as a shared pool the whole backlog draws from,
+// not a per-order allowance.
+const DEFAULT_PREP_TIME_MINS = 3;
+const PRE_READY_FLAT_MINS = 1;
+const PARALLEL_DRINK_SLOTS = 2;
+
 function round2(n) {
   return Math.round(n * 100) / 100;
 }
@@ -1062,6 +1078,7 @@ function resolveComboLine(requested, menu, combos) {
       promoDiscount: null,
       quantity: c.qty * quantity,
       station: getStation(c.product),
+      prepTimeMins: c.product.prepTimeMins ?? DEFAULT_PREP_TIME_MINS,
       isDone: false,
       size: null,
       sizeLabel: null,
@@ -1119,6 +1136,11 @@ function computeOrder(items, method, serviceChargeActive, tipApplied, { couponCo
       promoDiscount: product.promoDiscount || null,
       quantity,
       station: getStation(product),
+      // Frozen at order time, same reasoning as basePrice - a later change
+      // to the item's own prepTimeMins (or the item being deleted) should
+      // never retroactively change how long an already-placed order's
+      // backlog contribution is treated as (see computeWaitTimeMins()).
+      prepTimeMins: product.prepTimeMins ?? DEFAULT_PREP_TIME_MINS,
       isDone: false,
       size: custom.size ? custom.size.key : null,
       sizeLabel: custom.size ? custom.size.label : null,
@@ -1855,7 +1877,11 @@ route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
     const existingOps = store.operations || DEFAULT_STORE_OPERATIONS;
     store.operations = {
       tableCount: body.operations.tableCount !== undefined ? sanitizeTableCount(body.operations.tableCount, existingOps.tableCount) : existingOps.tableCount,
-      arcade: body.operations.arcade !== undefined ? sanitizeArcade(body.operations.arcade, existingOps.arcade) : existingOps.arcade
+      arcade: body.operations.arcade !== undefined ? sanitizeArcade(body.operations.arcade, existingOps.arcade) : existingOps.arcade,
+      waitTime:
+        body.operations.waitTime !== undefined
+          ? sanitizeWaitTime(body.operations.waitTime, existingOps.waitTime || DEFAULT_STORE_OPERATIONS.waitTime)
+          : existingOps.waitTime || DEFAULT_STORE_OPERATIONS.waitTime
     };
   }
   writeJson(STORES_FILE, stores);
@@ -2509,6 +2535,36 @@ route("GET", /^\/api\/menu\/?$/, async (req, res, params, url) => {
   sendJson(res, 200, { ...menu, items });
 });
 
+/** Resolves the same "?storeId= only for a customer/guest, session storeId
+ *  otherwise" rule /api/menu's handler above uses - kept in sync with it
+ *  rather than re-derived per caller. */
+function resolveEffectiveStoreId(req, url) {
+  const session = currentSession(req);
+  let effectiveStoreId = session && session.storeId != null ? session.storeId : null;
+  const isTrackingOrAnonymous = !session || TRACKING_ROLES.includes(session.role);
+  if (effectiveStoreId == null && isTrackingOrAnonymous && url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId)) effectiveStoreId = requestedStoreId;
+  }
+  return effectiveStoreId;
+}
+
+// Ambient "how long right now" reading - no specific cart in mind (Home page,
+// Menu page while just browsing).
+route("GET", /^\/api\/wait-time\/?$/, async (req, res, params, url) => {
+  const waitMins = computeWaitTimeMins([], resolveEffectiveStoreId(req, url));
+  sendJson(res, 200, { waitMins });
+});
+
+// Cart-aware reading (checkout) - body items are the same {id, quantity}
+// shape as POST /api/orders' own cart payload.
+route("POST", /^\/api\/wait-time\/?$/, async (req, res, params, url) => {
+  const body = await readBody(req);
+  const items = Array.isArray(body.items) ? body.items : [];
+  const waitMins = computeWaitTimeMins(items, resolveEffectiveStoreId(req, url));
+  sendJson(res, 200, { waitMins });
+});
+
 route("POST", /^\/api\/menu\/sections\/?$/, async (req, res) => {
   if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
   const body = await readBody(req);
@@ -2583,7 +2639,8 @@ route("POST", /^\/api\/menu\/?$/, async (req, res) => {
     promoDiscount: sanitizePromoDiscount(body.promoDiscount),
     stockCount,
     isVeg: body.isVeg !== false, // defaults veg unless explicitly marked non-veg
-    allergens: body.allergens ? String(body.allergens).trim().slice(0, 200) : null
+    allergens: body.allergens ? String(body.allergens).trim().slice(0, 200) : null,
+    prepTimeMins: sanitizePrepTimeMins(body.prepTimeMins)
   };
   menu.items.push(item);
   writeJson(MENU_FILE, menu);
@@ -2656,6 +2713,7 @@ route("PATCH", /^\/api\/menu\/(?<id>\d+)\/?$/, async (req, res, params) => {
   if (body.allergens !== undefined) {
     item.allergens = body.allergens ? String(body.allergens).trim().slice(0, 200) || null : null;
   }
+  if (body.prepTimeMins !== undefined) item.prepTimeMins = sanitizePrepTimeMins(body.prepTimeMins);
   writeJson(MENU_FILE, menu);
   sendJson(res, 200, item);
 });
@@ -2818,7 +2876,15 @@ function sanitizeArcade(rawArcade, existing) {
   return merged;
 }
 
-const DEFAULT_STORE_OPERATIONS = { tableCount: 10, arcade: { enabled: true, sessionHours: 2 } };
+function sanitizeWaitTime(rawWaitTime, existing) {
+  const merged = { ...existing, ...(rawWaitTime && typeof rawWaitTime === "object" ? rawWaitTime : {}) };
+  merged.enabled = merged.enabled !== false;
+  const minMins = Number(merged.minMins);
+  merged.minMins = Number.isFinite(minMins) && minMins >= 0 ? Math.min(minMins, 60) : 5;
+  return merged;
+}
+
+const DEFAULT_STORE_OPERATIONS = { tableCount: 10, arcade: { enabled: true, sessionHours: 2 }, waitTime: { enabled: true, minMins: 5 } };
 
 /** Resolves a store's own settings on top of the franchise-wide config:
  *  payments/tax fields fall back to the franchise default when the store
@@ -2855,6 +2921,7 @@ function mergeStoreOverrides(config, store) {
     currencyCode: payments.currencyCode ?? config.currencyCode,
     tableCount: operations.tableCount ?? DEFAULT_STORE_OPERATIONS.tableCount,
     arcade: operations.arcade || DEFAULT_STORE_OPERATIONS.arcade,
+    waitTime: operations.waitTime || DEFAULT_STORE_OPERATIONS.waitTime,
     homePicks: store && store.homePicks !== undefined ? store.homePicks : config.homePicks,
     footer: {
       ...config.footer,
@@ -2862,6 +2929,55 @@ function mergeStoreOverrides(config, store) {
       ...(store && store.phone ? { phone: store.phone } : {})
     }
   };
+}
+
+/** Backlog-and-parallelism-aware wait estimate. Drinks (BARISTA/KITCHEN
+ *  stations) draw from a shared pool of PARALLEL_DRINK_SLOTS "slots"
+ *  rather than being timed strictly one-after-another - the whole backlog
+ *  (every not-yet-done drink line across every order still in progress,
+ *  frozen prepTimeMins and all - see computeOrder()) plus this prospective
+ *  order's own drink lines are summed into one queue of slot-minutes, then
+ *  divided by the slot count. Pre-ready items (DESSERTS) add one flat
+ *  minute total if the order has any, never per-unit and never using
+ *  their own prepTimeMins - they're not sitting in the same queue at all.
+ *  `cartItems` is the same raw {id, quantity} shape used everywhere else
+ *  (POST /api/orders) - pass [] for an "ambient current wait" reading with
+ *  no specific order in mind (see GET /api/wait-time). Returns null when
+ *  the store has this turned off (Admin > Store Setup > Operations). */
+function computeWaitTimeMins(cartItems, storeId) {
+  const allStores = readJson(STORES_FILE, []);
+  const store = storeId != null ? allStores.find((s) => s.id === storeId) : null;
+  const waitConfig = mergeStoreOverrides(readJson(CONFIG_FILE, {}), store).waitTime;
+  if (!waitConfig.enabled) return null;
+
+  const orders = readJson(ORDERS_FILE, []);
+  let backlogSlotMinutes = 0;
+  for (const order of orders) {
+    if (storeId != null && order.storeId !== storeId) continue;
+    if (order.servedAt) continue; // fully handed off - nothing left queued
+    for (const line of order.items) {
+      if (line.isDone) continue;
+      if (line.station !== "BARISTA" && line.station !== "KITCHEN") continue;
+      backlogSlotMinutes += (line.prepTimeMins ?? DEFAULT_PREP_TIME_MINS) * line.quantity;
+    }
+  }
+
+  const menu = readJson(MENU_FILE, { items: [] });
+  let thisOrderSlotMinutes = 0;
+  let hasPreReady = false;
+  for (const requested of cartItems) {
+    const product = menu.items.find((i) => i.id === Number(requested.id));
+    if (!product) continue;
+    const quantity = Math.max(1, Math.min(50, parseInt(requested.quantity, 10) || 0));
+    if (getStation(product) === "DESSERTS") {
+      hasPreReady = true;
+    } else {
+      thisOrderSlotMinutes += (product.prepTimeMins ?? DEFAULT_PREP_TIME_MINS) * quantity;
+    }
+  }
+
+  const queuedMinutes = Math.ceil((backlogSlotMinutes + thisOrderSlotMinutes) / PARALLEL_DRINK_SLOTS);
+  return Math.max(waitConfig.minMins, queuedMinutes) + (hasPreReady ? PRE_READY_FLAT_MINS : 0);
 }
 
 // A customer/guest session has no storeId of its own (they can walk into

@@ -393,15 +393,17 @@ export const AdminPortal = {
                 <h3 style="margin-top:0;">OPERATIONS BY STORE</h3>
                 <p class="admin-help-text">Table count and arcade settings are per-store - edit a store's own Operations from Store Setup.</p>
                 <table class="admin-table">
-                    <thead><tr><th>STORE</th><th>TABLES</th><th>ARCADE</th></tr></thead>
+                    <thead><tr><th>STORE</th><th>TABLES</th><th>ARCADE</th><th>WAIT TIME</th></tr></thead>
                     <tbody>
                         ${stores
                             .map((s) => {
-                                const opsField = s.operations || { tableCount: 10, arcade: { enabled: true, sessionHours: 2 } };
+                                const opsField = s.operations || { tableCount: 10, arcade: { enabled: true, sessionHours: 2 }, waitTime: { enabled: true, minMins: 5 } };
+                                const waitTime = opsField.waitTime || { enabled: true, minMins: 5 };
                                 return `<tr>
                                     <td>${escapeHtmlAttr(s.name)}</td>
                                     <td>${opsField.tableCount}</td>
                                     <td>${opsField.arcade.enabled ? `Enabled - ${opsField.arcade.sessionHours}h session` : "Disabled"}</td>
+                                    <td>${waitTime.enabled ? `Enabled - ${waitTime.minMins} min floor` : "Disabled"}</td>
                                 </tr>`;
                             })
                             .join("")}
@@ -730,14 +732,17 @@ export const AdminPortal = {
                 })
         });
 
-        const operations = store.operations || { tableCount: 10, arcade: { enabled: true, sessionHours: 2 } };
+        const operations = store.operations || { tableCount: 10, arcade: { enabled: true, sessionHours: 2 }, waitTime: { enabled: true, minMins: 5 } };
+        const waitTime = operations.waitTime || { enabled: true, minMins: 5 };
         renderReadOnlySection(container.querySelector("#sp-operations"), {
             title: "OPERATIONS",
             canEdit,
             fields: [
                 { label: "Number of tables", value: String(operations.tableCount) },
                 { label: "Arcade enabled", value: operations.arcade.enabled ? "Yes" : "No" },
-                { label: "Arcade session length", value: `${operations.arcade.sessionHours}h` }
+                { label: "Arcade session length", value: `${operations.arcade.sessionHours}h` },
+                { label: "Wait time estimate", value: waitTime.enabled ? "Enabled" : "Disabled" },
+                { label: "Minimum wait shown", value: `${waitTime.minMins} min` }
             ],
             onEdit: () =>
                 renderSectionEditModal({
@@ -745,15 +750,23 @@ export const AdminPortal = {
                     fields: [
                         { id: "sp-table-count", label: "Number of tables", value: operations.tableCount, type: "number", min: 0, max: 200, tooltip: "0 = only Online/Counter, no physical tabs." },
                         { id: "sp-arcade-enabled", label: "Enable arcade", value: operations.arcade.enabled, type: "checkbox" },
-                        { id: "sp-arcade-hours", label: "Arcade session length (hours)", value: operations.arcade.sessionHours, type: "number", step: 0.5, min: 0.5, max: 24 }
+                        { id: "sp-arcade-hours", label: "Arcade session length (hours)", value: operations.arcade.sessionHours, type: "number", step: 0.5, min: 0.5, max: 24 },
+                        { id: "sp-waittime-enabled", label: "Show wait time estimate to customers", value: waitTime.enabled, type: "checkbox" },
+                        { id: "sp-waittime-min", label: "Minimum wait shown (mins)", value: waitTime.minMins, type: "number", min: 0, max: 60, tooltip: "The floor shown when there's no backlog - e.g. daily average with nothing in the queue." }
                     ],
                     onSave: async (v) => {
                         const tableCount = parseInt(v["sp-table-count"], 10);
                         const arcadeHours = parseFloat(v["sp-arcade-hours"]);
+                        const waitMinMins = parseInt(v["sp-waittime-min"], 10);
                         if (!Number.isFinite(tableCount) || tableCount < 0) throw new Error("Number of tables must be zero or a positive whole number.");
                         if (!Number.isFinite(arcadeHours) || arcadeHours <= 0) throw new Error("Arcade session length must be a positive number of hours.");
+                        if (!Number.isFinite(waitMinMins) || waitMinMins < 0) throw new Error("Minimum wait must be zero or a positive whole number.");
                         await PayrollSystem.updateStore(store.id, {
-                            operations: { tableCount, arcade: { enabled: v["sp-arcade-enabled"], sessionHours: arcadeHours } }
+                            operations: {
+                                tableCount,
+                                arcade: { enabled: v["sp-arcade-enabled"], sessionHours: arcadeHours },
+                                waitTime: { enabled: v["sp-waittime-enabled"], minMins: waitMinMins }
+                            }
                         });
                         ok("Operations saved");
                         onSaved();
