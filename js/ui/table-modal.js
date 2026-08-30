@@ -251,7 +251,15 @@ export function renderTableBillModal({ table, onClose, onDismiss }) {
             try {
                 await KitchenSystem.pushOrder([{ id, quantity, size: "regular", milk: "regular", extras: [], notes: "" }], "COUNTER", {
                     tableSessionId: table.id,
-                    orderType: "dine-in"
+                    orderType: "dine-in",
+                    // A brand new order normally needs a phone (or an
+                    // explicit staff guest-order bypass) - reuse the table's
+                    // own phone if it was opened with one, so every order on
+                    // the same tab stays attributed the same way, otherwise
+                    // fall back to the same walk-in bypass staff already have
+                    // for a fresh counter order.
+                    phone: table.customerPhone || null,
+                    guestOrder: !table.customerPhone
                 });
                 await refresh();
             } catch (e) {
