@@ -495,6 +495,14 @@ window.showPage = async (pageId) => {
         targetPage.style.display = "block";
         targetPage.classList.add("active");
     }
+    // Every OTHER page is display:none while inactive, so switching between
+    // them doesn't actually create a new scroll position - the whole
+    // document just keeps whatever scrollY the PREVIOUS page was left at,
+    // landing a newly-shown page already scrolled partway down. Cart-quantity
+    // changes on the menu page are the one deliberate exception to "reset on
+    // change" (see renderMenuKeepScroll()) - this only runs on real page
+    // navigation, never from those call sites.
+    window.scrollTo(0, 0);
 
     document.querySelectorAll(".system-nav button").forEach((btn) => {
         btn.classList.remove("active-tab");
@@ -586,6 +594,17 @@ window.openStorePicker = () => {
     });
 };
 
+/** "SERVED" is kitchen-board jargon (an item physically handed to someone
+ *  at the counter) - to a customer looking at their own order status it
+ *  reads as an odd, ambiguous non-answer ("served... to who? is that
+ *  done?"). Every OTHER status word already doubles as a customer-facing
+ *  label, this is the one exception, only relabeled where a customer/guest
+ *  actually sees it (the kitchen board itself keeps "SERVED", the term its
+ *  own staff already know). */
+function customerStatusLabel(status) {
+    return status === "SERVED" ? "CLOSED" : status;
+}
+
 function soundIconSvg(muted) {
     return muted
         ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>`
@@ -673,7 +692,7 @@ async function refreshOrderStatusWidget() {
         <div style="display:flex; align-items:center; gap:6px;">
             <button type="button" class="nav-order-widget-btn" style="flex:1;">
                 <span class="nav-order-widget-num">#${escapeHtml(String(order.orderNumber || order.id))}${extraCount > 0 ? ` <span style="opacity:0.7;">+${extraCount}</span>` : ""}</span>
-                <span class="nav-order-widget-status" style="color:${statusColor};">${escapeHtml(order.status)}</span>
+                <span class="nav-order-widget-status" style="color:${statusColor};">${escapeHtml(customerStatusLabel(order.status))}</span>
             </button>
             <button type="button" class="nav-order-widget-all-btn" title="See all your orders" aria-label="See all your orders" style="flex:none; background:none; border:1px solid var(--color-border); color:var(--color-text-muted); font-size:7pt; letter-spacing:0.05em; padding:0 8px; height:100%; min-height:40px; cursor:pointer; font-family:inherit; text-transform:uppercase;">ALL</button>
         </div>
@@ -710,7 +729,7 @@ window.openOrderStatusPopup = () => {
                 <span style="display:flex; align-items:center; gap:8px;">
                     ${notifyPromptHtml}
                     <button id="order-popup-sound-btn" title="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" aria-label="${SoundSystem.isMuted() ? "Unmute order-ready sound" : "Mute order-ready sound"}" style="background:none; border:none; cursor:pointer; color:var(--color-accent); opacity:${SoundSystem.isMuted() ? "0.5" : "1"}; padding:0;">${soundIconSvg(SoundSystem.isMuted())}</button>
-                    <span style="color:${statusColor}; font-weight:bold;">${escapeHtml(order.status)}</span>
+                    <span style="color:${statusColor}; font-weight:bold;">${escapeHtml(customerStatusLabel(order.status))}</span>
                 </span>
             </div>
             <div style="font-size:10pt; color:var(--color-text-muted); margin-bottom:10px;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>

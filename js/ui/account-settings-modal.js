@@ -12,9 +12,13 @@ export function renderAccountSettingsModal(session) {
     // The rail/top-bar layout switcher isn't staff-only (see staff-shell.js) -
     // any session that can open this modal already has StaffShell active
     // (updateStaffShellForSession() in app.js shows it for staff, customer,
-    // and guest sessions alike), so this is only ever false for the
-    // impossible case of a session-less visitor somehow reaching this modal.
-    const hasLayoutChoice = !!session.role;
+    // and guest sessions alike), so session.role alone is only ever false
+    // for the impossible case of a session-less visitor somehow reaching
+    // this modal. It's ALSO meaningless below the 720px mobile breakpoint -
+    // the hamburger drawer replaces both rail and top-bar entirely there
+    // (see theme.css), so choosing between them has no visible effect and
+    // the setting is just confusing clutter on a phone.
+    const hasLayoutChoice = !!session.role && window.innerWidth > 720;
     const currentLayout = hasLayoutChoice ? StaffShell.layout : null;
 
     const overlay = document.createElement("div");

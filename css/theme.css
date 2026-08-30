@@ -1024,6 +1024,49 @@ header {
 .system-nav.staff-topbar ~ #page-menu .menu-sticky-header {
     top: 60px;
 }
+/* Same problem, mobile's own fixed bar: sticky's top:0 pins relative to the
+   viewport itself, not to #app-main's margin-top offset (margin only moves
+   the element's STARTING position, sticky's stuck position ignores it) - so
+   without this the header stuck at the literal top of the screen, right
+   underneath .mobile-nav-bar, instead of just below it. */
+@media (max-width: 720px) {
+    .menu-sticky-header {
+        top: 56px;
+    }
+    /* iOS Safari auto-zooms the whole page on focusing any text input whose
+       computed font-size is under 16px - this app's compact monospace UI
+       runs most inputs at 8-10pt, so tapping into any of them (search
+       fields, modal forms, the admin customer search) yanked the viewport
+       into a zoomed-in state with no visible cause. 16px is the documented
+       threshold Safari actually checks; !important because these fields'
+       sizes are set by dozens of individual inline styles across the app,
+       not one shared class this could otherwise override normally. */
+    input[type="text"],
+    input[type="password"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="number"],
+    input[type="search"],
+    input[type="date"],
+    input:not([type]),
+    textarea,
+    select {
+        font-size: 16px !important;
+    }
+    /* Every modal (checkout, login, table, my-orders, admin section-edit,
+       etc.) sets its own inline max-height: 85vh/90vh on .modal-content -
+       on iOS Safari with the address bar visible, vh is computed against
+       the LARGER viewport as if the bar were hidden, so 90vh of that is
+       taller than what's actually visible on screen: content gets clipped
+       at both the top and bottom instead of scrolling inside the modal like
+       it does everywhere else. dvh reflects the real, currently-visible
+       viewport - !important because dozens of individual inline styles
+       otherwise win over a plain class rule. */
+    .modal-content {
+        max-height: 90dvh !important;
+        overflow-y: auto !important;
+    }
+}
 .menu-page-header {
     padding: 10px 0 14px;
 }
@@ -1210,6 +1253,17 @@ header {
     color: var(--color-accent);
     font-weight: bold;
 }
+/* .info (name/story/customize-link) had no flex sizing at all here - as a
+   plain flex item next to the image and .item-controls it sized itself to
+   its own content's natural width instead of sharing the row, so on a
+   narrow screen the row as a whole either overflowed or squeezed
+   .item-controls into whatever was left instead of wrapping its own text.
+   min-width:0 is what actually lets a flex child's text wrap/shrink below
+   its content's natural width - flex:1 alone doesn't do that on its own. */
+.menu-list .info {
+    flex: 1;
+    min-width: 0;
+}
 
 /* Grid View Specifics - mirrors the mockup's product-card layout: a
    full-bleed image/icon banner, then left-aligned name/story, then a
@@ -1321,6 +1375,16 @@ header {
         margin-right: 5px;
         flex-direction: row;
         align-items: center;
+    }
+    /* A real uploaded item photo (Admin > Menu Items) wasn't covered by the
+       .icon shrink above at all - it's a separate class for the same slot
+       (see .menu-item-photo) - so an item with a real photo stayed full
+       56px width here regardless, eating into the room .info needed to wrap
+       its text properly. */
+    .menu-list .menu-item-photo {
+        width: 40px;
+        height: 40px;
+        margin-right: 8px;
     }
 
     /* Hide story text on small screens to prioritize the Action Row */
@@ -2690,6 +2754,15 @@ input[type="checkbox"]:disabled {
    <textarea> elements, so this keyboard-focusable div had no visible
    focus ring at all despite already being operable via Enter/Space. */
 .arcade-card:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+/* The logo/shop-name mark in every nav layout (rail/top-bar/mobile-bar/
+   drawer) is a plain div with role="button" (see staff-shell.js's
+   goHome()), not a real <button> - the app's global button:focus-visible
+   rule doesn't reach it. */
+.shell-logo-btn:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
 }

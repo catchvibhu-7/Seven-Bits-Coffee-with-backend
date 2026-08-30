@@ -377,8 +377,8 @@ export const StaffShell = {
             <div class="staff-rail-logo" style="display:flex; flex-direction:column; gap:2px;">
                 ${
                     wideLogo
-                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="${escapeHtml(shopDisplayName())}" style="max-width:100%; max-height:40px; object-fit:contain; align-self:flex-start; margin-bottom:6px;" />`
-                        : `<div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                        ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="${escapeHtml(shopDisplayName())}" class="shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="max-width:100%; max-height:40px; object-fit:contain; align-self:flex-start; margin-bottom:6px; cursor:pointer;" />`
+                        : `<div class="shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="display:flex; align-items:center; gap:8px; min-width:0; cursor:pointer;">
                             ${logoImageHtml(28)}
                             <div class="staff-rail-logo-mark">${shopDisplayName()}<span style="color:var(--color-text);">_</span></div>
                         </div>`
@@ -411,7 +411,7 @@ export const StaffShell = {
         nav.classList.add("staff-topbar");
         const wideLogo = AdminConfig.settings.logoWideUrl;
         nav.innerHTML = `
-            <div class="staff-topbar-logo">
+            <div class="staff-topbar-logo shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="cursor:pointer;">
                 ${
                     wideLogo
                         ? `<img src="${String(wideLogo).replace(/"/g, "&quot;")}" alt="${escapeHtml(shopDisplayName())}" style="max-height:28px; object-fit:contain;" />`
@@ -444,7 +444,7 @@ export const StaffShell = {
         const bar = document.getElementById("mobile-nav-bar");
         if (!bar) return;
         bar.innerHTML = `
-            <div class="mobile-nav-bar-logo">
+            <div class="mobile-nav-bar-logo shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="cursor:pointer;">
                 ${logoImageHtml(24)}
                 <span class="mobile-nav-bar-logo-mark">${shopDisplayName()}</span>
             </div>
@@ -453,6 +453,10 @@ export const StaffShell = {
             </button>
         `;
         bar.querySelector("#mobile-nav-toggle-btn").addEventListener("click", () => this.toggleMobileDrawer());
+        // Wires .shell-logo-btn (see wireButtons()) - harmlessly no-ops for
+        // the tab/account/timeclock selectors it also looks for, since none
+        // of those exist in this bar's minimal logo+toggle markup.
+        this.wireButtons(bar);
     },
 
     /** The drawer's actual content - same tab list + identity/order-widget
@@ -468,7 +472,7 @@ export const StaffShell = {
             <div class="mobile-nav-drawer-backdrop"></div>
             <div class="mobile-nav-drawer-panel">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-                    <div class="mobile-nav-bar-logo-mark">${shopDisplayName()}</div>
+                    <div class="mobile-nav-bar-logo-mark shell-logo-btn" role="button" tabindex="0" aria-label="Go to home" style="cursor:pointer;">${shopDisplayName()}</div>
                     <button type="button" id="mobile-nav-close-btn" class="mobile-nav-toggle-btn" aria-label="Close menu">
                         <span class="mobile-nav-toggle-icon" style="background:transparent;"></span>
                     </button>
@@ -486,14 +490,20 @@ export const StaffShell = {
         `;
         if (wasOpen) drawer.classList.add("open");
         drawer.querySelector(".mobile-nav-drawer-backdrop").addEventListener("click", () => this.closeMobileDrawer());
-        drawer.querySelector("#mobile-nav-close-btn").addEventListener("click", () => this.closeMobileDrawer());
-        // Tab buttons close the drawer on navigation (in addition to the
-        // usual page-switch behavior) - wireButtons() below already handles
-        // the navigation itself; this only adds the close side effect on
-        // top so opening the menu, picking a page, and landing there with
-        // the drawer already gone feels like one motion, not two.
-        drawer.querySelectorAll(".staff-nav-btn").forEach((btn) => {
-            btn.addEventListener("click", () => this.closeMobileDrawer());
+        // Every button inside the panel closes the drawer as a side effect
+        // of whatever it actually does (navigate a tab, open the account
+        // menu, open the order-status/My Orders popup, clock in/out) - not
+        // just the tab buttons. The order-status popup in particular sits at
+        // a LOWER z-index than this drawer (see theme.css's comment on
+        // .mobile-nav-drawer), so leaving the drawer open after opening it
+        // from in here rendered the popup invisibly behind the still-open
+        // panel - closing first avoids relying on z-index ordering alone.
+        // Delegated (one listener on the panel, not one per button) because
+        // the order-widget's own button is injected later, asynchronously,
+        // by window.refreshOrderStatusWidget() below - a direct per-button
+        // listener attached here would miss it entirely.
+        drawer.querySelector(".mobile-nav-drawer-panel").addEventListener("click", (e) => {
+            if (e.target.closest("button")) this.closeMobileDrawer();
         });
         this.wireButtons(drawer);
         window.updateTimeclockWidget?.();
@@ -548,6 +558,28 @@ export const StaffShell = {
         });
         root.querySelector(".js-timeclock-btn")?.addEventListener("click", () => window.handleTimeclockClick?.());
         root.querySelector("#anon-store-indicator")?.addEventListener("click", () => window.openStorePicker?.());
+        // The logo/shop-name mark, in whichever of rail/top-bar/mobile-bar/
+        // drawer this root is - a plain div (not a real <button>) so it
+        // needs its own keyboard handling and focus-visible styling (see
+        // .shell-logo-btn in theme.css), matching this app's existing
+        // precedent for other div-as-button nav elements.
+        root.querySelectorAll(".shell-logo-btn").forEach((el) => {
+            el.addEventListener("click", () => this.goHome());
+            el.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    this.goHome();
+                }
+            });
+        });
+    },
+
+    /** Wherever the logo/shop name is clicked - closes the drawer first
+     *  (if open) since this always navigates away from whatever the drawer
+     *  was showing. */
+    goHome() {
+        this.closeMobileDrawer();
+        window.showPage(this.isStaffSession() ? "staff-home" : "home");
     },
 
     // Snapshot of the customer nav's markup, captured once on first load
