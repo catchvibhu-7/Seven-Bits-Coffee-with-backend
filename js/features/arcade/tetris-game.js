@@ -62,7 +62,7 @@ export const TetrisGame = {
         this.root = root;
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">TETRIS</h3>
-            <div style="display:flex; justify-content:space-between; max-width:320px; margin:0 auto 8px; font-size:9pt; color:var(--color-text-muted);">
+            <div style="display:flex; justify-content:space-between; max-width:320px; margin:0 auto 8px; font-size:12px; color:var(--color-text-muted);">
                 <span>SCORE: <strong id="tetris-score" style="color:var(--color-accent);">0</strong></span>
                 <span>LEVEL: <strong id="tetris-level" style="color:var(--color-accent);">1</strong></span>
             </div>
@@ -75,12 +75,12 @@ export const TetrisGame = {
                 <button id="tt-right" class="admin-btn">→</button>
                 <button id="tt-down" class="admin-btn">↓</button>
             </div>
-            <p id="tetris-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
+            <p id="tetris-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:320px; margin:8px auto 0;">
                 <button id="tetris-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
                 <button id="tetris-back" class="admin-btn">BACK</button>
             </div>
-            <p style="text-align:center; font-size:7pt; color:var(--color-text-muted); margin-top:8px;">Arrow keys to move/rotate, Space to hard-drop.</p>
+            <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">Arrow keys to move/rotate, Space to hard-drop.</p>
         `;
         this.canvas = this.root.querySelector("#tetris-canvas");
         this.ctx = this.canvas.getContext("2d");

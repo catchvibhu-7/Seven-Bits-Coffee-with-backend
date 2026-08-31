@@ -43,20 +43,20 @@ export const MemoryGame = {
     render(message = "") {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">MEMORY MATCH</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">MOVES: <strong id="mm-moves" style="color:var(--color-accent);">${this.moves}</strong></p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">MOVES: <strong id="mm-moves" style="color:var(--color-accent);">${this.moves}</strong></p>
             <div class="arcade-board" style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px;">
                 ${this.cards
                     .map((c, i) => {
                         const shown = c.matched || this.flippedIndices.includes(i);
                         return `
-                    <div class="mm-card" data-i="${i}" style="aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:1.6rem; background:${shown ? "var(--color-surface)" : "var(--color-accent)"}; border:1px solid var(--color-border); border-radius:4px; cursor:${c.matched ? "default" : "pointer"};">
+                    <div class="mm-card" data-i="${i}" style="aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:26px; background:${shown ? "var(--color-surface)" : "var(--color-accent)"}; border:1px solid var(--color-border); border-radius:4px; cursor:${c.matched ? "default" : "pointer"};">
                         ${shown ? c.symbol : ""}
                     </div>
                 `;
                     })
                     .join("")}
             </div>
-            <p id="mm-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;">${message}</p>
+            <p id="mm-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;">${message}</p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="mm-again" class="admin-btn-primary" style="display:${this.matchesFound === SYMBOLS.length ? "" : "none"};">PLAY AGAIN</button>
                 <button id="mm-back" class="admin-btn">BACK</button>

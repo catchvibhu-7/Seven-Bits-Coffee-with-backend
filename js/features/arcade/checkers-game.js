@@ -25,7 +25,7 @@ function pieceHtml(piece) {
     const isPlayer0 = piece === "b" || piece === "B";
     const isKing = piece === "B" || piece === "R";
     const color = isPlayer0 ? "var(--color-accent)" : "var(--color-text)";
-    return `<div style="width:78%; height:78%; border-radius:50%; background:${color}; display:flex; align-items:center; justify-content:center; font-size:0.8rem; color:var(--color-bg);">${isKing ? "♛" : ""}</div>`;
+    return `<div style="width:78%; height:78%; border-radius:50%; background:${color}; display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--color-bg);">${isKing ? "♛" : ""}</div>`;
 }
 
 export const CheckersGame = {
@@ -70,7 +70,7 @@ export const CheckersGame = {
     renderIntro() {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:16px;">CHECKERS</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:16px;">Online vs another player at the store only - no bot mode for this one.</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:16px;">Online vs another player at the store only - no bot mode for this one.</p>
             <div style="display:grid; gap:10px; max-width:280px; margin:0 auto;">
                 <button id="ck-vs-player" class="admin-btn-primary">FIND AN OPPONENT</button>
                 <button id="ck-exit" class="admin-btn">BACK TO GAMES</button>
@@ -84,7 +84,7 @@ export const CheckersGame = {
         this.processedResultFor = null;
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:16px;">CHECKERS - FINDING AN OPPONENT...</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted);">Waiting for another player at the store to queue up.</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted);">Waiting for another player at the store to queue up.</p>
             <div style="text-align:center; margin-top:20px;">
                 <button id="ck-cancel" class="admin-btn">CANCEL</button>
             </div>
@@ -182,7 +182,7 @@ export const CheckersGame = {
 
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:4px;">CHECKERS - VS ${opponentName.toUpperCase()}</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:12px;">You are ${myColorLabel} &middot; ${message}</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">You are ${myColorLabel} &middot; ${message}</p>
             <div class="arcade-board" style="display:grid; grid-template-columns:repeat(${SIZE},1fr); border:1px solid var(--color-border);">
                 ${cellsHtml}
             </div>

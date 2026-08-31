@@ -160,7 +160,7 @@ export const ConnectFourGame = {
     renderBotBoard(message = "Your move (orange)") {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">CONNECT FOUR - VS BOT</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:16px;">${message}</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:16px;">${message}</p>
             ${gridHtml(this.board)}
             <div style="text-align:center; margin-top:16px;">
                 <button id="c4-back" class="admin-btn">BACK</button>
@@ -208,7 +208,7 @@ export const ConnectFourGame = {
         }
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">CONNECT FOUR - VS BOT</h3>
-            <p style="text-align:center; font-size:1.1rem; color:var(--color-accent); margin-bottom:16px;">${message}</p>
+            <p style="text-align:center; font-size:18px; color:var(--color-accent); margin-bottom:16px;">${message}</p>
             ${gridHtml(this.board)}
             <div style="display:grid; gap:10px; max-width:280px; margin:16px auto 0;">
                 <button id="c4-again" class="admin-btn-primary">PLAY AGAIN</button>
@@ -230,7 +230,7 @@ export const ConnectFourGame = {
         this.processedResultFor = null;
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:16px;">CONNECT FOUR - FINDING AN OPPONENT...</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted);">Waiting for another player at the store to queue up.</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted);">Waiting for another player at the store to queue up.</p>
             <div style="text-align:center; margin-top:20px;">
                 <button id="c4-cancel" class="admin-btn">CANCEL</button>
             </div>
@@ -303,7 +303,7 @@ export const ConnectFourGame = {
 
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:4px;">CONNECT FOUR - VS ${opponentName.toUpperCase()}</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:16px;">You are ${mySymbol === "R" ? "orange" : "white"} &middot; ${message}</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:16px;">You are ${mySymbol === "R" ? "orange" : "white"} &middot; ${message}</p>
             ${gridHtml(match.board)}
             <div style="display:grid; gap:10px; max-width:280px; margin:16px auto 0;">
                 ${match.winner ? `<button id="c4-again" class="admin-btn-primary">PLAY AGAIN</button>` : ""}

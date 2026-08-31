@@ -94,7 +94,7 @@ export const MinesweeperGame = {
     render(message = "") {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">MINESWEEPER</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">TIME: <strong id="mine-timer" style="color:var(--color-accent);">${this.elapsed}</strong>s &middot; MINES: ${MINES}</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">TIME: <strong id="mine-timer" style="color:var(--color-accent);">${this.elapsed}</strong>s &middot; MINES: ${MINES}</p>
             <div class="arcade-board" style="display:grid; grid-template-columns:repeat(${COLS},1fr); gap:2px; background:var(--color-border);">
                 ${this.board
                     .map((c, i) => {
@@ -116,8 +116,8 @@ export const MinesweeperGame = {
                     })
                     .join("")}
             </div>
-            <p style="text-align:center; font-size:7pt; color:var(--color-text-muted); margin-top:8px;">Click to reveal &middot; long-press / right-click to flag.</p>
-            <p id="mine-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:10px 0 0; min-height:1.4em;">${message}</p>
+            <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">Click to reveal &middot; long-press / right-click to flag.</p>
+            <p id="mine-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:10px 0 0; min-height:1.4em;">${message}</p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="mine-again" class="admin-btn-primary" style="display:${this.gameOver ? "" : "none"};">PLAY AGAIN</button>
                 <button id="mine-back" class="admin-btn">BACK</button>

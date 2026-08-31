@@ -104,7 +104,7 @@ header {
     cursor: pointer;
     font-family: "Courier New", monospace;
     text-transform: uppercase;
-    font-size: 0.85rem;
+    font-size: 14px;
     letter-spacing: 1px;
     transition: all 0.2s;
 }
@@ -216,7 +216,7 @@ header {
     border: 1px solid var(--color-border);
     color: var(--color-text);
     font-family: "Courier New", monospace;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: bold;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -301,7 +301,7 @@ header {
     border: 1px solid var(--color-border);
     color: var(--color-text);
     font-family: inherit;
-    font-size: 11.5px;
+    font-size: 12px;
     cursor: pointer;
     min-height: 44px;
     box-sizing: border-box;
@@ -324,7 +324,7 @@ header {
 
 .staff-auth-role {
     flex: none;
-    font-size: 9.5px;
+    font-size: 10px;
     color: var(--color-text-muted);
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -850,7 +850,7 @@ header {
     border: 1px solid var(--color-border);
     color: var(--color-text);
     font-family: "Courier New", monospace;
-    font-size: 10.5px;
+    font-size: 11px;
     text-align: left;
     cursor: pointer;
     min-height: 44px;
@@ -957,7 +957,7 @@ header {
     #menu-search {
         height: 36px;
         width: 100%;
-        font-size: 0.8rem;
+        font-size: 13px;
     }
     .menu-controls div {
         display: flex;
@@ -1035,7 +1035,7 @@ header {
     }
     /* iOS Safari auto-zooms the whole page on focusing any text input whose
        computed font-size is under 16px - this app's compact monospace UI
-       runs most inputs at 8-10pt, so tapping into any of them (search
+       runs most inputs at 8-14px, so tapping into any of them (search
        fields, modal forms, the admin customer search) yanked the viewport
        into a zoomed-in state with no visible cause. 16px is the documented
        threshold Safari actually checks; !important because these fields'
@@ -1261,7 +1261,7 @@ header {
     padding: 4px 0;
 }
 .menu-pager-label {
-    font-size: 8pt;
+    font-size: 11px;
     color: var(--color-text-muted);
     margin: 0 6px;
 }
@@ -1303,7 +1303,7 @@ header {
 .menu-item .name {
     font-family: "Courier New", monospace;
     font-weight: bold;
-    font-size: 1.1rem;
+    font-size: 18px;
     color: var(--color-text);
     margin-bottom: 4px;
     letter-spacing: 0.5px;
@@ -1311,7 +1311,7 @@ header {
 
 .menu-item .story {
     font-family: "Courier New", monospace;
-    font-size: 0.85rem;
+    font-size: 14px;
     color: var(--color-text-muted);
     line-height: 1.2;
     font-style: normal;
@@ -1467,13 +1467,13 @@ header {
         margin-top: 10px;
         padding-top: 10px;
         border-top: 1px dashed #333;
-        font-size: 0.8rem;
+        font-size: 13px;
         color: var(--color-text-muted);
         width: 100%;
     }
 
     .menu-list .name {
-        font-size: 0.9rem;
+        font-size: 14px;
     }
 
     .item-controls {
@@ -1500,7 +1500,7 @@ header {
     padding: 0 12px;
     cursor: pointer;
     font-family: inherit;
-    font-size: 0.85rem;
+    font-size: 14px;
     font-weight: bold;
     display: flex;
     justify-content: center;
@@ -1531,7 +1531,7 @@ header {
     color: var(--color-accent);
     border: none;
     cursor: pointer;
-    font-size: 12pt;
+    font-size: 16px;
     font-family: "Courier New", Courier, monospace;
 }
 
@@ -1540,14 +1540,14 @@ header {
     text-align: center;
     color: var(--color-accent);
     font-weight: bold;
-    font-size: 0.85rem;
+    font-size: 14px;
 }
 
 /* Mobile Slim (26px) */
 @media (max-width: 500px) {
     .btn-add-fixed {
         height: 26px;
-        font-size: 0.72rem;
+        font-size: 12px;
         padding: 0 8px;
     }
 
@@ -1558,7 +1558,7 @@ header {
     .btn-qty-container button,
     .btn-qty-container span {
         width: 22px; /* Smaller touch targets for mobile row */
-        font-size: 10pt;
+        font-size: 14px;
     }
 }
 /* ==========================================================================
@@ -1636,7 +1636,7 @@ header {
 
 @media (max-width: 480px) {
     .footer-container { gap: 8px; }
-    .cart-bar { min-width: 200px; padding: 10px 15px; font-size: 0.9rem; }
+    .cart-bar { min-width: 200px; padding: 10px 15px; font-size: 14px; }
 }
 
 /* ==========================================================================
@@ -1669,7 +1669,7 @@ header {
     }
 }
 
-.jump-header { background: var(--color-accent); color: var(--color-accent-contrast); font-size: 8pt; padding: 5px 10px; font-weight: bold; }
+.jump-header { background: var(--color-accent); color: var(--color-accent-contrast); font-size: 11px; padding: 5px 10px; font-weight: bold; }
 .jump-option { padding: 12px 15px; color: var(--color-accent); cursor: pointer; border-bottom: 1px solid #222; }
 .jump-option:hover { background: var(--color-surface); color: var(--color-text); }
 .jump-id { opacity: 0.5; margin-right: 8px; }
@@ -1711,6 +1711,19 @@ header {
     padding: 30px;
     width: 400px;
     font-family: "Courier New", monospace;
+}
+/* Field labels (SIZE/MILK/EXTRAS/etc. in customize-modal.js) - explicit px,
+   not pt. `pt` sizes like 10px/11px convert to fractional pixels (9.33px,
+   10.67px), which forces the browser into sub-pixel text rendering - looks
+   soft/blurry, especially on a display with non-integer OS scaling (125%/
+   150%, the Windows default on a lot of hardware). Always size on-screen
+   text in px/rem, never pt - pt is a print unit that happens to *mostly*
+   work on screens, until it doesn't. */
+.cm-field-label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
 }
 /* .cart-row wraps multiple stacked lines (name, total+stepper, optional
    customization breakdown) in both the checkout modal and My Orders - it
@@ -1781,7 +1794,7 @@ header {
 .control-group label,
 .admin-field-label {
     display: block;
-    font-size: var(--admin-label-font-size, 8pt);
+    font-size: var(--admin-label-font-size, 11px);
     color: var(--admin-label-color, var(--color-text-muted));
     margin-bottom: 4px;
 }
@@ -1797,7 +1810,7 @@ header {
     width: 100%;
     box-sizing: border-box;
     font-family: inherit;
-    font-size: 8.5pt;
+    font-size: 12px;
 }
 /* Tells the browser to draw the native date-picker calendar popup (and the
    little calendar-icon glyph) in a dark palette instead of its default
@@ -1827,7 +1840,7 @@ header {
 /* Themed checkbox - applies everywhere (checkout, admin, item modals) so no
    page shows the browser's stock checkbox against this dark/monospace UI.
    appearance:none + a hand-drawn checkmark, sized to sit inline with an
-   8-8.5pt label without throwing off line-height. */
+   8-12px label without throwing off line-height. */
 input[type="checkbox"] {
     appearance: none;
     -webkit-appearance: none;
@@ -1883,7 +1896,7 @@ input[type="checkbox"]:disabled {
     padding: 10px 16px;
     cursor: pointer;
     font-family: "Courier New", monospace;
-    font-size: var(--admin-tab-font-size, 9pt);
+    font-size: var(--admin-tab-font-size, 12px);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -1920,7 +1933,7 @@ input[type="checkbox"]:disabled {
     margin-top: 2px;
 }
 #admin-tabs .admin-sub-tabs .admin-tab-btn {
-    font-size: calc(var(--admin-tab-font-size, 9pt) - 1pt);
+    font-size: calc(var(--admin-tab-font-size, 12px) - 1px);
     padding: 7px 14px;
 }
 
@@ -1931,7 +1944,7 @@ input[type="checkbox"]:disabled {
    values (tags, timestamps, amounts) elsewhere in the admin table cells,
    which intentionally stay tied to --color-text-muted. */
 .admin-help-text {
-    font-size: var(--admin-help-font-size, 7.5pt);
+    font-size: var(--admin-help-font-size, 10px);
     color: var(--admin-help-color, var(--color-text-muted));
 }
 
@@ -1957,14 +1970,14 @@ input[type="checkbox"]:disabled {
     display: flex;
     gap: 14px;
     padding: 5px 0;
-    font-size: 8.5pt;
+    font-size: 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 .readonly-field-label {
     flex: 0 0 220px;
     color: var(--color-text-muted);
     text-transform: uppercase;
-    font-size: 7.5pt;
+    font-size: 10px;
     letter-spacing: 0.3px;
     display: flex;
     align-items: center;
@@ -2001,7 +2014,7 @@ input[type="checkbox"]:disabled {
     border-radius: 50%;
     border: 1px solid var(--color-text-muted);
     color: var(--color-text-muted);
-    font-size: 7.5pt;
+    font-size: 10px;
     font-style: italic;
     font-family: Georgia, "Times New Roman", serif;
     cursor: help;
@@ -2029,7 +2042,7 @@ input[type="checkbox"]:disabled {
     border: 1px solid var(--color-accent);
     color: var(--color-text);
     padding: 6px 8px;
-    font-size: 7.5pt;
+    font-size: 10px;
     font-style: normal;
     font-family: "Courier New", monospace;
     white-space: normal;
@@ -2045,7 +2058,7 @@ input[type="checkbox"]:disabled {
 .admin-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 9pt;
+    font-size: 12px;
     margin-top: 10px;
 }
 @media (max-width: 700px) {
@@ -2069,7 +2082,7 @@ input[type="checkbox"]:disabled {
     color: var(--color-accent);
     padding: 7px 8px;
     border-bottom: 1px solid var(--color-accent);
-    font-size: 8pt;
+    font-size: 11px;
     letter-spacing: 0.5px;
     text-transform: uppercase;
 }
@@ -2091,7 +2104,7 @@ input[type="checkbox"]:disabled {
     border: none;
     color: var(--color-accent);
     cursor: pointer;
-    font-size: 13pt;
+    font-size: 18px;
     line-height: 1;
     padding: 2px 6px;
     font-family: inherit;
@@ -2107,7 +2120,7 @@ input[type="checkbox"]:disabled {
     border: 1px solid var(--color-accent);
     color: var(--color-accent);
     padding: 6px 10px;
-    font-size: 7pt;
+    font-size: 10px;
     cursor: pointer;
     font-family: inherit;
     text-transform: uppercase;
@@ -2196,11 +2209,11 @@ input[type="checkbox"]:disabled {
     background: var(--color-bg);
 }
 .stat-card .stat-label {
-    font-size: 8pt;
+    font-size: 11px;
     color: var(--color-text-muted);
 }
 .stat-card .stat-value {
-    font-size: 18pt;
+    font-size: 24px;
     color: var(--color-accent);
 }
 
@@ -2282,7 +2295,7 @@ input[type="checkbox"]:disabled {
     color: var(--color-accent-contrast);
     font-family: inherit;
     font-weight: 900;
-    font-size: 1.2rem;
+    font-size: 19px;
     padding: 15px 35px;
     border: none;
     cursor: pointer;
@@ -2345,7 +2358,7 @@ input[type="checkbox"]:disabled {
     color: var(--color-text);
 }
 .home-hero-tagline {
-    font-size: 14.5px;
+    font-size: 15px;
     line-height: 1.75;
     color: var(--color-text-muted);
     margin: 20px 0 0;
@@ -2421,7 +2434,7 @@ input[type="checkbox"]:disabled {
     min-width: 0;
 }
 .home-fact-label {
-    font-size: 9.5px;
+    font-size: 10px;
     letter-spacing: 0.18em;
     color: var(--color-text-muted);
     text-transform: uppercase;
@@ -2509,7 +2522,7 @@ input[type="checkbox"]:disabled {
     position: absolute;
     left: 13px;
     bottom: 11px;
-    font-size: 9.5px;
+    font-size: 10px;
     letter-spacing: 0.14em;
     color: var(--color-accent);
     text-transform: uppercase;
@@ -2577,7 +2590,7 @@ input[type="checkbox"]:disabled {
     min-width: 0;
 }
 .home-panel h2 {
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: bold;
     letter-spacing: 0.24em;
     margin: 0;
@@ -2612,7 +2625,7 @@ input[type="checkbox"]:disabled {
 .home-roast-step-name {
     flex: none;
     width: 118px;
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: bold;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -2641,7 +2654,7 @@ input[type="checkbox"]:disabled {
     box-shadow: inset 0 0 26px rgba(217, 119, 6, .09);
 }
 .home-widget h2 {
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: bold;
     letter-spacing: 0.24em;
     margin: 0 0 4px;
@@ -2692,7 +2705,7 @@ input[type="checkbox"]:disabled {
     flex: 1;
     min-width: 0;
     text-align: right;
-    font-size: 12.5px;
+    font-size: 13px;
     letter-spacing: 0.04em;
 }
 
@@ -2709,7 +2722,7 @@ input[type="checkbox"]:disabled {
     padding: 30px 20px;
     border-top: 1px solid var(--color-border);
     background: var(--color-surface);
-    font-size: 9pt;
+    font-size: 12px;
     color: var(--color-text-muted);
 }
 .site-footer .footer-inner {
@@ -2726,7 +2739,7 @@ input[type="checkbox"]:disabled {
    many detail columns are actually filled in. */
 .site-footer .footer-tagline {
     color: var(--color-text);
-    font-size: 10pt;
+    font-size: 14px;
     letter-spacing: 0.5px;
     text-align: center;
     padding-bottom: 20px;
@@ -2753,7 +2766,7 @@ input[type="checkbox"]:disabled {
 }
 .site-footer .footer-col-title {
     color: var(--color-accent);
-    font-size: 8pt;
+    font-size: 11px;
     letter-spacing: 1px;
     margin-bottom: 6px;
     text-transform: uppercase;
@@ -2874,7 +2887,7 @@ input[type="checkbox"]:disabled {
 
 .arcade-locked-reason {
     color: var(--color-text-muted);
-    font-size: 9.5pt;
+    font-size: 13px;
     max-width: 360px;
 }
 
@@ -2888,7 +2901,7 @@ input[type="checkbox"]:disabled {
 .arcade-card .arcade-card-name {
     font-family: "Courier New", monospace;
     font-weight: bold;
-    font-size: 0.9rem;
+    font-size: 14px;
     letter-spacing: 0.5px;
     color: var(--color-text);
 }
@@ -3071,7 +3084,7 @@ input[type="checkbox"]:disabled {
     cursor: pointer;
     text-align: left;
     font-family: "Courier New", monospace;
-    font-size: 7.5pt;
+    font-size: 10px;
     color: var(--color-text);
     transition: border-color 0.15s, background 0.15s;
 }
@@ -3095,14 +3108,14 @@ input[type="checkbox"]:disabled {
 }
 
 .arcade-tip-label {
-    font-size: 7pt;
+    font-size: 10px;
     letter-spacing: 1px;
     color: var(--color-accent);
     margin-bottom: 6px;
 }
 
 .arcade-tip-text {
-    font-size: 8pt;
+    font-size: 11px;
     color: var(--color-text-muted);
     line-height: 1.4;
 }

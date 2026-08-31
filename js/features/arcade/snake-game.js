@@ -45,7 +45,7 @@ export const SnakeGame = {
         this.difficulty = loadDifficulty(DIFFICULTY_KEY);
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">SNAKE</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="snake-score" style="color:var(--color-accent);">0</strong></p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="snake-score" style="color:var(--color-accent);">0</strong></p>
             <div class="arcade-canvas-wrap">
                 <canvas id="snake-canvas" width="${COLS * CELL}" height="${ROWS * CELL}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
             </div>
@@ -54,12 +54,12 @@ export const SnakeGame = {
                 <button id="sn-left" class="admin-btn">←</button><button id="sn-down" class="admin-btn">↓</button><button id="sn-right" class="admin-btn">→</button>
             </div>
             ${difficultySelectorHtml("snake-diff", this.difficulty)}
-            <p id="snake-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
+            <p id="snake-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="snake-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
                 <button id="snake-back" class="admin-btn">BACK</button>
             </div>
-            <p style="text-align:center; font-size:7pt; color:var(--color-text-muted); margin-top:8px;">Arrow keys to steer.</p>
+            <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">Arrow keys to steer.</p>
         `;
         this.canvas = this.root.querySelector("#snake-canvas");
         this.ctx = this.canvas.getContext("2d");

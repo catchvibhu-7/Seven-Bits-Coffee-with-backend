@@ -95,7 +95,7 @@ function fieldControlHtml(f) {
         return `
             <div class="control-group">
                 <label for="${f.id}">${escapeHtml(f.label)}${tip}</label>
-                <textarea id="${f.id}" maxlength="${f.maxlength || 500}" rows="${f.rows || 3}" placeholder="${escapeHtml(f.placeholder || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8.5pt;">${escapeHtml(f.value)}</textarea>
+                <textarea id="${f.id}" maxlength="${f.maxlength || 500}" rows="${f.rows || 3}" placeholder="${escapeHtml(f.placeholder || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:12px;">${escapeHtml(f.value)}</textarea>
             </div>`;
     }
     if (f.type === "color") {
@@ -151,7 +151,7 @@ export function renderSectionEditModal({ title, fields, onSave, width = "420px" 
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: ${width}; max-width: 92vw; font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${escapeHtml(title)}</h2>
-            <p id="section-edit-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
+            <p id="section-edit-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 10px;"></p>
             ${fields.map(fieldControlHtml).join("")}
             <div style="display: grid; gap: 10px; margin-top: 18px;">
                 <button id="section-edit-save" class="admin-btn-primary">SAVE</button>

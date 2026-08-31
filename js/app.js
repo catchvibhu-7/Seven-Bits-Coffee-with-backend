@@ -409,7 +409,7 @@ window.renderAccountMenu = (triggerBtnId = "nav-account") => {
     menu.innerHTML = items
         .map(
             (item, i) => `
-        <button data-menu-index="${i}" style="display:block; width:100%; text-align:left; background:none; border:none; ${i > 0 ? "border-top:1px solid var(--color-border);" : ""} color:${item.danger ? "var(--color-danger)" : "var(--color-text)"}; padding:12px 16px; cursor:pointer; font-family:inherit; font-size:8pt; text-transform:uppercase;">${item.label}</button>
+        <button data-menu-index="${i}" style="display:block; width:100%; text-align:left; background:none; border:none; ${i > 0 ? "border-top:1px solid var(--color-border);" : ""} color:${item.danger ? "var(--color-danger)" : "var(--color-text)"}; padding:12px 16px; cursor:pointer; font-family:inherit; font-size:11px; text-transform:uppercase;">${item.label}</button>
     `
         )
         .join("");
@@ -466,7 +466,7 @@ window.showToast = (message, tone = "success") => {
     const toast = document.createElement("div");
     toast.style.cssText = `
         background: var(--color-surface); border: 1px solid ${color}; color: ${color};
-        padding: 12px 20px; font-family: 'Courier New', monospace; font-size: 9pt;
+        padding: 12px 20px; font-family: 'Courier New', monospace; font-size: 12px;
         font-weight: bold; box-shadow: 4px 4px 0 rgba(0,0,0,0.4);
         transform: translateY(20px); opacity: 0; transition: transform 0.25s ease, opacity 0.25s ease;
     `;
@@ -728,7 +728,7 @@ async function refreshOrderStatusWidget() {
                 <span class="nav-order-widget-num">#${escapeHtml(String(order.orderNumber || order.id))}${extraCount > 0 ? ` <span style="opacity:0.7;">+${extraCount}</span>` : ""}</span>
                 <span class="nav-order-widget-status" style="color:${statusColor};">${escapeHtml(customerStatusLabel(order.status))}</span>
             </button>
-            <button type="button" class="nav-order-widget-all-btn" title="See all your orders" aria-label="See all your orders" style="flex:none; background:none; border:1px solid var(--color-border); color:var(--color-text-muted); font-size:7pt; letter-spacing:0.05em; padding:0 8px; height:100%; min-height:40px; cursor:pointer; font-family:inherit; text-transform:uppercase;">ALL</button>
+            <button type="button" class="nav-order-widget-all-btn" title="See all your orders" aria-label="See all your orders" style="flex:none; background:none; border:1px solid var(--color-border); color:var(--color-text-muted); font-size:10px; letter-spacing:0.05em; padding:0 8px; height:100%; min-height:40px; cursor:pointer; font-family:inherit; text-transform:uppercase;">ALL</button>
         </div>
     `;
     targets.forEach((el) => {
@@ -749,7 +749,7 @@ window.openOrderStatusPopup = () => {
     const statusColor = STATUS_COLORS[order.status] || "var(--color-accent)";
     const notifyPromptHtml =
         NotificationSystem.permission() === "default"
-            ? `<button id="order-popup-notify-btn" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:11pt; padding:0;" title="Get a notification when your order is ready" aria-label="Get a notification when your order is ready">\u{1F514}</button>`
+            ? `<button id="order-popup-notify-btn" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); font-size:15px; padding:0;" title="Get a notification when your order is ready" aria-label="Get a notification when your order is ready">\u{1F514}</button>`
             : "";
 
     const overlay = document.createElement("div");
@@ -766,8 +766,8 @@ window.openOrderStatusPopup = () => {
                     <span style="color:${statusColor}; font-weight:bold;">${escapeHtml(customerStatusLabel(order.status))}</span>
                 </span>
             </div>
-            <div style="font-size:10pt; color:var(--color-text-muted); margin-bottom:10px;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
-            <div style="font-size:10pt; margin-bottom:18px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 ${currencySymbol()}${order.total.toFixed(2)}</div>
+            <div style="font-size:14px; color:var(--color-text-muted); margin-bottom:10px;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
+            <div style="font-size:14px; margin-bottom:18px;">${order.isPaid ? "\u2713 Paid" : "Payment pending"} \u00b7 ${currencySymbol()}${order.total.toFixed(2)}</div>
             <button type="button" id="order-popup-close-btn" style="width:100%; padding:11px; background:var(--color-border); color:var(--color-text); border:none; cursor:pointer; text-transform:uppercase; font-family:inherit;">Close</button>
         </div>
     `;
@@ -1024,26 +1024,17 @@ function updateCartUI() {
  * here, so the printed receipt can never drift from what was actually
  * charged/quoted.
  */
-window.printBill = (order) => {
-    const printWindow = window.open("", "_blank");
-    printWindow.document.write(`
-        <html>
-        <head>
-            <style>
-                body { font-family: 'Courier New', monospace; width: 80mm; padding: 10px; color: #000; }
-                .center { text-align: center; }
-                .hr { border-bottom: 1px dashed #000; margin: 10px 0; }
-                .row { display: flex; justify-content: space-between; font-size: 9pt; margin: 3px 0; }
-                .total { font-weight: bold; font-size: 12pt; border-top: 1px solid #000; padding-top: 5px; }
-            </style>
-        </head>
-        <body onload="window.print(); window.close();">
+/** The receipt content itself - shared by the print window (printBill) and
+ *  the on-screen preview (showBillPreview) so clicking an order number ever
+ *  shows anything other than exactly what would come out of the printer. */
+function billReceiptBodyHtml(order) {
+    return `
             <div class="center">
                 ${siteConfig.logoUrl ? `<img src="${escapeHtml(siteConfig.logoUrl)}" style="max-width:120px; max-height:60px; margin-bottom:6px;" />` : ""}
                 <h3>${escapeHtml(siteConfig.shopName || "SEVEN BITS COFFEE")}</h3>
-                <p style="font-size: 8pt;">${siteConfig.footer?.address ? escapeHtml(siteConfig.footer.address) + "<br>" : ""}#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
-                ${siteConfig.gstNumber ? `<p style="font-size: 7pt;">GSTIN: ${escapeHtml(siteConfig.gstNumber)}</p>` : ""}
-                ${order.tableNumber ? `<p style="font-size: 10pt; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
+                <p style="font-size: 11px;">${siteConfig.footer?.address ? escapeHtml(siteConfig.footer.address) + "<br>" : ""}#${order.orderNumber || order.id} | ${new Date(order.createdAt).toLocaleString()}</p>
+                ${siteConfig.gstNumber ? `<p style="font-size: 10px;">GSTIN: ${escapeHtml(siteConfig.gstNumber)}</p>` : ""}
+                ${order.tableNumber ? `<p style="font-size: 14px; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
             </div>
             <div class="hr"></div>
             ${order.items
@@ -1055,8 +1046,8 @@ window.printBill = (order) => {
                         <span>${item.quantity}x ${escapeHtml(item.name)}</span>
                         <span>${currencySymbol()}${(item.price * item.quantity).toFixed(2)}</span>
                     </div>
-                    ${tags ? `<div style="font-size:7pt; color:#555; padding-left:10px;">${tags}</div>` : ""}
-                    ${item.notes ? `<div style="font-size:7pt; color:#555; font-style:italic; padding-left:10px;">"${escapeHtml(item.notes)}"</div>` : ""}
+                    ${tags ? `<div style="font-size:10px; color:#555; padding-left:10px;">${tags}</div>` : ""}
+                    ${item.notes ? `<div style="font-size:10px; color:#555; font-style:italic; padding-left:10px;">"${escapeHtml(item.notes)}"</div>` : ""}
                 </div>
             `;
                 })
@@ -1070,20 +1061,68 @@ window.printBill = (order) => {
             ${order.tipApplied ? `<div class="row">GINGER TIP: <span>${currencySymbol()}${order.tipAmount.toFixed(2)}</span></div>` : ""}
             <div class="row total">TOTAL: <span>${currencySymbol()}${order.total.toFixed(2)}</span></div>
             <div class="hr"></div>
-            <p class="center" style="font-size: 8pt;">${escapeHtml(siteConfig.receiptFooterText || "Thank you for visiting!")}</p>
+            <p class="center" style="font-size: 11px;">${escapeHtml(siteConfig.receiptFooterText || "Thank you for visiting!")}</p>
             ${
                 order.trackingToken
                     ? `<div class="hr"></div>
             <div class="center">
                 <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${location.origin}${location.pathname}?track=${order.trackingToken}`)}" width="100" height="100" alt="Track order QR" />
-                <p style="font-size: 7pt; margin-top: 4px;">SCAN TO TRACK THIS ORDER</p>
+                <p style="font-size: 10px; margin-top: 4px;">SCAN TO TRACK THIS ORDER</p>
             </div>`
                     : ""
             }
+    `;
+}
+
+/** `.bill-receipt` (not a bare `body` selector) so this same rule block is
+ *  safe to reuse inline in the main page's own DOM (showBillPreview) as well
+ *  as inside the print window's isolated document (printBill) - a bare
+ *  `body{...}` rule would otherwise leak out and restyle the whole app. */
+const RECEIPT_STYLE_TAG = `
+    <style>
+        .bill-receipt { font-family: 'Courier New', monospace; width: 80mm; max-width: 100%; box-sizing: border-box; padding: 10px; color: #000; margin: 0 auto; }
+        .bill-receipt .center { text-align: center; }
+        .bill-receipt .hr { border-bottom: 1px dashed #000; margin: 10px 0; }
+        .bill-receipt .row { display: flex; justify-content: space-between; font-size: 12px; margin: 3px 0; }
+        .bill-receipt .total { font-weight: bold; font-size: 16px; border-top: 1px solid #000; padding-top: 5px; }
+    </style>
+`;
+
+window.printBill = (order) => {
+    const printWindow = window.open("", "_blank");
+    printWindow.document.write(`
+        <html>
+        <head>${RECEIPT_STYLE_TAG}</head>
+        <body class="bill-receipt" onload="window.print(); window.close();">
+            ${billReceiptBodyHtml(order)}
         </body>
         </html>
     `);
     printWindow.document.close();
+};
+
+/** On-screen bill preview - clicking an order/bill number (My Orders, Order
+ *  History) shows exactly this same receipt markup instead of immediately
+ *  triggering a print dialog, with PRINT/CLOSE actions of its own. */
+window.showBillPreview = (order) => {
+    document.getElementById("bill-preview-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "bill-preview-overlay";
+    overlay.className = "modal-overlay";
+    overlay.style.zIndex = "5200";
+    overlay.innerHTML = `
+        <div class="modal-content" style="background:#fff; padding:0; width:min(360px, 92vw); max-height:88vh; overflow-y:auto; border: 2px solid var(--color-accent);">
+            ${RECEIPT_STYLE_TAG}
+            <div class="bill-receipt" style="padding:16px; width:auto;">${billReceiptBodyHtml(order)}</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:0 16px 16px;">
+                <button type="button" id="bill-preview-print" style="padding:11px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-weight:bold; cursor:pointer; text-transform:uppercase; font-family:'Courier New', monospace;">Print</button>
+                <button type="button" id="bill-preview-close" style="padding:11px; background:#ddd; color:#000; border:none; cursor:pointer; text-transform:uppercase; font-family:'Courier New', monospace;">Close</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById("bill-preview-print").addEventListener("click", () => window.printBill(order));
+    document.getElementById("bill-preview-close").addEventListener("click", () => overlay.remove());
 };
 
 window.printKOT = (order) => {
@@ -1094,14 +1133,14 @@ window.printKOT = (order) => {
             <style>
                 body { font-family: 'Courier New', monospace; width: 80mm; padding: 10px; }
                 .header { border-bottom: 2px solid #000; padding-bottom: 5px; text-align: center; }
-                .item { font-size: 14pt; font-weight: bold; margin: 10px 0; border-bottom: 1px dashed #ccc; }
+                .item { font-size: 19px; font-weight: bold; margin: 10px 0; border-bottom: 1px dashed #ccc; }
             </style>
         </head>
         <body onload="window.print(); window.close();">
             <div class="header">
                 <h2>KITCHEN TICKET</h2>
                 <p>#${order.orderNumber || order.id} | TYPE: ${order.method}</p>
-                ${order.tableNumber ? `<p style="font-size:16pt; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
+                ${order.tableNumber ? `<p style="font-size:22px; font-weight:bold;">TABLE ${escapeHtml(order.tableNumber)}</p>` : ""}
             </div>
             ${order.items
                 .map((item) => {
@@ -1109,13 +1148,13 @@ window.printKOT = (order) => {
                     return `
                 <div class="item">
                     ${item.quantity}x ${escapeHtml(item.name)}
-                    ${tags ? `<div style="font-size:9pt; font-weight:normal;">${tags}</div>` : ""}
-                    ${item.notes ? `<div style="font-size:9pt; font-weight:normal; font-style:italic;">"${escapeHtml(item.notes)}"</div>` : ""}
+                    ${tags ? `<div style="font-size:12px; font-weight:normal;">${tags}</div>` : ""}
+                    ${item.notes ? `<div style="font-size:12px; font-weight:normal; font-style:italic;">"${escapeHtml(item.notes)}"</div>` : ""}
                 </div>
             `;
                 })
                 .join("")}
-            <div style="margin-top: 20px; text-align: center; font-size: 8pt;">${new Date(order.createdAt).toLocaleTimeString()}</div>
+            <div style="margin-top: 20px; text-align: center; font-size: 11px;">${new Date(order.createdAt).toLocaleTimeString()}</div>
         </body>
         </html>
     `);
@@ -1637,7 +1676,7 @@ function renderMenu(filterQuery = "") {
             const showFavorite = TRACKING_ROLES.includes(session.role);
             const isFav = showFavorite && FavoritesSystem.isFavorite(item.id);
             const favButton = showFavorite
-                ? `<button type="button" class="btn-favorite fav-toggle-btn" title="${isFav ? "Remove from favorites" : "Add to favorites"}" aria-label="${isFav ? "Remove from favorites" : "Add to favorites"}" aria-pressed="${isFav}" style="background:none; border:none; cursor:pointer; font-size: 14pt; line-height:1; color: ${isFav ? "var(--color-accent)" : "var(--color-text-muted)"};">${isFav ? "\u2605" : "\u2606"}</button>`
+                ? `<button type="button" class="btn-favorite fav-toggle-btn" title="${isFav ? "Remove from favorites" : "Add to favorites"}" aria-label="${isFav ? "Remove from favorites" : "Add to favorites"}" aria-pressed="${isFav}" style="background:none; border:none; cursor:pointer; font-size: 19px; line-height:1; color: ${isFav ? "var(--color-accent)" : "var(--color-text-muted)"};">${isFav ? "\u2605" : "\u2606"}</button>`
                 : "";
 
             // Staff can flag an item as needing to come off the menu (e.g. out of
@@ -1647,8 +1686,8 @@ function renderMenu(filterQuery = "") {
             const staffRequestHtml =
                 session.role === "employee" && !isUnavailable
                     ? hasPendingRequest
-                        ? `<div style="font-size:6.5pt; color:var(--color-text-muted); margin-top:4px;">DISABLE REQUEST PENDING REVIEW</div>`
-                        : `<button class="btn-customize-link request-disable-btn" style="background:none; border:none; color:var(--color-danger); text-decoration:underline; font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px; display:block;">\u26a0 REQUEST DISABLE</button>`
+                        ? `<div style="font-size:9px; color:var(--color-text-muted); margin-top:4px;">DISABLE REQUEST PENDING REVIEW</div>`
+                        : `<button class="btn-customize-link request-disable-btn" style="background:none; border:none; color:var(--color-danger); text-decoration:underline; font-size:10px; cursor:pointer; font-family:inherit; padding:0; margin-top:4px; display:block;">\u26a0 REQUEST DISABLE</button>`
                     : "";
 
             // Each customized variant already in the cart gets its own row with a
@@ -1661,7 +1700,7 @@ function renderMenu(filterQuery = "") {
                     const label = tags.length ? tags.join(" \u00b7 ") : "Customized";
                     return `
                     <div class="customized-line-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 0; border-top:1px dashed var(--color-border);">
-                        <div style="font-size:7.5pt; color:var(--color-text-muted); flex:1;">
+                        <div style="font-size:10px; color:var(--color-text-muted); flex:1;">
                             <span style="color:var(--color-accent);">CUSTOMIZED</span> ${escapeHtml(label)}
                             ${line.notes ? `<div style="font-style:italic;">"${escapeHtml(line.notes)}"</div>` : ""}
                         </div>
@@ -1689,7 +1728,7 @@ function renderMenu(filterQuery = "") {
             const promoPrice = discountedBasePrice(item);
             const onPromo = item.promoDiscount && promoPrice < item.price;
             const priceHTML = onPromo
-                ? `<span style="text-decoration:line-through; color:var(--color-text-muted); font-size:0.8em;">${currencySymbol()}${item.price}</span> ${currencySymbol()}${promoPrice.toFixed(2)}`
+                ? `<span style="text-decoration:line-through; color:var(--color-text-muted); font-size:11px;">${currencySymbol()}${item.price}</span> ${currencySymbol()}${promoPrice.toFixed(2)}`
                 : `${currencySymbol()}${item.price}`;
 
             const itemEl = document.createElement("div");
@@ -1698,9 +1737,9 @@ function renderMenu(filterQuery = "") {
             itemEl.innerHTML = `
                 <div class="menu-item-banner">${itemImageMarkup(item)}</div>
                 <div class="info">
-                    <div class="name">${dietIconHtml(item)}${favButton}${item.name}${item.allergens ? allergenBadgeHtml(item.allergens) : ""}${isSoldOut ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:7pt; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:0.7em;">PROMO</span>' : ""}</div>
+                    <div class="name">${dietIconHtml(item)}${favButton}${item.name}${item.allergens ? allergenBadgeHtml(item.allergens) : ""}${isSoldOut ? ' <span style="font-size:10px; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:10px; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:10px; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:10px;">PROMO</span>' : ""}</div>
                     <div class="story">${item.story}</div>
-                    ${isUnavailable ? "" : `<button class="btn-customize-link open-customize-btn" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:7pt; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE</span></button>`}
+                    ${isUnavailable ? "" : `<button class="btn-customize-link open-customize-btn" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:10px; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE</span></button>`}
                     ${staffRequestHtml}
                 </div>
                 <div class="item-controls">
@@ -1730,8 +1769,8 @@ function renderMenu(filterQuery = "") {
 
     if (!anyItemsRendered) {
         root.innerHTML += favoritesFilterActive
-            ? `<p style="text-align:center; padding: 30px; font-size: 9pt; color: var(--color-text-muted);">No favorites yet - tap the \u2606 on any item to add one.</p>`
-            : `<p style="text-align:center; padding: 30px; font-size: 9pt; color: var(--color-text-muted);">No items match.</p>`;
+            ? `<p style="text-align:center; padding: 30px; font-size: 12px; color: var(--color-text-muted);">No favorites yet - tap the \u2606 on any item to add one.</p>`
+            : `<p style="text-align:center; padding: 30px; font-size: 12px; color: var(--color-text-muted);">No items match.</p>`;
     }
 
     const footer = document.getElementById("footer-actions");
@@ -1780,8 +1819,8 @@ function renderMenuCartPanel() {
     panel.innerHTML = `
         <div style="padding:16px 18px 14px; border-bottom:1px dashed var(--color-border); flex:none;">
             <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
-                <h2 style="font-size:12.5px; font-weight:bold; letter-spacing:.18em; margin:0; text-transform:uppercase; color:var(--color-accent);">Cart / KOT</h2>
-                <span style="font-size:10.5px; color:var(--color-text-muted);">${totalItems} item${totalItems === 1 ? "" : "s"}</span>
+                <h2 style="font-size:13px; font-weight:bold; letter-spacing:.18em; margin:0; text-transform:uppercase; color:var(--color-accent);">Cart / KOT</h2>
+                <span style="font-size:11px; color:var(--color-text-muted);">${totalItems} item${totalItems === 1 ? "" : "s"}</span>
             </div>
         </div>
         <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:4px 18px;">
@@ -1811,7 +1850,7 @@ function renderMenuCartPanel() {
                                 ${detailLines
                                     .map(
                                         (d) => `
-                                <div style="display:flex; justify-content:space-between; gap:8px; font-size:9.5px; color:var(--color-text-muted); padding:1px 0 1px 8px;">
+                                <div style="display:flex; justify-content:space-between; gap:8px; font-size:10px; color:var(--color-text-muted); padding:1px 0 1px 8px;">
                                     <span>${escapeHtml(d.label)}</span><span>${currencySymbol()}${d.amount.toFixed(2)}</span>
                                 </div>`
                                     )
@@ -1822,10 +1861,10 @@ function renderMenuCartPanel() {
                               return `
                 <div style="display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px dashed var(--color-border);">
                     <div style="flex:1; min-width:0;">
-                        <div style="font-size:11.5px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(line.name)}</div>
-                        <div style="font-size:9.5px; color:var(--color-text-muted); margin-top:3px;">${currencySymbol()}${line.price.toFixed(2)} each</div>
+                        <div style="font-size:12px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(line.name)}</div>
+                        <div style="font-size:10px; color:var(--color-text-muted); margin-top:3px;">${currencySymbol()}${line.price.toFixed(2)} each</div>
                         ${detailsHtml}
-                        ${line.notes ? `<div style="font-size:9.5px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(line.notes)}"</div>` : ""}
+                        ${line.notes ? `<div style="font-size:10px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(line.notes)}"</div>` : ""}
                     </div>
                     <div class="btn-qty-container">
                         <button type="button" class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="-1" aria-label="Decrease quantity of ${escapeHtml(line.name)}">-</button>
@@ -1841,7 +1880,7 @@ function renderMenuCartPanel() {
         </div>
         <div style="padding:14px 18px 18px; border-top:1px solid var(--color-border); flex:none;">
             <div style="margin-bottom:12px;">
-                <div id="cart-order-type-label" style="font-size:9.5px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); margin-bottom:6px;">ORDER TYPE</div>
+                <div id="cart-order-type-label" style="font-size:10px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); margin-bottom:6px;">ORDER TYPE</div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;" role="group" aria-labelledby="cart-order-type-label">
                     <button type="button" class="cart-order-type-btn" data-order-type="takeaway" aria-pressed="${orderType === "takeaway"}" style="padding:9px 6px; background:${orderType === "takeaway" ? "var(--color-accent)" : "transparent"}; color:${orderType === "takeaway" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Takeaway</button>
                     <button type="button" class="cart-order-type-btn" data-order-type="dine-in" aria-pressed="${orderType === "dine-in"}" style="padding:9px 6px; background:${orderType === "dine-in" ? "var(--color-accent)" : "transparent"}; color:${orderType === "dine-in" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Dine-in</button>
@@ -1856,7 +1895,7 @@ function renderMenuCartPanel() {
                 <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">SUBTOTAL</span>
                 <span style="font-size:22px; font-weight:bold; color:var(--color-accent);">${currencySymbol()}${breakdown.subtotal.toFixed(2)}</span>
             </div>
-            <button id="staff-cart-checkout-btn" ${cart.length === 0 ? "disabled" : ""} style="width:100%; padding:12px; background:${cart.length ? "var(--color-accent)" : "var(--color-border)"}; color:${cart.length ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:none; font-size:11.5px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:${cart.length ? "pointer" : "not-allowed"}; min-height:44px;">[ Checkout ]</button>
+            <button id="staff-cart-checkout-btn" ${cart.length === 0 ? "disabled" : ""} style="width:100%; padding:12px; background:${cart.length ? "var(--color-accent)" : "var(--color-border)"}; color:${cart.length ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:none; font-size:12px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:${cart.length ? "pointer" : "not-allowed"}; min-height:44px;">[ Checkout ]</button>
             <div style="font-size:9px; color:var(--color-text-muted); text-align:center; margin-top:8px; line-height:1.5;">Tax, service charge & tip shown at checkout.</div>
         </div>
     `;
@@ -2033,20 +2072,20 @@ async function renderTablesPanel() {
     root.innerHTML = `
         <div style="border:1px solid var(--color-border); padding:14px; background:var(--color-surface);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin:0;">OPEN TABLES</h3>
+                <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin:0;">OPEN TABLES</h3>
                 <button class="admin-btn admin-btn-primary" id="open-table-btn">+ OPEN TABLE</button>
             </div>
             ${
                 openTables.length === 0
-                    ? `<p style="font-size:8pt; color:var(--color-text-muted);">No open tabs right now.</p>`
+                    ? `<p style="font-size:11px; color:var(--color-text-muted);">No open tabs right now.</p>`
                     : openTables
                           .map(
                               (t) => `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--color-border); font-size:9pt;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--color-border); font-size:12px;">
                         <div>
                             <strong>TABLE ${escapeHtml(t.tableNumber)}</strong>
-                            ${t.customerName || t.customerPhone ? `<span style="color:var(--color-accent); font-size:7pt;"> &middot; ${escapeHtml(t.customerName || "")} ${t.customerPhone ? `(${escapeHtml(t.customerPhone)})` : ""}</span>` : ""}
-                            <span style="color:var(--color-text-muted); font-size:7pt;"> &middot; ${t.orderCount} order${t.orderCount === 1 ? "" : "s"} &middot; ${currencySymbol()}${t.total.toFixed(2)} &middot; opened by ${escapeHtml(t.openedBy)}</span>
+                            ${t.customerName || t.customerPhone ? `<span style="color:var(--color-accent); font-size:10px;"> &middot; ${escapeHtml(t.customerName || "")} ${t.customerPhone ? `(${escapeHtml(t.customerPhone)})` : ""}</span>` : ""}
+                            <span style="color:var(--color-text-muted); font-size:10px;"> &middot; ${t.orderCount} order${t.orderCount === 1 ? "" : "s"} &middot; ${currencySymbol()}${t.total.toFixed(2)} &middot; opened by ${escapeHtml(t.openedBy)}</span>
                         </div>
                         <div>
                             <button class="admin-btn" data-edit-table="${t.id}">EDIT</button>
@@ -2160,7 +2199,7 @@ function renderKitchen() {
     });
 
     if (matchingOrders.length === 0) {
-        root.innerHTML = `<p style="color:var(--color-text-muted); font-family:'Courier New',monospace; font-size:9pt;">No ${kitchenStatusFilter === "history" ? "completed" : kitchenStatusFilter === "active" ? "active" : ""} orders${currentKitchenStation !== "MASTER" ? ` for ${currentKitchenStation}` : ""}.</p>`;
+        root.innerHTML = `<p style="color:var(--color-text-muted); font-family:'Courier New',monospace; font-size:12px;">No ${kitchenStatusFilter === "history" ? "completed" : kitchenStatusFilter === "active" ? "active" : ""} orders${currentKitchenStation !== "MASTER" ? ` for ${currentKitchenStation}` : ""}.</p>`;
         return;
     }
 
@@ -2207,11 +2246,11 @@ function renderKitchen() {
                     .map((i) => {
                         const tags = customizationTagsText(i);
                         return `
-                    <div class="${i.isDone ? "item-done" : "item-pending"}" style="font-size:12.5px; letter-spacing:.04em;">
+                    <div class="${i.isDone ? "item-done" : "item-pending"}" style="font-size:13px; letter-spacing:.04em;">
                         <strong style="color:var(--color-accent);">${i.quantity}x</strong> ${escapeHtml(i.name)}
                         ${isMaster && i.isDone ? '<span style="font-size:10px; opacity:0.5; margin-left:5px;">[OK]</span>' : ""}
-                        ${tags ? `<div style="font-size:10.5px; color: var(--color-accent); font-weight:normal;">${tags}</div>` : ""}
-                        ${i.notes ? `<div style="font-size:10.5px; color: var(--color-text-muted); font-weight:normal; font-style:italic;">"${escapeHtml(i.notes)}"</div>` : ""}
+                        ${tags ? `<div style="font-size:11px; color: var(--color-accent); font-weight:normal;">${tags}</div>` : ""}
+                        ${i.notes ? `<div style="font-size:11px; color: var(--color-text-muted); font-weight:normal; font-style:italic;">"${escapeHtml(i.notes)}"</div>` : ""}
                     </div>
                 `;
                     })
@@ -2586,7 +2625,7 @@ function renderHomeVisitRows() {
     `
               )
               .join("")
-        : `<p style="color:var(--color-text-muted); font-size:11.5px; margin-top:10px;">Store details coming soon.</p>`;
+        : `<p style="color:var(--color-text-muted); font-size:12px; margin-top:10px;">Store details coming soon.</p>`;
 }
 
 window.pickFromHome = (itemId) => {

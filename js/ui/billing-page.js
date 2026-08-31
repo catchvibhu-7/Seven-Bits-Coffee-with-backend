@@ -105,7 +105,7 @@ export function selectBillForOrder(orderId) {
 export async function renderBillingPage() {
     const root = document.getElementById("billing-root");
     if (!root) return;
-    root.innerHTML = `<p style="color:var(--color-text-muted); font-size:9pt;">Loading open bills…</p>`;
+    root.innerHTML = `<p style="color:var(--color-text-muted); font-size:12px;">Loading open bills…</p>`;
 
     const [openTables, allOrders] = await Promise.all([TableSessionsSystem.list("open"), KitchenSystem.fetchOrders()]);
     const standaloneOrders = KitchenSystem.orders.filter((o) => !o.isPaid && !o.tableSessionId);
@@ -155,11 +155,11 @@ export async function renderBillingPage() {
                 </div>
 
                 <div class="billing-list-col">
-                    <h2 style="font-size:12.5px; font-weight:bold; letter-spacing:.2em; margin:0 0 10px; text-transform:uppercase; color:var(--color-accent);">Open bills (${openBills.length})</h2>
+                    <h2 style="font-size:13px; font-weight:bold; letter-spacing:.2em; margin:0 0 10px; text-transform:uppercase; color:var(--color-accent);">Open bills (${openBills.length})</h2>
                     <div class="billing-list-scroll">
                         ${
                             pageBills.length === 0
-                                ? `<p style="color:var(--color-text-muted); font-size:9pt;">Nothing open right now.</p>`
+                                ? `<p style="color:var(--color-text-muted); font-size:12px;">Nothing open right now.</p>`
                                 : pageBills
                                       .map((b) => {
                                           const isActive = !!(selectedBill && selectedBill.kind === b.kind && selectedBill.id === b.id);
@@ -213,7 +213,7 @@ async function renderBillDetail() {
     if (!detail) return;
     if (!selectedBill) {
         printableBill = null;
-        detail.innerHTML = `<p style="color:var(--color-text-muted); font-size:9pt; padding:20px 0;">Select a bill to settle it.</p>`;
+        detail.innerHTML = `<p style="color:var(--color-text-muted); font-size:12px; padding:20px 0;">Select a bill to settle it.</p>`;
         return;
     }
 
@@ -223,7 +223,7 @@ async function renderBillDetail() {
         bill = await TableSessionsSystem.get(selectedBill.id);
         if (!bill) {
             printableBill = null;
-            detail.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">That table was closed elsewhere. Pick another bill.</p>`;
+            detail.innerHTML = `<p style="color:var(--color-danger); font-size:12px;">That table was closed elsewhere. Pick another bill.</p>`;
             selectedBill = null;
             return;
         }
@@ -232,7 +232,7 @@ async function renderBillDetail() {
         order = KitchenSystem.orders.find((o) => o.id === selectedBill.id);
         if (!order) {
             printableBill = null;
-            detail.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">That order was already settled elsewhere. Pick another bill.</p>`;
+            detail.innerHTML = `<p style="color:var(--color-danger); font-size:12px;">That order was already settled elsewhere. Pick another bill.</p>`;
             selectedBill = null;
             return;
         }
@@ -300,14 +300,14 @@ async function renderBillDetail() {
             ? `
         <div style="background:var(--color-surface); border:1px solid var(--color-border); margin-top:12px; padding:16px;">
             <div style="font-size:9px; letter-spacing:.14em; color:var(--color-text-muted); text-transform:uppercase; border-left:4px solid var(--color-accent); padding-left:10px;">Adjust bill</div>
-            <label style="display:flex; align-items:center; gap:8px; font-size:10.5px; margin-top:13px; cursor:pointer;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:11px; margin-top:13px; cursor:pointer;">
                 <input type="checkbox" id="billing-adjust-service" ${order.serviceChargeActive ? "checked" : ""} />
                 Service charge (${((cfg.serviceChargeRate ?? 0.02) * 100).toFixed(1)}%)
             </label>
             ${
                 cfg.tipEnabled
                     ? `
-            <label style="display:flex; align-items:center; gap:8px; font-size:10.5px; margin-top:10px; cursor:pointer;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:11px; margin-top:10px; cursor:pointer;">
                 <input type="checkbox" id="billing-adjust-tip" ${order.tipApplied ? "checked" : ""} />
                 Tip (${money(cfg.tipAmount || 0)})
             </label>`
@@ -329,7 +329,7 @@ async function renderBillDetail() {
                 }
             </div>
             <p id="billing-adjust-error" style="color:var(--color-danger); font-size:9px; min-height:12px; margin:8px 0 0;"></p>
-            <button type="button" id="billing-adjust-apply" style="width:100%; margin-top:6px; padding:11px; background:var(--color-border); color:var(--color-text); border:none; font-size:10.5px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; min-height:40px;">Update bill</button>
+            <button type="button" id="billing-adjust-apply" style="width:100%; margin-top:6px; padding:11px; background:var(--color-border); color:var(--color-text); border:none; font-size:11px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; min-height:40px;">Update bill</button>
         </div>`
             : "";
 
@@ -363,22 +363,18 @@ async function renderBillDetail() {
             ${
                 itemsEditable
                     ? `
-            <div style="display:flex; gap:8px; align-items:center; padding:10px 14px; flex-wrap:wrap;">
-                <select id="billing-add-item-select" style="flex:1 1 140px; min-width:120px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;">
-                    ${menuItemsForPicker.map((m) => `<option value="${m.id}">${escapeHtml(m.name)} (${money(m.price)})</option>`).join("")}
-                </select>
-                <input id="billing-add-item-qty" type="number" min="1" value="1" style="width:52px; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;" />
-                <button type="button" id="billing-add-item-btn" style="flex:none; padding:7px 14px; background:var(--color-border); color:var(--color-text); border:none; font-size:9.5px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;">+ Add item</button>
+            <div id="billing-add-item-row" style="padding:10px 14px; display:flex; justify-content:flex-end;">
+                <button type="button" id="billing-add-item-toggle" style="padding:7px 14px; background:var(--color-border); color:var(--color-text); border:none; font-size:10px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;">+ Add item</button>
             </div>`
                     : ""
             }
             <div style="padding:13px 14px; display:flex; flex-direction:column; gap:6px;">
-                <div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>SUBTOTAL</span><span>${money(bill.subtotal)}</span></div>
-                ${bill.discountAmount ? `<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-success);"><span>DISCOUNT${bill.couponCode ? ` (${escapeHtml(bill.couponCode)})` : ""}</span><span>-${money(bill.discountAmount)}</span></div>` : ""}
-                <div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>CGST (${cgstPct}%)</span><span>${money(bill.cgst || 0)}</span></div>
-                <div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>SGST (${sgstPct}%)</span><span>${money(bill.sgst || 0)}</span></div>
-                ${bill.serviceCharge ? `<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-text-muted);"><span>SERVICE CHARGE</span><span>${money(bill.serviceCharge)}</span></div>` : ""}
-                ${bill.tipAmount ? `<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--color-cyan);"><span>TIP</span><span>${money(bill.tipAmount)}</span></div>` : ""}
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-muted);"><span>SUBTOTAL</span><span>${money(bill.subtotal)}</span></div>
+                ${bill.discountAmount ? `<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-success);"><span>DISCOUNT${bill.couponCode ? ` (${escapeHtml(bill.couponCode)})` : ""}</span><span>-${money(bill.discountAmount)}</span></div>` : ""}
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-muted);"><span>CGST (${cgstPct}%)</span><span>${money(bill.cgst || 0)}</span></div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-muted);"><span>SGST (${sgstPct}%)</span><span>${money(bill.sgst || 0)}</span></div>
+                ${bill.serviceCharge ? `<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-muted);"><span>SERVICE CHARGE</span><span>${money(bill.serviceCharge)}</span></div>` : ""}
+                ${bill.tipAmount ? `<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-cyan);"><span>TIP</span><span>${money(bill.tipAmount)}</span></div>` : ""}
                 <div style="display:flex; justify-content:space-between; align-items:baseline; border-top:1px solid var(--color-border); margin-top:4px; padding-top:11px;">
                     <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">AMOUNT PAYABLE</span>
                     <span style="font-size:24px; font-weight:bold; color:var(--color-accent);">${money(bill.total)}</span>
@@ -399,7 +395,7 @@ async function renderBillDetail() {
                 `
                 ).join("")}
             </div>
-            <button type="button" id="billing-settle-btn" style="width:100%; margin-top:14px; padding:13px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-size:11.5px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; min-height:44px;">[ Settle ${money(bill.total)} by ${selectedMethod} ]</button>
+            <button type="button" id="billing-settle-btn" style="width:100%; margin-top:14px; padding:13px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-size:12px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; min-height:44px;">[ Settle ${money(bill.total)} by ${selectedMethod} ]</button>
         </div>
     `;
 
@@ -442,22 +438,86 @@ async function renderBillDetail() {
             submitItemEdit(rawItems);
         });
     });
-    detail.querySelector("#billing-add-item-btn")?.addEventListener("click", () => {
-        const select = detail.querySelector("#billing-add-item-select");
-        const qtyInput = detail.querySelector("#billing-add-item-qty");
-        const id = Number(select?.value);
-        const quantity = Math.max(1, parseInt(qtyInput?.value, 10) || 1);
-        if (!id) return;
-        const rawItems = order.items.map(lineToRawItem);
-        // "regular"/"regular", no extras/notes - the same default shape the
-        // customer-facing ADD BIT stepper uses (see defaultCartKey() in
-        // app.js) - merges into an existing plain line for the same item
-        // instead of always adding a new row, matching that same behavior.
-        const isDefault = (c) => (c.size === "regular" || !c.size) && (c.milk === "regular" || !c.milk) && !(c.extras || []).length && !c.notes;
-        const existing = rawItems.find((r) => r.id === id && isDefault(r.customization));
-        if (existing) existing.quantity += quantity;
-        else rawItems.push({ id, quantity, customization: { size: "regular", milk: "regular", extras: [], notes: "" } });
-        submitItemEdit(rawItems);
+    // The add-item control starts as just a right-aligned button - expanding
+    // it into a search field + qty + confirm only on click keeps the bill
+    // detail visually calm when nobody's actively adding anything, matching
+    // every other "EDIT" section in this app that opens a form on demand
+    // rather than always showing one.
+    const addItemRow = detail.querySelector("#billing-add-item-row");
+    addItemRow?.querySelector("#billing-add-item-toggle")?.addEventListener("click", () => {
+        addItemRow.innerHTML = `
+            <div style="flex:1 1 160px; min-width:140px; position:relative;">
+                <input id="billing-add-item-search" type="text" autocomplete="off" placeholder="Search item..." style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;" />
+                <div id="billing-add-item-results" style="display:none; position:absolute; top:100%; left:0; right:0; margin-top:2px; z-index:20; background:var(--color-surface); border:1px solid var(--color-accent); box-shadow:4px 4px 0 rgba(0,0,0,0.4); max-height:180px; overflow-y:auto;"></div>
+            </div>
+            <input id="billing-add-item-qty" type="number" min="1" value="1" style="width:52px; flex:none; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:10px;" />
+            <button type="button" id="billing-add-item-btn" style="flex:none; padding:7px 14px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-size:10px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;">Add</button>
+            <button type="button" id="billing-add-item-cancel" style="flex:none; padding:7px 10px; background:none; border:none; color:var(--color-text-muted); font-size:10px; text-transform:uppercase; cursor:pointer;">Cancel</button>
+        `;
+        addItemRow.style.cssText = "padding:10px 14px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;";
+
+        const searchInput = addItemRow.querySelector("#billing-add-item-search");
+        const resultsEl = addItemRow.querySelector("#billing-add-item-results");
+        let selectedItem = null;
+
+        const renderResults = (query) => {
+            const q = query.trim().toLowerCase();
+            const matches = (q ? menuItemsForPicker.filter((m) => m.name.toLowerCase().includes(q)) : menuItemsForPicker).slice(0, 8);
+            if (!matches.length) {
+                resultsEl.style.display = "none";
+                resultsEl.innerHTML = "";
+                return;
+            }
+            resultsEl.innerHTML = matches
+                .map(
+                    (m) => `
+                <button type="button" class="billing-add-item-result" data-id="${m.id}" style="display:block; width:100%; text-align:left; padding:8px 10px; background:none; border:none; border-bottom:1px solid var(--color-border); color:var(--color-text); font-family:inherit; font-size:10px; cursor:pointer;">${escapeHtml(m.name)} <span style="color:var(--color-text-muted);">(${money(m.price)})</span></button>
+            `
+                )
+                .join("");
+            resultsEl.style.display = "block";
+            resultsEl.querySelectorAll(".billing-add-item-result").forEach((btn) => {
+                // mousedown (not click) fires before the input's blur, so the
+                // dropdown doesn't close itself out from under the click.
+                btn.addEventListener("mousedown", (e) => {
+                    e.preventDefault();
+                    selectedItem = menuItemsForPicker.find((m) => m.id === Number(btn.dataset.id));
+                    searchInput.value = selectedItem?.name || "";
+                    resultsEl.style.display = "none";
+                });
+            });
+        };
+
+        searchInput.addEventListener("input", () => {
+            selectedItem = null; // typing invalidates whatever was picked before
+            renderResults(searchInput.value);
+        });
+        searchInput.addEventListener("focus", () => renderResults(searchInput.value));
+        searchInput.addEventListener("blur", () => {
+            setTimeout(() => (resultsEl.style.display = "none"), 150);
+        });
+
+        addItemRow.querySelector("#billing-add-item-cancel").addEventListener("click", () => renderBillDetail());
+        addItemRow.querySelector("#billing-add-item-btn").addEventListener("click", () => {
+            const qtyInput = addItemRow.querySelector("#billing-add-item-qty");
+            const quantity = Math.max(1, parseInt(qtyInput?.value, 10) || 1);
+            if (!selectedItem) {
+                searchInput.style.borderColor = "var(--color-danger)";
+                searchInput.focus();
+                return;
+            }
+            const rawItems = order.items.map(lineToRawItem);
+            // "regular"/"regular", no extras/notes - the same default shape the
+            // customer-facing ADD BIT stepper uses (see defaultCartKey() in
+            // app.js) - merges into an existing plain line for the same item
+            // instead of always adding a new row, matching that same behavior.
+            const isDefault = (c) => (c.size === "regular" || !c.size) && (c.milk === "regular" || !c.milk) && !(c.extras || []).length && !c.notes;
+            const existing = rawItems.find((r) => r.id === selectedItem.id && isDefault(r.customization));
+            if (existing) existing.quantity += quantity;
+            else rawItems.push({ id: selectedItem.id, quantity, customization: { size: "regular", milk: "regular", extras: [], notes: "" } });
+            submitItemEdit(rawItems);
+        });
+        searchInput.focus();
     });
 
     // Enter in either field applies the same update as clicking the button -

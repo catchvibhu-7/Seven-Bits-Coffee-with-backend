@@ -35,9 +35,9 @@ export function renderStorePickerModal(onPicked) {
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(380px, 92vw); box-sizing: border-box; font-family: 'Courier New', monospace;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">CHOOSE YOUR STORE</h2>
-            <p style="font-size: 8pt; color: var(--color-text-muted); margin: 0 0 16px;">Which location are you ordering from? This only sets the menu and details you see - not tied to your account, so you can switch any time.</p>
+            <p style="font-size: 11px; color: var(--color-text-muted); margin: 0 0 16px;">Which location are you ordering from? This only sets the menu and details you see - not tied to your account, so you can switch any time.</p>
             <div id="store-picker-list" style="display: grid; gap: 10px;"></div>
-            <p id="store-picker-geo-status" style="font-size: 7pt; color: var(--color-text-muted); min-height: 10px; margin: 8px 0 0;"></p>
+            <p id="store-picker-geo-status" style="font-size: 10px; color: var(--color-text-muted); min-height: 10px; margin: 8px 0 0;"></p>
             <button id="store-picker-cancel" style="margin-top:10px; width:100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">${currentId != null ? "CANCEL" : "SKIP FOR NOW"}</button>
         </div>
     `;
@@ -53,10 +53,10 @@ export function renderStorePickerModal(onPicked) {
                 return `
                 <button type="button" class="store-pick-btn" data-store-id="${s.id}" style="text-align:left; background:${s.id === currentId ? "var(--color-accent)" : "var(--color-bg)"}; color:${s.id === currentId ? "var(--color-accent-contrast)" : "var(--color-text)"}; border:1px solid var(--color-accent); padding:12px 14px; cursor:pointer; font-family:inherit;">
                     <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
-                        <span style="font-weight:bold; font-size:10pt;">${escapeHtml(s.name)}</span>
-                        ${distance != null ? `<span style="font-size:8pt; opacity:0.8; white-space:nowrap;">${distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`} away</span>` : ""}
+                        <span style="font-weight:bold; font-size:14px;">${escapeHtml(s.name)}</span>
+                        ${distance != null ? `<span style="font-size:11px; opacity:0.8; white-space:nowrap;">${distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`} away</span>` : ""}
                     </div>
-                    ${s.address ? `<div style="font-size:8pt; opacity:0.8; margin-top:2px;">${escapeHtml(s.address)}</div>` : ""}
+                    ${s.address ? `<div style="font-size:11px; opacity:0.8; margin-top:2px;">${escapeHtml(s.address)}</div>` : ""}
                 </button>`;
             })
             .join("");
