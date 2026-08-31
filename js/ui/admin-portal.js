@@ -444,8 +444,8 @@ export const AdminPortal = {
                     isGlobalAdmin
                         ? `
                 <div style="display:flex; gap:8px;">
-                    <input type="text" id="new-store-name" maxlength="60" placeholder="Store name" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" id="new-store-address" maxlength="200" placeholder="Address (optional)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" id="new-store-name" maxlength="60" placeholder="Store name" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
+                    <input type="text" id="new-store-address" maxlength="200" placeholder="Address (optional)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
                     <button class="admin-btn" id="add-store">ADD STORE</button>
                 </div>`
                         : `<p class="admin-help-text">Only a Global Admin can add stores.</p>`
@@ -461,10 +461,10 @@ export const AdminPortal = {
                     const canEdit = this.canManageStoreSettings(s.id);
                     return `
                     <div style="border-bottom:1px solid var(--color-border); padding:8px 0;">
-                        <div style="display:flex; align-items:center; gap:10px; font-size:8pt;">
+                        <div style="display:flex; align-items:center; gap:10px; font-size:11px;">
                             <span style="flex:1;">${escapeHtmlAttr(s.name)}${s.address ? ` — ${escapeHtmlAttr(s.address)}` : ""}</span>
-                            <button class="admin-btn-secondary" data-toggle-panel="${s.id}" style="padding:4px 8px; font-size:7pt;">${expanded ? "CLOSE" : canEdit ? "EDIT" : "VIEW"}</button>
-                            ${isGlobalAdmin && stores.length > 1 ? `<button class="admin-btn-danger" data-remove-store="${s.id}" data-name="${escapeHtmlAttr(s.name)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>` : ""}
+                            <button class="admin-btn-secondary" data-toggle-panel="${s.id}" style="padding:4px 8px; font-size:10px;">${expanded ? "CLOSE" : canEdit ? "EDIT" : "VIEW"}</button>
+                            ${isGlobalAdmin && stores.length > 1 ? `<button class="admin-btn-danger" data-remove-store="${s.id}" data-name="${escapeHtmlAttr(s.name)}" style="padding:4px 8px; font-size:10px;">REMOVE</button>` : ""}
                         </div>
                         ${expanded ? `<div id="store-panel-${s.id}" style="margin-top:10px; padding:12px; border:1px solid var(--color-border); background:var(--color-bg);"></div>` : ""}
                     </div>
@@ -541,7 +541,7 @@ export const AdminPortal = {
         overlay.innerHTML = `
             <div class="modal-content" style="border: 2px solid var(--color-danger); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 340px; font-family: 'Courier New', monospace;">
                 <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-danger); padding-bottom: 10px; margin-top:0; font-size: 1rem;">REMOVE ${escapeHtmlAttr(storeName)}?</h2>
-                <p style="font-size: 9pt; color: var(--color-text-muted);">Any employee/manager assigned here needs somewhere to go. Pick a store to move them to, or leave it as "Deactivate" to disable their accounts (their order/payroll history is kept either way).</p>
+                <p style="font-size: 12px; color: var(--color-text-muted);">Any employee/manager assigned here needs somewhere to go. Pick a store to move them to, or leave it as "Deactivate" to disable their accounts (their order/payroll history is kept either way).</p>
                 <div class="control-group">
                     <label for="rsc-target">WHAT HAPPENS TO THEIR STAFF</label>
                     <select id="rsc-target" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit;">
@@ -794,13 +794,13 @@ export const AdminPortal = {
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
                         <label for="sp-restore-file" class="admin-btn-secondary" style="cursor:pointer;">CHOOSE FILE</label>
                         <input type="file" id="sp-restore-file" accept="application/json" style="display:none;" />
-                        <span id="sp-restore-file-name" style="font-size:8pt; color:var(--color-text-muted);">No file selected.</span>
+                        <span id="sp-restore-file-name" style="font-size:11px; color:var(--color-text-muted);">No file selected.</span>
                     </div>
                     <button class="admin-btn-secondary" id="sp-restore-upload" style="border-color:var(--color-danger); color:var(--color-danger);" disabled>RESTORE THIS STORE</button>
                 </div>`
                         : ""
                 }
-                <p id="sp-backup-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+                <p id="sp-backup-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px; margin-top:10px;"></p>
             </div>
         `;
         container.querySelector("#sp-backup-download").addEventListener("click", () => PayrollSystem.downloadStoreBackup(store.id));
@@ -860,13 +860,13 @@ export const AdminPortal = {
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
                     <label for="restore-file-input" class="admin-btn-secondary" style="cursor:pointer;">CHOOSE FILE</label>
                     <input type="file" id="restore-file-input" accept="application/json" style="display:none;" />
-                    <span id="restore-file-name" style="font-size:8pt; color:var(--color-text-muted);">No file selected.</span>
+                    <span id="restore-file-name" style="font-size:11px; color:var(--color-text-muted);">No file selected.</span>
                 </div>
                 <button class="admin-btn-secondary" id="restore-upload" style="border-color:var(--color-danger); color:var(--color-danger);" disabled>RESTORE FROM BACKUP</button>
                 `
                         : `<p class="admin-help-text">${isOwner ? "Owner has read-only access to backups - a Global Admin can restore." : "Only a Global Admin can restore a backup."}</p>`
                 }
-                <p id="backup-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+                <p id="backup-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px; margin-top:10px;"></p>
             </div>
         `;
 
@@ -935,7 +935,7 @@ export const AdminPortal = {
                     </div>
                 </div>
                 <button class="admin-btn-primary" id="report-export-csv">EXPORT CSV</button>
-                <p id="report-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px; margin-top:10px;"></p>
+                <p id="report-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px; margin-top:10px;"></p>
             </div>
         `;
 
@@ -998,7 +998,7 @@ export const AdminPortal = {
     async renderKpiDashboard(root) {
         const [kpi, roster] = await Promise.all([PayrollSystem.fetchKpi(this.kpiRange), PayrollSystem.fetchTimeclockRoster()]);
         if (!kpi) {
-            root.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">Could not load dashboard data.</p>`;
+            root.innerHTML = `<p style="color:var(--color-danger); font-size:12px;">Could not load dashboard data.</p>`;
             return;
         }
         await KitchenSystem.fetchOrders();
@@ -1025,10 +1025,10 @@ export const AdminPortal = {
                     : ""
             }
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
-                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.month.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.allTime.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.month.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.allTime.orders} orders</div></div>
             </div>
 
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
@@ -1041,13 +1041,13 @@ export const AdminPortal = {
 
             <div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px; margin-top:10px;">
                 <div>
-                    <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">REVENUE - ${rangeLabels[this.kpiRange]}</h3>
+                    <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">REVENUE - ${rangeLabels[this.kpiRange]}</h3>
                     <div style="display:flex; align-items:flex-end; gap:${kpi.chart.length > 20 ? "2px" : "8px"}; height:140px; border-bottom:1px solid var(--color-border); padding-bottom:4px;">
                         ${kpi.chart
                             .map(
                                 (d) => `
                             <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;" title="${d.label}: ${currencySymbol()}${d.revenue.toFixed(2)} (${d.count} orders)">
-                                ${kpi.chart.length <= 14 ? `<div style="font-size:7pt; color:var(--color-text-muted); margin-bottom:4px;">${currencySymbol()}${d.revenue.toFixed(0)}</div>` : ""}
+                                ${kpi.chart.length <= 14 ? `<div style="font-size:10px; color:var(--color-text-muted); margin-bottom:4px;">${currencySymbol()}${d.revenue.toFixed(0)}</div>` : ""}
                                 <div style="width:100%; background:var(--color-accent); height:${Math.max(2, (d.revenue / maxDaily) * 100)}%; min-height:2px;"></div>
                             </div>
                         `
@@ -1058,13 +1058,13 @@ export const AdminPortal = {
                         ${kpi.chart
                             .map(
                                 (d, i) =>
-                                    `<div style="flex:1; text-align:center; font-size:6.5pt; color:var(--color-text-muted); ${kpi.chart.length > 14 && i % Math.ceil(kpi.chart.length / 10) !== 0 ? "visibility:hidden;" : ""}">${this.kpiRange === "1y" ? d.label.slice(2) : d.label.slice(5)}</div>`
+                                    `<div style="flex:1; text-align:center; font-size:9px; color:var(--color-text-muted); ${kpi.chart.length > 14 && i % Math.ceil(kpi.chart.length / 10) !== 0 ? "visibility:hidden;" : ""}">${this.kpiRange === "1y" ? d.label.slice(2) : d.label.slice(5)}</div>`
                             )
                             .join("")}
                     </div>
                 </div>
                 <div>
-                    <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">TOP SELLERS (${rangeLabels[this.kpiRange]})</h3>
+                    <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">TOP SELLERS (${rangeLabels[this.kpiRange]})</h3>
                     ${
                         kpi.bestSellers.length === 0
                             ? `<p class="admin-help-text">No orders yet.</p>`
@@ -1072,7 +1072,7 @@ export const AdminPortal = {
                                   .map(
                                       (s) => `
                             <div style="margin-bottom:10px;">
-                                <div style="display:flex; justify-content:space-between; font-size:8pt; margin-bottom:3px;">
+                                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:3px;">
                                     <span>${escapeHtmlAttr(s.name)}</span><span style="color:var(--color-text-muted);">${s.quantity}</span>
                                 </div>
                                 <div style="height:5px; background:var(--color-border);"><div style="height:100%; width:${(s.quantity / maxSeller) * 100}%; background:var(--color-cyan);"></div></div>
@@ -1086,7 +1086,7 @@ export const AdminPortal = {
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; margin-top:20px;">
                 <div>
-                    <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">CREW</h3>
+                    <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">CREW</h3>
                     ${
                         roster.length === 0
                             ? `<p class="admin-help-text">No staff to show.</p>`
@@ -1101,12 +1101,12 @@ export const AdminPortal = {
                                           .toUpperCase();
                                       return `
                                 <div style="display:flex; align-items:center; gap:12px; padding:9px 0; border-top:1px dashed var(--color-border);">
-                                    <span style="width:30px; height:30px; flex:none; border:1px solid var(--color-accent); color:var(--color-accent); display:flex; align-items:center; justify-content:center; font-size:10pt; font-weight:bold;">${initials}</span>
+                                    <span style="width:30px; height:30px; flex:none; border:1px solid var(--color-accent); color:var(--color-accent); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:bold;">${initials}</span>
                                     <div style="flex:1; min-width:0;">
-                                        <div style="font-size:9pt; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(p.name)}</div>
-                                        <div style="font-size:7pt; color:var(--color-text-muted); margin-top:2px; letter-spacing:.06em; text-transform:uppercase;">${escapeHtmlAttr(p.role)}${p.tag ? " &middot; " + escapeHtmlAttr(p.tag) : ""}</div>
+                                        <div style="font-size:12px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(p.name)}</div>
+                                        <div style="font-size:10px; color:var(--color-text-muted); margin-top:2px; letter-spacing:.06em; text-transform:uppercase;">${escapeHtmlAttr(p.role)}${p.tag ? " &middot; " + escapeHtmlAttr(p.tag) : ""}</div>
                                     </div>
-                                    <span style="flex:none; font-size:7pt; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; color:${p.clockedIn ? "var(--color-success)" : "var(--color-text-muted)"};">${p.clockedIn ? "● ON SHIFT" : "OFF SHIFT"}</span>
+                                    <span style="flex:none; font-size:10px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; color:${p.clockedIn ? "var(--color-success)" : "var(--color-text-muted)"};">${p.clockedIn ? "● ON SHIFT" : "OFF SHIFT"}</span>
                                 </div>
                             `;
                                   })
@@ -1114,16 +1114,16 @@ export const AdminPortal = {
                     }
                 </div>
                 <div>
-                    <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">STATIONS</h3>
+                    <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">STATIONS</h3>
                     ${Object.entries(pendingByStation)
                         .map(
                             ([name, pending]) => `
                         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:9px 0; border-top:1px dashed var(--color-border);">
                             <div style="min-width:0;">
-                                <div style="font-size:9pt; font-weight:bold; letter-spacing:.06em; text-transform:uppercase;">${name}</div>
-                                <div style="font-size:7pt; color:var(--color-text-muted); margin-top:2px; letter-spacing:.08em; text-transform:uppercase;">Pending items</div>
+                                <div style="font-size:12px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase;">${name}</div>
+                                <div style="font-size:10px; color:var(--color-text-muted); margin-top:2px; letter-spacing:.08em; text-transform:uppercase;">Pending items</div>
                             </div>
-                            <span style="font-size:16pt; font-weight:bold; color:${pending > 0 ? "var(--color-accent)" : "var(--color-success)"};">${pending}</span>
+                            <span style="font-size:22px; font-weight:bold; color:${pending > 0 ? "var(--color-accent)" : "var(--color-success)"};">${pending}</span>
                         </div>
                     `
                         )
@@ -1159,22 +1159,22 @@ export const AdminPortal = {
     async renderFranchiseDashboard(root) {
         const kpi = await PayrollSystem.fetchKpi("7d");
         if (!kpi) {
-            root.innerHTML = `<p style="color:var(--color-danger); font-size:9pt;">Could not load dashboard data.</p>`;
+            root.innerHTML = `<p style="color:var(--color-danger); font-size:12px;">Could not load dashboard data.</p>`;
             return;
         }
         const byStore = kpi.byStore || [];
         const maxAllTimeRevenue = Math.max(1, ...byStore.map((s) => s.allTime.revenue));
 
         root.innerHTML = `
-            <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:4px;">COMBINED (EVERY STORE YOU CAN SEE)</h3>
+            <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:4px;">COMBINED (EVERY STORE YOU CAN SEE)</h3>
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom:26px;">
-                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.month.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div style="font-size:7pt; color:var(--color-text-muted);">${kpi.allTime.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.month.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.allTime.orders} orders</div></div>
             </div>
 
-            <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">STORE VS STORE (ALL TIME)</h3>
+            <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">STORE VS STORE (ALL TIME)</h3>
             ${
                 byStore.length === 0
                     ? `<p class="admin-help-text">No stores to compare yet.</p>`
@@ -1182,7 +1182,7 @@ export const AdminPortal = {
                           .map(
                               (s) => `
                 <div style="margin-bottom:16px;">
-                    <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:9pt; margin-bottom:5px;">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:12px; margin-bottom:5px;">
                         <span style="font-weight:bold;">${escapeHtmlAttr(s.storeName)}</span>
                         <span style="color:var(--color-text-muted);">${currencySymbol()}${s.allTime.revenue.toFixed(0)} &middot; ${s.allTime.orders} orders all-time &middot; ${currencySymbol()}${s.today.revenue.toFixed(0)} today</span>
                     </div>
@@ -1211,7 +1211,7 @@ export const AdminPortal = {
         const attendance = await PayrollSystem.fetchAttendance();
 
         root.innerHTML = `
-            <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:5px;">CURRENT PAY PERIOD</h3>
+            <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:5px;">CURRENT PAY PERIOD</h3>
             <p class="admin-help-text" style="margin-bottom:10px;">
                 Periods run on a fixed calendar cycle - hourly and weekly-rate staff are paid Monday-Sunday, monthly-rate staff on the calendar month.
                 Hours are capped at ${8} per day unless overtime is approved.
@@ -1228,13 +1228,13 @@ export const AdminPortal = {
                             (s) => `
                         <tr>
                             <td>${escapeHtmlAttr(s.name)}</td>
-                            <td style="font-size:8pt; color:var(--color-text-muted);">${escapeHtmlAttr(s.tag) || "\u2014"}</td>
-                            <td style="font-size:8pt;">${currencySymbol()}${s.payRate}/${s.payRateType === "hourly" ? "hr" : s.payRateType === "weekly" ? "wk" : "mo"}</td>
+                            <td style="font-size:11px; color:var(--color-text-muted);">${escapeHtmlAttr(s.tag) || "\u2014"}</td>
+                            <td style="font-size:11px;">${currencySymbol()}${s.payRate}/${s.payRateType === "hourly" ? "hr" : s.payRateType === "weekly" ? "wk" : "mo"}</td>
                             <td>
                                 ${s.hoursWorked !== null ? s.hoursWorked : "\u2014"}
                                 ${
                                     s.hasUnapprovedOvertime
-                                        ? `<div style="color:var(--color-danger); font-size:7pt; margin-top:2px;">\u26a0 ${s.rawHours}h worked, capped at ${s.hoursWorked}h</div>`
+                                        ? `<div style="color:var(--color-danger); font-size:10px; margin-top:2px;">\u26a0 ${s.rawHours}h worked, capped at ${s.hoursWorked}h</div>`
                                         : ""
                                 }
                             </td>
@@ -1243,7 +1243,7 @@ export const AdminPortal = {
                             <td style="text-align:right;">
                                 ${canPay && s.hasUnapprovedOvertime ? `<button class="admin-btn" data-approve-ot="${s.userId}" data-name="${escapeHtmlAttr(s.name)}">APPROVE OT</button>` : ""}
                                 ${canPay && !s.isPaid ? `<button class="admin-btn" data-mark-paid="${s.userId}" data-name="${escapeHtmlAttr(s.name)}" data-amount="${s.amount.toFixed(2)}">MARK PAID</button>` : ""}
-                                ${!canPay ? `<span style="color:var(--color-text-muted); font-size:7pt;">—</span>` : ""}
+                                ${!canPay ? `<span style="color:var(--color-text-muted); font-size:10px;">—</span>` : ""}
                             </td>
                         </tr>
                     `
@@ -1261,21 +1261,21 @@ export const AdminPortal = {
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:15px;">
                 <div>
                     <label for="att-user" class="admin-field-label" style="display:block; margin-bottom:3px;">STAFF</label>
-                    <select id="att-user" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;">
+                    <select id="att-user" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:11px;">
                         ${allStaff.map((u) => `<option value="${u.id}">${escapeHtmlAttr(u.name)}${u.tag ? ` (${escapeHtmlAttr(u.tag)})` : ""}</option>`).join("")}
                     </select>
                 </div>
                 <div>
                     <label for="att-date" class="admin-field-label" style="display:block; margin-bottom:3px;">DATE</label>
-                    <input type="date" id="att-date" value="${new Date().toISOString().slice(0, 10)}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
+                    <input type="date" id="att-date" value="${new Date().toISOString().slice(0, 10)}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:11px;" />
                 </div>
                 <div>
                     <label for="att-hours" class="admin-field-label" style="display:block; margin-bottom:3px;">HOURS</label>
-                    <input type="number" id="att-hours" min="0.5" max="24" step="0.5" value="8" style="width:80px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:8pt;" />
+                    <input type="number" id="att-hours" min="0.5" max="24" step="0.5" value="8" style="width:80px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; font-size:11px;" />
                 </div>
                 <button class="admin-btn-primary" id="att-submit">MARK</button>
             </div>
-            <p id="attendance-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+            <p id="attendance-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>
 
             ${
                 attendance.length === 0
@@ -1290,9 +1290,9 @@ export const AdminPortal = {
                             (a) => `
                         <tr>
                             <td>${escapeHtmlAttr(a.name)}</td>
-                            <td style="font-size:8pt;">${escapeHtmlAttr(a.date)}</td>
-                            <td>${a.hours}${a.hours > 8 ? ` <span style="color:var(--color-danger); font-size:7pt;">(OT)</span>` : ""}</td>
-                            <td style="font-size:8pt; color:var(--color-text-muted);">${escapeHtmlAttr(a.markedBy)}</td>
+                            <td style="font-size:11px;">${escapeHtmlAttr(a.date)}</td>
+                            <td>${a.hours}${a.hours > 8 ? ` <span style="color:var(--color-danger); font-size:10px;">(OT)</span>` : ""}</td>
+                            <td style="font-size:11px; color:var(--color-text-muted);">${escapeHtmlAttr(a.markedBy)}</td>
                             <td style="text-align:right;"><button class="admin-btn admin-btn-danger" data-delete-attendance="${a.id}">REMOVE</button></td>
                         </tr>
                     `
@@ -1316,10 +1316,10 @@ export const AdminPortal = {
                             (h) => `
                         <tr>
                             <td>${escapeHtmlAttr(h.name)}</td>
-                            <td style="font-size:8pt;">${h.periodStart.slice(0, 10)} \u2192 ${h.periodEnd.slice(0, 10)}</td>
+                            <td style="font-size:11px;">${h.periodStart.slice(0, 10)} \u2192 ${h.periodEnd.slice(0, 10)}</td>
                             <td>${h.hoursWorked !== null ? h.hoursWorked : "\u2014"}</td>
                             <td>${currencySymbol()}${h.amountPaid.toFixed(2)}</td>
-                            <td style="font-size:8pt; color:var(--color-text-muted);">${new Date(h.paidAt).toLocaleString()} by ${escapeHtmlAttr(h.paidBy)}</td>
+                            <td style="font-size:11px; color:var(--color-text-muted);">${new Date(h.paidAt).toLocaleString()} by ${escapeHtmlAttr(h.paidBy)}</td>
                         </tr>
                     `
                         )
@@ -1447,38 +1447,38 @@ export const AdminPortal = {
                 return `
             <tr style="opacity:0.5;">
                 <td>${iconHtml(item)}</td>
-                <td>${escapeHtmlAttr(item.name)} <span style="color:var(--color-danger); font-size:7pt;">DELETED</span></td>
+                <td>${escapeHtmlAttr(item.name)} <span style="color:var(--color-danger); font-size:10px;">DELETED</span></td>
                 <td>${currencySymbol()}${item.price}</td>
                 <td></td>
                 <td style="text-align:right;">
-                    <button class="admin-btn" data-restore="${item.id}" style="padding:4px 8px; font-size:7pt;">RESTORE</button>
+                    <button class="admin-btn" data-restore="${item.id}" style="padding:4px 8px; font-size:10px;">RESTORE</button>
                 </td>
             </tr>
         `;
             }
             const stockCell =
                 item.stockCount == null
-                    ? `<span style="color:var(--color-text-muted); font-size:8pt;">\u221e</span>`
+                    ? `<span style="color:var(--color-text-muted); font-size:11px;">\u221e</span>`
                     : item.stockCount === 0
-                      ? `<span style="color:var(--color-danger); font-size:8pt;">OUT OF STOCK</span>`
-                      : `<span style="${item.stockCount <= 5 ? "color:var(--color-danger);" : ""} font-size:8pt;">${item.stockCount}</span>`;
+                      ? `<span style="color:var(--color-danger); font-size:11px;">OUT OF STOCK</span>`
+                      : `<span style="${item.stockCount <= 5 ? "color:var(--color-danger);" : ""} font-size:11px;">${item.stockCount}</span>`;
             const disabledStores = item.disabledStores || [];
             const storesExpanded = !!this.expandedItemStores[item.id];
             return `
             <tr style="${item.available === false ? "opacity:0.5;" : ""}">
                 <td>${iconHtml(item)}</td>
-                <td>${escapeHtmlAttr(item.name)}${item.available === false ? ' <span style="color:var(--color-danger); font-size:7pt;">UNAVAILABLE</span>' : ""}${disabledStores.length ? ` <span style="color:var(--color-text-muted); font-size:7pt;">OUT AT ${disabledStores.length} STORE${disabledStores.length > 1 ? "S" : ""}</span>` : ""}</td>
+                <td>${escapeHtmlAttr(item.name)}${item.available === false ? ' <span style="color:var(--color-danger); font-size:10px;">UNAVAILABLE</span>' : ""}${disabledStores.length ? ` <span style="color:var(--color-text-muted); font-size:10px;">OUT AT ${disabledStores.length} STORE${disabledStores.length > 1 ? "S" : ""}</span>` : ""}</td>
                 <td>${currencySymbol()}${item.price}${
                     item.promoDiscount
-                        ? `<br><span style="color: var(--color-accent); font-size: 7pt;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `${currencySymbol()}${item.promoDiscount.value} OFF`}</span>`
+                        ? `<br><span style="color: var(--color-accent); font-size: 10px;">${item.promoDiscount.type === "percent" ? `${item.promoDiscount.value}% OFF` : `${currencySymbol()}${item.promoDiscount.value} OFF`}</span>`
                         : ""
                 }</td>
                 <td>${stockCell}</td>
                 <td style="text-align:right; white-space:nowrap;">
-                    <button class="admin-btn" data-edit="${item.id}" style="padding:4px 8px; font-size:7pt;">EDIT</button>
-                    <button class="admin-btn" data-toggle-available="${item.id}" style="padding:4px 8px; font-size:7pt;" title="${item.available === false ? "Mark available" : "Mark unavailable"}">${item.available === false ? "SHOW" : "HIDE"}</button>
-                    ${multiStore ? `<button class="admin-btn" data-toggle-item-stores="${item.id}" style="padding:4px 8px; font-size:7pt;">STORES</button>` : ""}
-                    <button class="admin-btn admin-btn-danger" data-delete="${item.id}" style="padding:4px 8px; font-size:7pt;">DEL</button>
+                    <button class="admin-btn" data-edit="${item.id}" style="padding:4px 8px; font-size:10px;">EDIT</button>
+                    <button class="admin-btn" data-toggle-available="${item.id}" style="padding:4px 8px; font-size:10px;" title="${item.available === false ? "Mark available" : "Mark unavailable"}">${item.available === false ? "SHOW" : "HIDE"}</button>
+                    ${multiStore ? `<button class="admin-btn" data-toggle-item-stores="${item.id}" style="padding:4px 8px; font-size:10px;">STORES</button>` : ""}
+                    <button class="admin-btn admin-btn-danger" data-delete="${item.id}" style="padding:4px 8px; font-size:10px;">DEL</button>
                 </td>
             </tr>
             ${
@@ -1492,7 +1492,7 @@ export const AdminPortal = {
                             ${stores
                                 .map(
                                     (s) => `
-                                <label style="display:flex; align-items:center; gap:5px; font-size:8pt; cursor:pointer;">
+                                <label style="display:flex; align-items:center; gap:5px; font-size:11px; cursor:pointer;">
                                     <input type="checkbox" data-item-store="${item.id}" value="${s.id}" ${disabledStores.includes(s.id) ? "" : "checked"} />
                                     ${escapeHtmlAttr(s.name)}
                                 </label>
@@ -1500,7 +1500,7 @@ export const AdminPortal = {
                                 )
                                 .join("")}
                         </div>
-                        <button class="admin-btn-primary" data-save-item-stores="${item.id}" style="margin-top:8px; padding:4px 8px; font-size:7pt;">SAVE</button>
+                        <button class="admin-btn-primary" data-save-item-stores="${item.id}" style="margin-top:8px; padding:4px 8px; font-size:10px;">SAVE</button>
                     </div>
                 </td>
             </tr>
@@ -1523,11 +1523,11 @@ export const AdminPortal = {
             const expanded = !!this.expandedMenuSections[section.id];
             const headerHtml = `
                 <div class="menu-section-header" data-toggle-section="${section.id}" role="button" tabindex="0" aria-expanded="${expanded}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 4px; cursor:pointer; border-bottom:1px solid var(--color-border);">
-                    <h3 style="font-size:9.5pt; letter-spacing:1px; color:var(--color-accent); display:flex; align-items:center; gap:8px; margin:0;">
+                    <h3 style="font-size:13px; letter-spacing:1px; color:var(--color-accent); display:flex; align-items:center; gap:8px; margin:0;">
                         <span aria-hidden="true" style="display:inline-block; transition:transform .1s; transform:rotate(${expanded ? "90deg" : "0deg"});">&#9656;</span>
-                        ${escapeHtmlAttr(section.title)} <span style="color:var(--color-text-muted); font-size:8pt;">(${items.length})</span>
+                        ${escapeHtmlAttr(section.title)} <span style="color:var(--color-text-muted); font-size:11px;">(${items.length})</span>
                     </h3>
-                    <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}" style="padding:4px 8px; font-size:7pt;">DELETE SECTION</button>
+                    <button class="admin-btn admin-btn-danger" data-delete-section="${section.id}" style="padding:4px 8px; font-size:10px;">DELETE SECTION</button>
                 </div>
             `;
             if (items.length === 0) {
@@ -1558,7 +1558,7 @@ export const AdminPortal = {
                             ? `<div style="display:flex; align-items:center; gap:2px; margin-top:8px; justify-content:flex-end;">
                             <button class="admin-pg-btn menu-page-first" data-section="${section.id}" ${clampedPage <= 1 ? "disabled" : ""} title="First page" aria-label="First page">\u00ab</button>
                             <button class="admin-pg-btn menu-page-prev" data-section="${section.id}" ${clampedPage <= 1 ? "disabled" : ""} title="Previous page" aria-label="Previous page">\u2039</button>
-                            <span style="font-size:8pt; color:var(--color-text-muted); margin:0 6px;">${(clampedPage - 1) * PAGE_SIZE + 1}-${Math.min(clampedPage * PAGE_SIZE, items.length)} of ${items.length}</span>
+                            <span style="font-size:11px; color:var(--color-text-muted); margin:0 6px;">${(clampedPage - 1) * PAGE_SIZE + 1}-${Math.min(clampedPage * PAGE_SIZE, items.length)} of ${items.length}</span>
                             <button class="admin-pg-btn menu-page-next" data-section="${section.id}" ${clampedPage >= totalPages ? "disabled" : ""} title="Next page" aria-label="Next page">\u203a</button>
                             <button class="admin-pg-btn menu-page-last" data-section="${section.id}" ${clampedPage >= totalPages ? "disabled" : ""} title="Last page" aria-label="Last page">\u00bb</button>
                         </div>`
@@ -1573,11 +1573,11 @@ export const AdminPortal = {
                 pendingRequestItems.length
                     ? `
                 <div style="border-left:3px solid var(--color-danger); padding:10px 14px; margin-bottom:20px; background:var(--color-bg);">
-                    <h3 style="font-size:9pt; color:var(--color-danger); margin-bottom:8px;">PENDING DISABLE REQUESTS (${pendingRequestItems.length})</h3>
+                    <h3 style="font-size:12px; color:var(--color-danger); margin-bottom:8px;">PENDING DISABLE REQUESTS (${pendingRequestItems.length})</h3>
                     ${pendingRequestItems
                         .map(
                             (item) => `
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed var(--color-border); font-size:8pt;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed var(--color-border); font-size:11px;">
                             <div>
                                 <strong>${escapeHtmlAttr(item.name)}</strong>
                                 ${item.disableRequests
@@ -1602,7 +1602,7 @@ export const AdminPortal = {
                 <button class="admin-btn" id="menu-add-section">+ ADD SECTION</button>
                 <button class="admin-btn" id="menu-expand-all">EXPAND ALL</button>
                 <button class="admin-btn" id="menu-collapse-all">COLLAPSE ALL</button>
-                <label style="display:flex; align-items:center; gap:5px; font-size: var(--admin-help-font-size, 7.5pt); color: var(--admin-help-color, var(--color-text-muted)); cursor:pointer; font-family: 'Courier New', monospace; margin-left:auto;">
+                <label style="display:flex; align-items:center; gap:5px; font-size: var(--admin-help-font-size, 10px); color: var(--admin-help-color, var(--color-text-muted)); cursor:pointer; font-family: 'Courier New', monospace; margin-left:auto;">
                     <input type="checkbox" id="menu-show-deleted" ${this.showDeletedMenuItems ? "checked" : ""} />
                     SHOW INACTIVE
                 </label>
@@ -1876,7 +1876,7 @@ export const AdminPortal = {
                 .map(
                     (g) => `
                 <div class="cp-group" data-group="${g.key}" style="margin-bottom: 30px;">
-                    <h3 style="font-size: 10pt; letter-spacing: 1px; color: var(--color-accent); margin-bottom: 4px;">${g.title}</h3>
+                    <h3 style="font-size: 14px; letter-spacing: 1px; color: var(--color-accent); margin-bottom: 4px;">${g.title}</h3>
                     <p class="admin-help-text" style="margin-bottom: 10px;">${g.note}</p>
                     <table class="admin-table">
                         <thead><tr><th>LABEL</th><th>KEY</th><th>PRICE ADD-ON (${currencySymbol()})</th><th></th></tr></thead>
@@ -1884,7 +1884,7 @@ export const AdminPortal = {
                     </table>
                     <button class="admin-btn cp-add-row" style="margin-top:8px;">+ ADD OPTION</button>
                     <button class="admin-btn admin-btn-primary cp-save" style="margin-top:8px; margin-left:8px;">SAVE ${g.title}</button>
-                    <p class="cp-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 6px 0 0;"></p>
+                    <p class="cp-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 6px 0 0;"></p>
                 </div>
             `
                 )
@@ -1913,7 +1913,7 @@ export const AdminPortal = {
                 (opt, idx) => `
                 <tr data-idx="${idx}">
                     <td><input class="cp-label" type="text" aria-label="Option ${idx + 1} label" maxlength="30" value="${escapeHtmlAttr(opt.label)}" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
-                    <td><input class="cp-key" type="text" aria-label="Option ${idx + 1} key" maxlength="30" value="${escapeHtmlAttr(opt.key)}" placeholder="auto from label" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text-muted); padding:5px; font-family:inherit; font-size:8pt;" /></td>
+                    <td><input class="cp-key" type="text" aria-label="Option ${idx + 1} key" maxlength="30" value="${escapeHtmlAttr(opt.key)}" placeholder="auto from label" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text-muted); padding:5px; font-family:inherit; font-size:11px;" /></td>
                     <td><input class="cp-price" type="number" min="0" step="1" aria-label="Option ${idx + 1} price add-on" value="${opt.priceDelta}" style="width:90px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
                     <td><button class="admin-btn admin-btn-danger cp-remove-row" aria-label="Remove option ${idx + 1}">REMOVE</button></td>
                 </tr>
@@ -2010,11 +2010,11 @@ export const AdminPortal = {
                                 (c) => `
                             <tr>
                                 <td>${escapeHtmlAttr(c.name || "—")}</td>
-                                <td style="color:var(--color-text-muted); font-size:8pt;">${escapeHtmlAttr(c.username || "—")}</td>
-                                <td style="font-size:8pt;">${escapeHtmlAttr(c.phone || "—")}</td>
+                                <td style="color:var(--color-text-muted); font-size:11px;">${escapeHtmlAttr(c.username || "—")}</td>
+                                <td style="font-size:11px;">${escapeHtmlAttr(c.phone || "—")}</td>
                                 <td>${c.loyaltyPoints}</td>
                                 <td>${c.orderCount}</td>
-                                <td style="text-align:right;"><button class="admin-btn" data-view-customer="${c.id}" style="padding:4px 8px; font-size:7pt;">VIEW</button></td>
+                                <td style="text-align:right;"><button class="admin-btn" data-view-customer="${c.id}" style="padding:4px 8px; font-size:10px;">VIEW</button></td>
                             </tr>
                         `
                             )
@@ -2038,7 +2038,7 @@ export const AdminPortal = {
 
         const res = await fetch(`/api/admin/customers/${this.viewingCustomerId}`, { credentials: "include" });
         if (!res.ok) {
-            resultsEl.innerHTML = `<p style="color:var(--color-danger); font-size:9pt; margin-top:14px;">Could not load that customer.</p>`;
+            resultsEl.innerHTML = `<p style="color:var(--color-danger); font-size:12px; margin-top:14px;">Could not load that customer.</p>`;
             return;
         }
         const { profile, orders, totalSpent } = await res.json();
@@ -2046,13 +2046,13 @@ export const AdminPortal = {
         resultsEl.innerHTML = `
             <button type="button" class="admin-btn-secondary" id="customer-back" style="margin:14px 0;">&larr; BACK TO SEARCH</button>
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom:16px;">
-                <div class="stat-card"><div class="stat-label">NAME</div><div class="stat-value" style="font-size:14pt;">${escapeHtmlAttr(profile.name || "—")}</div></div>
+                <div class="stat-card"><div class="stat-label">NAME</div><div class="stat-value" style="font-size:19px;">${escapeHtmlAttr(profile.name || "—")}</div></div>
                 <div class="stat-card"><div class="stat-label">LOYALTY POINTS</div><div class="stat-value">${profile.loyaltyPoints || 0}</div></div>
                 <div class="stat-card"><div class="stat-label">ORDERS</div><div class="stat-value">${orders.length}</div></div>
                 <div class="stat-card"><div class="stat-label">TOTAL SPENT (PAID)</div><div class="stat-value">${currencySymbol()}${totalSpent.toFixed(0)}</div></div>
             </div>
-            <p style="font-size:8pt; color:var(--color-text-muted); margin-bottom:14px;">USERNAME: ${escapeHtmlAttr(profile.username || "—")} &middot; PHONE: ${escapeHtmlAttr(profile.phone || "—")}</p>
-            <h3 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:8px;">ORDER HISTORY</h3>
+            <p style="font-size:11px; color:var(--color-text-muted); margin-bottom:14px;">USERNAME: ${escapeHtmlAttr(profile.username || "—")} &middot; PHONE: ${escapeHtmlAttr(profile.phone || "—")}</p>
+            <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:8px;">ORDER HISTORY</h3>
             ${
                 orders.length === 0
                     ? `<p class="admin-help-text">No orders yet.</p>`
@@ -2065,10 +2065,10 @@ export const AdminPortal = {
                                 (o) => `
                             <tr>
                                 <td>${escapeHtmlAttr(o.orderNumber || o.id)}</td>
-                                <td style="font-size:8pt;">${new Date(o.createdAt).toLocaleString()}</td>
-                                <td style="font-size:8pt;">${escapeHtmlAttr(o.items.map((i) => `${i.quantity}x ${i.name}`).join(", "))}</td>
+                                <td style="font-size:11px;">${new Date(o.createdAt).toLocaleString()}</td>
+                                <td style="font-size:11px;">${escapeHtmlAttr(o.items.map((i) => `${i.quantity}x ${i.name}`).join(", "))}</td>
                                 <td>${currencySymbol()}${o.total.toFixed(2)}</td>
-                                <td style="font-size:8pt; color:${o.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${o.isPaid ? "PAID" : "UNPAID"}</td>
+                                <td style="font-size:11px; color:${o.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${o.isPaid ? "PAID" : "UNPAID"}</td>
                             </tr>
                         `
                             )
@@ -2110,8 +2110,8 @@ export const AdminPortal = {
             <tr>
                 <td><strong>${escapeHtmlAttr(c.code)}</strong></td>
                 <td>${c.type === "percent" ? `${c.value}% off` : `${currencySymbol()}${c.value} off`}</td>
-                ${c.storeId != null ? `<td style="font-size:8pt;">${escapeHtmlAttr(storeName(c.storeId))}</td>` : ""}
-                <td style="font-size:8pt; color:var(--color-text-muted);">${c.private ? "PRIVATE" : "PUBLIC"}</td>
+                ${c.storeId != null ? `<td style="font-size:11px;">${escapeHtmlAttr(storeName(c.storeId))}</td>` : ""}
+                <td style="font-size:11px; color:var(--color-text-muted);">${c.private ? "PRIVATE" : "PUBLIC"}</td>
                 <td>${c.usedCount} / ${c.usageLimit === null ? "\u221e (until stopped)" : c.usageLimit}</td>
                 <td style="color:${c.active ? "var(--color-success)" : "var(--color-text-muted)"};">${c.active ? "ACTIVE" : "STOPPED"}</td>
                 <td style="text-align:right;">
@@ -2129,7 +2129,7 @@ export const AdminPortal = {
         root.innerHTML = `
             <div id="loyalty-section" style="margin-bottom:30px;"></div>
 
-            <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:10px; border-top:1px solid var(--color-border); padding-top:20px;">FRANCHISE-WIDE COUPONS</h3>
+            <h3 style="font-size:14px; letter-spacing:1px; color:var(--color-accent); margin-bottom:10px; border-top:1px solid var(--color-border); padding-top:20px;">FRANCHISE-WIDE COUPONS</h3>
             ${
                 canEditLoyalty
                     ? `
@@ -2153,13 +2153,13 @@ export const AdminPortal = {
                     <label for="coupon-limit" class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
                     <input type="text" id="coupon-limit" maxlength="8" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
                 </div>
-                <label style="display:flex; align-items:center; gap:5px; font-size: 8pt; cursor:pointer;">
+                <label style="display:flex; align-items:center; gap:5px; font-size: 11px; cursor:pointer;">
                     <input type="checkbox" id="coupon-private" />
                     PRIVATE
                 </label>
                 <button class="admin-btn-primary" id="coupon-add">+ ADD COUPON</button>
             </div>
-            <p id="coupon-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>`
+            <p id="coupon-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>`
                     : ""
             }
             <table class="admin-table">
@@ -2173,7 +2173,7 @@ export const AdminPortal = {
                 </tbody>
             </table>
 
-            <h3 style="font-size:10pt; letter-spacing:1px; color:var(--color-accent); margin:25px 0 10px; border-top:1px solid var(--color-border); padding-top:20px;">LOCAL DISCOUNTS</h3>
+            <h3 style="font-size:14px; letter-spacing:1px; color:var(--color-accent); margin:25px 0 10px; border-top:1px solid var(--color-border); padding-top:20px;">LOCAL DISCOUNTS</h3>
             ${
                 localAddableStores.length
                     ? `
@@ -2208,13 +2208,13 @@ export const AdminPortal = {
                     <label for="local-coupon-limit" class="admin-field-label" style="display:block; margin-bottom:4px;">USE LIMIT (blank = until stopped)</label>
                     <input type="text" id="local-coupon-limit" maxlength="8" placeholder="e.g. 50" style="background:var(--color-surface); border:1px solid var(--color-border); color:var(--color-text); padding:7px; font-family:inherit; width:140px;" />
                 </div>
-                <label style="display:flex; align-items:center; gap:5px; font-size: 8pt; cursor:pointer;">
+                <label style="display:flex; align-items:center; gap:5px; font-size: 11px; cursor:pointer;">
                     <input type="checkbox" id="local-coupon-private" />
                     PRIVATE
                 </label>
                 <button class="admin-btn-primary" id="local-coupon-add">+ ADD LOCAL DISCOUNT</button>
             </div>
-            <p id="local-coupon-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>`
+            <p id="local-coupon-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>`
                     : ""
             }
             <table class="admin-table">
@@ -2379,9 +2379,9 @@ export const AdminPortal = {
                                       return `
                                 <tr>
                                     <td>${escapeHtmlAttr(combo.name)}</td>
-                                    <td style="color: var(--color-text-muted); font-size: 8pt;">${lines}</td>
-                                    <td>${currencySymbol()}${combo.price} ${savings > 0 ? `<span style="color: var(--color-accent); font-size: 7pt;">(save ${currencySymbol()}${savings.toFixed(0)})</span>` : ""}</td>
-                                    <td style="font-size: 8pt; color: ${combo.active !== false ? "var(--color-accent)" : "var(--color-text-muted)"};">${combo.active !== false ? "ACTIVE" : "HIDDEN"}</td>
+                                    <td style="color: var(--color-text-muted); font-size: 11px;">${lines}</td>
+                                    <td>${currencySymbol()}${combo.price} ${savings > 0 ? `<span style="color: var(--color-accent); font-size: 10px;">(save ${currencySymbol()}${savings.toFixed(0)})</span>` : ""}</td>
+                                    <td style="font-size: 11px; color: ${combo.active !== false ? "var(--color-accent)" : "var(--color-text-muted)"};">${combo.active !== false ? "ACTIVE" : "HIDDEN"}</td>
                                     <td style="text-align:right;">
                                         <button class="admin-btn" data-combo-edit="${combo.id}">EDIT</button>
                                         <button class="admin-btn" data-combo-toggle="${combo.id}">${combo.active !== false ? "HIDE" : "SHOW"}</button>
@@ -2485,7 +2485,7 @@ export const AdminPortal = {
                     <button class="admin-btn ${this.orderHistoryFilter === "active" ? "active" : ""}" data-history-filter="active">ACTIVE</button>
                     <button class="admin-btn ${this.orderHistoryFilter === "completed" ? "active" : ""}" data-history-filter="completed">COMPLETED</button>
                 </div>
-                <select id="order-history-sort" aria-label="Sort order history" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:8pt;">
+                <select id="order-history-sort" aria-label="Sort order history" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:11px;">
                     <option value="newest" ${this.orderHistorySort === "newest" ? "selected" : ""}>NEWEST FIRST</option>
                     <option value="oldest" ${this.orderHistorySort === "oldest" ? "selected" : ""}>OLDEST FIRST</option>
                 </select>
@@ -2529,10 +2529,10 @@ export const AdminPortal = {
                           return `
                         <tr class="order-history-row ${o.id === this.orderHistorySelectedId ? "active" : ""}" data-order-id="${o.id}" tabindex="0" aria-label="View order #${escapeHtmlAttr(o.orderNumber || o.id)}" style="cursor:pointer;">
                             <td>#${o.orderNumber || o.id}</td>
-                            <td style="font-size:8pt;">${new Date(o.createdAt).toLocaleString()}</td>
-                            <td style="font-size:8pt;">${customerLabel}</td>
+                            <td style="font-size:11px;">${new Date(o.createdAt).toLocaleString()}</td>
+                            <td style="font-size:11px;">${customerLabel}</td>
                             <td>${currencySymbol()}${o.total.toFixed(2)}</td>
-                            <td style="font-size:8pt;">
+                            <td style="font-size:11px;">
                                 <span style="color:${o.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${o.isPaid ? "PAID" : "UNPAID"}</span>
                                 &middot; <span style="color:${complete ? "var(--color-success)" : "var(--color-cyan)"};">${complete ? "DONE" : "ACTIVE"}</span>
                             </td>
@@ -2565,7 +2565,7 @@ export const AdminPortal = {
                     ? `
                 <button class="admin-pg-btn" id="oh-first" ${this.orderHistoryPage <= 1 ? "disabled" : ""} title="First page" aria-label="First page">\u00ab</button>
                 <button class="admin-pg-btn" id="oh-prev" ${this.orderHistoryPage <= 1 ? "disabled" : ""} title="Previous page" aria-label="Previous page">\u2039</button>
-                <span style="font-size:8pt; color:var(--color-text-muted); margin:0 6px;">${(this.orderHistoryPage - 1) * PAGE_SIZE + 1}-${Math.min(this.orderHistoryPage * PAGE_SIZE, filtered.length)} of ${filtered.length}</span>
+                <span style="font-size:11px; color:var(--color-text-muted); margin:0 6px;">${(this.orderHistoryPage - 1) * PAGE_SIZE + 1}-${Math.min(this.orderHistoryPage * PAGE_SIZE, filtered.length)} of ${filtered.length}</span>
                 <button class="admin-pg-btn" id="oh-next" ${this.orderHistoryPage >= totalPages ? "disabled" : ""} title="Next page" aria-label="Next page">\u203a</button>
                 <button class="admin-pg-btn" id="oh-last" ${this.orderHistoryPage >= totalPages ? "disabled" : ""} title="Last page" aria-label="Last page">\u00bb</button>
             `
@@ -2592,12 +2592,12 @@ export const AdminPortal = {
             detailRoot.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
                     <div>
-                        <h3 style="margin:0; font-size:11pt;">#${order.orderNumber || order.id}</h3>
-                        <div style="font-size:8pt; color:var(--color-text-muted);">${new Date(order.createdAt).toLocaleString()}</div>
+                        <h3 style="margin:0; font-size:15px;">#${order.orderNumber || order.id}</h3>
+                        <div style="font-size:11px; color:var(--color-text-muted);">${new Date(order.createdAt).toLocaleString()}</div>
                     </div>
-                    <span style="font-size:8pt; color:${complete ? "var(--color-success)" : "var(--color-cyan)"};">${complete ? "COMPLETED" : "ACTIVE"}</span>
+                    <span style="font-size:11px; color:${complete ? "var(--color-success)" : "var(--color-cyan)"};">${complete ? "COMPLETED" : "ACTIVE"}</span>
                 </div>
-                <div style="font-size:9pt; margin-bottom:10px;"><strong>Customer:</strong> ${customerLabel} &middot; ${order.method}</div>
+                <div style="font-size:12px; margin-bottom:10px;"><strong>Customer:</strong> ${customerLabel} &middot; ${order.method}</div>
                 <div style="border-top:1px dashed var(--color-border); border-bottom:1px dashed var(--color-border); padding:10px 0; margin-bottom:10px;">
                     ${order.items
                         .map((i) => {
@@ -2606,30 +2606,30 @@ export const AdminPortal = {
                             if (i.milkLabel && i.milkLabel !== "Regular Milk") tags.push(i.milkLabel);
                             (i.extras || []).forEach((e) => tags.push(`+${e.label}`));
                             return `
-                            <div style="display:flex; justify-content:space-between; font-size:9pt; margin-bottom:4px;">
-                                <span>${i.quantity}x ${escapeHtmlAttr(i.name)}${i.comboName ? ` <span style="color:var(--color-text-muted); font-size:7pt;">(${escapeHtmlAttr(i.comboName)})</span>` : ""}</span>
+                            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                                <span>${i.quantity}x ${escapeHtmlAttr(i.name)}${i.comboName ? ` <span style="color:var(--color-text-muted); font-size:10px;">(${escapeHtmlAttr(i.comboName)})</span>` : ""}</span>
                                 <span>${currencySymbol()}${(i.price * i.quantity).toFixed(2)}</span>
                             </div>
-                            ${tags.length ? `<div style="font-size:7pt; color:var(--color-accent); margin-bottom:4px;">${tags.map(escapeHtmlAttr).join(" &middot; ")}</div>` : ""}
-                            ${i.notes ? `<div style="font-size:7pt; color:var(--color-text-muted); font-style:italic; margin-bottom:4px;">"${escapeHtmlAttr(i.notes)}"</div>` : ""}
+                            ${tags.length ? `<div style="font-size:10px; color:var(--color-accent); margin-bottom:4px;">${tags.map(escapeHtmlAttr).join(" &middot; ")}</div>` : ""}
+                            ${i.notes ? `<div style="font-size:10px; color:var(--color-text-muted); font-style:italic; margin-bottom:4px;">"${escapeHtmlAttr(i.notes)}"</div>` : ""}
                         `;
                         })
                         .join("")}
                 </div>
-                <div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Subtotal</span><span>${currencySymbol()}${order.subtotal.toFixed(2)}</span></div>
-                ${order.promoDiscountTotal ? `<div style="font-size:8pt; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Promo Savings</span><span>-${currencySymbol()}${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
-                ${order.discountAmount ? `<div style="font-size:8pt; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Discount${order.couponCode ? ` (${escapeHtmlAttr(order.couponCode)})` : ""}</span><span>-${currencySymbol()}${order.discountAmount.toFixed(2)}</span></div>` : ""}
-                <div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>CGST + SGST</span><span>${currencySymbol()}${(order.cgst + order.sgst).toFixed(2)}</span></div>
-                ${order.serviceCharge ? `<div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Service Charge</span><span>${currencySymbol()}${order.serviceCharge.toFixed(2)}</span></div>` : ""}
-                ${order.tipAmount ? `<div style="font-size:8pt; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Tip</span><span>${currencySymbol()}${order.tipAmount.toFixed(2)}</span></div>` : ""}
-                <div style="font-size:11pt; font-weight:bold; display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:8px; margin-top:6px;"><span>TOTAL</span><span>${currencySymbol()}${order.total.toFixed(2)}</span></div>
+                <div style="font-size:11px; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Subtotal</span><span>${currencySymbol()}${order.subtotal.toFixed(2)}</span></div>
+                ${order.promoDiscountTotal ? `<div style="font-size:11px; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Promo Savings</span><span>-${currencySymbol()}${order.promoDiscountTotal.toFixed(2)}</span></div>` : ""}
+                ${order.discountAmount ? `<div style="font-size:11px; color:var(--color-accent); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Discount${order.couponCode ? ` (${escapeHtmlAttr(order.couponCode)})` : ""}</span><span>-${currencySymbol()}${order.discountAmount.toFixed(2)}</span></div>` : ""}
+                <div style="font-size:11px; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>CGST + SGST</span><span>${currencySymbol()}${(order.cgst + order.sgst).toFixed(2)}</span></div>
+                ${order.serviceCharge ? `<div style="font-size:11px; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Service Charge</span><span>${currencySymbol()}${order.serviceCharge.toFixed(2)}</span></div>` : ""}
+                ${order.tipAmount ? `<div style="font-size:11px; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Tip</span><span>${currencySymbol()}${order.tipAmount.toFixed(2)}</span></div>` : ""}
+                <div style="font-size:15px; font-weight:bold; display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:8px; margin-top:6px;"><span>TOTAL</span><span>${currencySymbol()}${order.total.toFixed(2)}</span></div>
                 <div style="margin-top:16px; display:flex; gap:8px; align-items:center;">
-                    <span style="font-size:8pt;">Payment: <strong style="color:${order.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${order.isPaid ? "PAID" : "UNPAID"}</strong></span>
+                    <span style="font-size:11px;">Payment: <strong style="color:${order.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${order.isPaid ? "PAID" : "UNPAID"}</strong></span>
                     ${!order.isPaid ? `<button class="admin-btn admin-btn-primary" id="oh-mark-paid">MARK PAID</button>` : ""}
                 </div>
                 ${
                     order.rating
-                        ? `<div style="margin-top:10px; font-size:8pt; color:var(--color-accent);">
+                        ? `<div style="margin-top:10px; font-size:11px; color:var(--color-accent);">
                     CUSTOMER RATING: ${"★".repeat(order.rating)}${"☆".repeat(5 - order.rating)}
                     ${order.feedbackComment ? `<div style="color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtmlAttr(order.feedbackComment)}"</div>` : ""}
                 </div>`
@@ -2708,10 +2708,10 @@ export const AdminPortal = {
                             .map(
                                 (e) => `
                             <tr>
-                                <td style="font-size:8pt;">${new Date(e.timestamp).toLocaleString()}</td>
-                                <td style="font-size:8pt;">${actionLabels[e.action] || e.action}</td>
-                                <td style="font-size:8pt;">${escapeHtmlAttr(e.actorName)} (${escapeHtmlAttr(e.actorRole)})</td>
-                                <td style="font-size:8pt;">${escapeHtmlAttr(e.targetUsername) || "\u2014"}</td>
+                                <td style="font-size:11px;">${new Date(e.timestamp).toLocaleString()}</td>
+                                <td style="font-size:11px;">${actionLabels[e.action] || e.action}</td>
+                                <td style="font-size:11px;">${escapeHtmlAttr(e.actorName)} (${escapeHtmlAttr(e.actorRole)})</td>
+                                <td style="font-size:11px;">${escapeHtmlAttr(e.targetUsername) || "\u2014"}</td>
                             </tr>
                         `
                             )
@@ -2752,15 +2752,15 @@ export const AdminPortal = {
                                     (isManager && u.role === "employee" && u.storeId === this.session.storeId));
                             const storeAccessNote =
                                 u.role === "admin"
-                                    ? `<div style="font-size:6.5pt; color:var(--color-text-muted);">${u.storeAccess && u.storeAccess.length ? `${u.storeAccess.length} store(s)` : "All stores"}</div>`
+                                    ? `<div style="font-size:9px; color:var(--color-text-muted);">${u.storeAccess && u.storeAccess.length ? `${u.storeAccess.length} store(s)` : "All stores"}</div>`
                                     : "";
                             return `
                         <tr style="${u.disabled ? "opacity:0.55;" : ""}">
-                            <td>${escapeHtmlAttr(u.username)}${isSelf ? ' <span style="color:var(--color-text-muted); font-size:7pt;">(you)</span>' : ""}${u.disabled ? ' <span style="color:var(--color-danger); font-size:7pt;">(DEACTIVATED)</span>' : ""}</td>
+                            <td>${escapeHtmlAttr(u.username)}${isSelf ? ' <span style="color:var(--color-text-muted); font-size:10px;">(you)</span>' : ""}${u.disabled ? ' <span style="color:var(--color-danger); font-size:10px;">(DEACTIVATED)</span>' : ""}</td>
                             <td>${escapeHtmlAttr(u.name)}</td>
                             <td style="color: var(--color-accent);">${u.role.toUpperCase()}${storeAccessNote}</td>
-                            <td style="font-size:8pt; color:var(--color-text-muted);">${escapeHtmlAttr(u.tag) || "\u2014"}</td>
-                            <td style="font-size:8pt;">${u.payRateType ? `${currencySymbol()}${u.payRate}/${u.payRateType === "hourly" ? "hr" : u.payRateType === "weekly" ? "wk" : "mo"}` : "\u2014"}</td>
+                            <td style="font-size:11px; color:var(--color-text-muted);">${escapeHtmlAttr(u.tag) || "\u2014"}</td>
+                            <td style="font-size:11px;">${u.payRateType ? `${currencySymbol()}${u.payRate}/${u.payRateType === "hourly" ? "hr" : u.payRateType === "weekly" ? "wk" : "mo"}` : "\u2014"}</td>
                             <td style="text-align:right;">
                                 ${
                                     canManage
@@ -2771,7 +2771,7 @@ export const AdminPortal = {
                                 `
                                         : isSelf
                                           ? `<button class="admin-btn" id="self-account-settings">ACCOUNT SETTINGS</button>`
-                                          : `<span style="color:var(--color-text-muted); font-size:7pt;">\u2014</span>`
+                                          : `<span style="color:var(--color-text-muted); font-size:10px;">\u2014</span>`
                                 }
                             </td>
                         </tr>
@@ -2890,9 +2890,9 @@ export const AdminPortal = {
                                       .map(
                                           (name) => `
                                     <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
-                                        <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(name)}</span>
-                                        ${canEdit ? `<button class="admin-btn" data-activate-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">ACTIVATE</button>
-                                        <button class="admin-btn admin-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:7pt;">DELETE</button>` : ""}
+                                        <span style="flex:1; font-size:11px;">${escapeHtmlAttr(name)}</span>
+                                        ${canEdit ? `<button class="admin-btn" data-activate-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:10px;">ACTIVATE</button>
+                                        <button class="admin-btn admin-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:10px;">DELETE</button>` : ""}
                                     </div>
                                 `
                                       )
@@ -2903,7 +2903,7 @@ export const AdminPortal = {
                         canEdit
                             ? `
                     <div style="display:flex; gap:8px;">
-                        <input type="text" id="new-profile-name" maxlength="40" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                        <input type="text" id="new-profile-name" maxlength="40" placeholder="profile name (e.g. Diwali)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
                         <button class="admin-btn" id="save-profile">SAVE AS PROFILE</button>
                     </div>`
                             : ""
@@ -2925,8 +2925,8 @@ export const AdminPortal = {
                                           ([key, url]) => `
                                     <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
                                         <img src="${escapeHtmlAttr(url)}" alt="" width="22" height="22" style="width:22px; height:22px; object-fit:contain;" />
-                                        <span style="flex:1; font-size:8pt;">${escapeHtmlAttr(key)}</span>
-                                        ${canEdit ? `<button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:7pt;">REMOVE</button>` : ""}
+                                        <span style="flex:1; font-size:11px;">${escapeHtmlAttr(key)}</span>
+                                        ${canEdit ? `<button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:10px;">REMOVE</button>` : ""}
                                     </div>
                                 `
                                       )
@@ -2937,8 +2937,8 @@ export const AdminPortal = {
                         canEdit
                             ? `
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <input type="text" id="new-icon-key" maxlength="40" placeholder="icon name" style="flex:1 1 120px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
-                        <input type="text" id="new-icon-url" maxlength="500" placeholder="image URL" style="flex:1 1 140px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:8pt;" />
+                        <input type="text" id="new-icon-key" maxlength="40" placeholder="icon name" style="flex:1 1 120px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
+                        <input type="text" id="new-icon-url" maxlength="500" placeholder="image URL" style="flex:1 1 140px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
                         <button type="button" class="admin-btn-secondary" id="new-icon-pick" style="white-space:nowrap;">BROWSE</button>
                         <button class="admin-btn" id="add-custom-icon">ADD</button>
                     </div>`
@@ -3222,24 +3222,24 @@ export const AdminPortal = {
 
                         <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:16px;">
                             <div style="flex:1 1 320px; min-width:260px;">
-                                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
+                                <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
                                 <p class="admin-help-text">Pick up to 3 items to feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
                                 <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
                                 <div id="home-picks-list" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
                             </div>
                             <div style="flex:1 1 240px; min-width:220px;">
-                                <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
+                                <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
                                 <p class="admin-help-text">Small badge shown on each picked item's home page card (e.g. "House favourite").</p>
                                 <div id="home-picks-tags" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
                             </div>
                         </div>
 
-                        <label style="display:block; font-size:8.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
+                        <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
                         <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
                         <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
                         <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
                         <br />
-                        <p id="content-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                        <p id="content-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>
                         <button class="admin-btn-primary" id="home-content-save">SAVE HOME PAGE CONTENT</button>
                     </div>`
                             : ""
@@ -3256,11 +3256,11 @@ export const AdminPortal = {
                     <div id="footer-custom-fields-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
                     <button type="button" class="admin-btn-secondary" id="footer-custom-field-add" style="margin-bottom:14px;">+ ADD FIELD</button>
                     <br />
-                    <p id="footer-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:8pt; min-height:12px;"></p>
+                    <p id="footer-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>
                     <button class="admin-btn-primary" id="footer-save">SAVE CUSTOM FIELDS</button>`
                             : (c.customFooterFields || []).length === 0
                               ? `<p class="admin-help-text">No custom fields added yet.</p>`
-                              : `<ul style="margin:0; padding-left:18px; font-size:8.5pt;">${(c.customFooterFields || []).map((f) => `<li>${escapeHtmlAttr(f.label)}: ${escapeHtmlAttr(f.value)}</li>`).join("")}</ul>`
+                              : `<ul style="margin:0; padding-left:18px; font-size:12px;">${(c.customFooterFields || []).map((f) => `<li>${escapeHtmlAttr(f.label)}: ${escapeHtmlAttr(f.value)}</li>`).join("")}</ul>`
                     }
                 </div>
             </div>
@@ -3337,7 +3337,7 @@ export const AdminPortal = {
         if (!c.homePicks || c.homePicks.length === 0) {
             homeViewEl.innerHTML = `<p class="admin-help-text">No picks curated yet - falls back to the first few items in the top menu section.</p>`;
         } else {
-            homeViewEl.innerHTML = `<ul style="margin:0; padding-left:18px; font-size:8.5pt;">${c.homePicks
+            homeViewEl.innerHTML = `<ul style="margin:0; padding-left:18px; font-size:12px;">${c.homePicks
                 .map((p) => {
                     const item = pickableItems.find((i) => i.id === p.itemId);
                     return `<li>${escapeHtmlAttr(item ? item.name : "Unknown item")}${p.tag ? ` (${escapeHtmlAttr(p.tag)})` : ""}</li>`;
@@ -3398,7 +3398,7 @@ export const AdminPortal = {
         const pickRowHtml = (item) => {
             const checked = homePicksById[item.id] !== undefined;
             return `
-                <label style="display:flex; align-items:center; gap:8px; font-size:8.5pt; padding:3px 0;">
+                <label style="display:flex; align-items:center; gap:8px; font-size:12px; padding:3px 0;">
                     <input type="checkbox" class="home-pick-check" data-item-id="${item.id}" ${checked ? "checked" : ""} />
                     <span style="flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item.name)}</span>
                 </label>
@@ -3424,8 +3424,8 @@ export const AdminPortal = {
                     const tag = existingInput ? existingInput.value : homePicksById[id] || "";
                     return `
                     <div style="margin-bottom:6px;">
-                        <label for="home-pick-tag-${id}" style="display:block; font-size:7.5pt; color:var(--color-text-muted); margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item ? item.name : "")}</label>
-                        <input type="text" id="home-pick-tag-${id}" class="home-pick-tag" data-item-id="${id}" maxlength="40" placeholder="e.g. House favourite" value="${escapeHtmlAttr(tag)}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px 7px; font-family:inherit; font-size:8pt;" />
+                        <label for="home-pick-tag-${id}" style="display:block; font-size:10px; color:var(--color-text-muted); margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlAttr(item ? item.name : "")}</label>
+                        <input type="text" id="home-pick-tag-${id}" class="home-pick-tag" data-item-id="${id}" maxlength="40" placeholder="e.g. House favourite" value="${escapeHtmlAttr(tag)}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px 7px; font-family:inherit; font-size:11px;" />
                     </div>
                 `;
                 })
@@ -3434,14 +3434,14 @@ export const AdminPortal = {
 
         document.getElementById("home-picks-list").innerHTML =
             pickableItems.length === 0
-                ? `<p style="color:var(--color-text-muted); font-size:9pt;">No menu items yet.</p>`
+                ? `<p style="color:var(--color-text-muted); font-size:12px;">No menu items yet.</p>`
                 : this.menu.sections
                       .map((section) => {
                           const items = pickableItems.filter((i) => i.section === section.id);
                           if (items.length === 0) return "";
                           return `
                         <div style="margin-bottom:10px;">
-                            <div style="font-size:7.5pt; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:2px;">${escapeHtmlAttr(section.title)}</div>
+                            <div style="font-size:10px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:2px;">${escapeHtmlAttr(section.title)}</div>
                             ${items.map(pickRowHtml).join("")}
                         </div>
                     `;
@@ -3505,9 +3505,9 @@ export const AdminPortal = {
         };
         const promoted = pickableItems.filter((i) => i.promoDiscount);
         suggestionsEl.innerHTML = `
-            <button type="button" class="admin-btn-secondary" id="suggest-top-sellers" style="padding:4px 8px; font-size:7pt;">+ TOP SELLERS</button>
-            <button type="button" class="admin-btn-secondary" id="suggest-promoted" style="padding:4px 8px; font-size:7pt;" ${promoted.length === 0 ? "disabled" : ""}>+ ON PROMOTION${promoted.length ? ` (${promoted.length})` : ""}</button>
-            <button type="button" class="admin-btn-secondary" id="suggest-rarely-ordered" style="padding:4px 8px; font-size:7pt;">+ RARELY ORDERED</button>
+            <button type="button" class="admin-btn-secondary" id="suggest-top-sellers" style="padding:4px 8px; font-size:10px;">+ TOP SELLERS</button>
+            <button type="button" class="admin-btn-secondary" id="suggest-promoted" style="padding:4px 8px; font-size:10px;" ${promoted.length === 0 ? "disabled" : ""}>+ ON PROMOTION${promoted.length ? ` (${promoted.length})` : ""}</button>
+            <button type="button" class="admin-btn-secondary" id="suggest-rarely-ordered" style="padding:4px 8px; font-size:10px;">+ RARELY ORDERED</button>
         `;
         document.getElementById("suggest-promoted").addEventListener("click", () => checkItems(promoted, "On offer"));
         document.getElementById("suggest-top-sellers").addEventListener("click", async () => {
@@ -3554,8 +3554,8 @@ export const AdminPortal = {
                 .map(
                     (step, i) => `
                 <div class="roast-step-row" style="display:flex; gap:8px; align-items:center;">
-                    <input type="text" class="roast-step-name" aria-label="Step ${i + 1} name" placeholder="Step name" maxlength="40" value="${escapeHtmlAttr(step.name || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" class="roast-step-detail" aria-label="Step ${i + 1} detail line" placeholder="Detail line" maxlength="160" value="${escapeHtmlAttr(step.detail || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
+                    <input type="text" class="roast-step-name" aria-label="Step ${i + 1} name" placeholder="Step name" maxlength="40" value="${escapeHtmlAttr(step.name || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:11px;" />
+                    <input type="text" class="roast-step-detail" aria-label="Step ${i + 1} detail line" placeholder="Detail line" maxlength="160" value="${escapeHtmlAttr(step.detail || "")}" style="flex:1; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:11px;" />
                     <button type="button" class="roast-step-remove admin-btn-secondary" data-index="${i}" aria-label="Remove step ${i + 1}" style="flex:none; padding:4px 8px;">&times;</button>
                 </div>
             `
@@ -3625,10 +3625,10 @@ export const AdminPortal = {
                 .map(
                     (f, i) => `
                 <div class="footer-field-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <input type="text" class="footer-field-label" aria-label="Field ${i + 1} name" placeholder="Field name (e.g. Instagram)" maxlength="30" value="${escapeHtmlAttr(f.label || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" class="footer-field-value" aria-label="Field ${i + 1} display text" placeholder="Display text" maxlength="100" value="${escapeHtmlAttr(f.value || "")}" style="flex:1 1 120px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <input type="text" class="footer-field-url" aria-label="Field ${i + 1} link URL" placeholder="Link URL (optional)" maxlength="300" value="${escapeHtmlAttr(f.url || "")}" style="flex:1 1 160px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:8pt;" />
-                    <select class="footer-field-type" aria-label="Field ${i + 1} type" style="flex:0 0 100px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 4px; font-family:inherit; font-size:8pt;">
+                    <input type="text" class="footer-field-label" aria-label="Field ${i + 1} name" placeholder="Field name (e.g. Instagram)" maxlength="30" value="${escapeHtmlAttr(f.label || "")}" style="flex:0 0 150px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:11px;" />
+                    <input type="text" class="footer-field-value" aria-label="Field ${i + 1} display text" placeholder="Display text" maxlength="100" value="${escapeHtmlAttr(f.value || "")}" style="flex:1 1 120px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:11px;" />
+                    <input type="text" class="footer-field-url" aria-label="Field ${i + 1} link URL" placeholder="Link URL (optional)" maxlength="300" value="${escapeHtmlAttr(f.url || "")}" style="flex:1 1 160px; min-width:0; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:11px;" />
+                    <select class="footer-field-type" aria-label="Field ${i + 1} type" style="flex:0 0 100px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 4px; font-family:inherit; font-size:11px;">
                         ${FOOTER_FIELD_TYPES.map((t) => `<option value="${t.value}" ${(f.type || "other") === t.value ? "selected" : ""}>${t.label}</option>`).join("")}
                     </select>
                     <button type="button" class="footer-field-remove admin-btn-secondary" data-index="${i}" aria-label="Remove field ${i + 1}" style="flex:none; padding:4px 8px;">&times;</button>

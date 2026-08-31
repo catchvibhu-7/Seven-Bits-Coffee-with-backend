@@ -38,36 +38,36 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 360px; font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${isEdit ? "EDIT ITEM" : "ADD MENU ITEM"}</h2>
-            <p id="item-modal-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 8px;"></p>
+            <p id="item-modal-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 8px;"></p>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">NAME</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">NAME</label>
             <input id="im-name" type="text" maxlength="60" value="${item ? item.name : ""}" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PRICE (${currencySymbol()})</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">PRICE (${currencySymbol()})</label>
             <input id="im-price" type="number" min="1" step="1" value="${item ? item.price : ""}" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">SECTION</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">SECTION</label>
             <select id="im-section" style="${fieldStyle}">
                 ${sections.map((s) => `<option value="${s.id}" ${item && item.section === s.id ? "selected" : ""}>${s.title}</option>`).join("")}
             </select>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">ICON</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">ICON</label>
             <select id="im-icon" style="${fieldStyle}">
                 ${iconOptions.map((o) => `<option value="${o.key}" ${item && item.icon === o.key ? "selected" : ""}>${o.label}</option>`).join("")}
             </select>
-            <div id="im-icon-preview" style="display:flex; align-items:center; gap:8px; margin: -6px 0 12px; font-size:7pt; color:var(--color-text-muted);"></div>
+            <div id="im-icon-preview" style="display:flex; align-items:center; gap:8px; margin: -6px 0 12px; font-size:10px; color:var(--color-text-muted);"></div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PHOTO (optional - shown instead of the icon when set)</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">PHOTO (optional - shown instead of the icon when set)</label>
             <div style="display:flex; gap:8px; margin: 4px 0 8px;">
                 <input id="im-image-url" type="text" maxlength="500" placeholder="https://... or pick from the bucket" value="${item?.imageUrl || ""}" style="${fieldStyle} margin:0; flex:1;" />
                 <button type="button" id="im-image-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
             </div>
             <div id="im-image-preview" style="margin: -2px 0 12px;"></div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">DESCRIPTION</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">DESCRIPTION</label>
             <textarea id="im-story" rows="2" maxlength="240" style="${fieldStyle} resize: vertical;">${item ? item.story || "" : ""}</textarea>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PROMOTION</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">PROMOTION</label>
             <select id="im-promo-type" style="${fieldStyle}">
                 <option value="" ${!item?.promoDiscount ? "selected" : ""}>NO PROMOTION</option>
                 <option value="percent" ${item?.promoDiscount?.type === "percent" ? "selected" : ""}>% OFF</option>
@@ -75,19 +75,19 @@ export function renderItemModal({ sections, customIcons = {}, item = null, onSav
             </select>
             <input id="im-promo-value" type="number" min="0.01" step="0.01" placeholder="Discount value" value="${item?.promoDiscount?.value ?? ""}" style="${fieldStyle} ${item?.promoDiscount ? "" : "display:none;"}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">STOCK COUNT (blank = unlimited, not tracked)</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">STOCK COUNT (blank = unlimited, not tracked)</label>
             <input id="im-stock-count" type="number" min="0" step="1" placeholder="Unlimited" value="${item?.stockCount ?? ""}" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">PREP TIME, MINS (used for the customer wait-time estimate - blank = default)</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">PREP TIME, MINS (used for the customer wait-time estimate - blank = default)</label>
             <input id="im-prep-time" type="number" min="0" max="60" step="1" placeholder="3" value="${item?.prepTimeMins ?? ""}" style="${fieldStyle}" />
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">DIET</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">DIET</label>
             <div style="display:flex; gap:8px; margin: 4px 0 12px;">
                 <button type="button" id="im-diet-veg" data-veg="true" class="admin-btn${item && item.isVeg === false ? "" : " admin-btn-primary"}" style="flex:1;">&#x1F7E2; VEG</button>
                 <button type="button" id="im-diet-nonveg" data-veg="false" class="admin-btn${item && item.isVeg === false ? " admin-btn-primary" : ""}" style="flex:1;">&#x1F534; NON-VEG</button>
             </div>
 
-            <label style="font-size: 7pt; color: var(--color-text-muted);">ALLERGENS (optional - shown as a badge on the item card only when set)</label>
+            <label style="font-size: 10px; color: var(--color-text-muted);">ALLERGENS (optional - shown as a badge on the item card only when set)</label>
             <input id="im-allergens" type="text" maxlength="120" placeholder="e.g. Contains nuts, dairy" value="${item?.allergens || ""}" style="${fieldStyle}" />
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">

@@ -192,7 +192,7 @@ export const ArcadePage = {
     },
 
     async renderGate() {
-        this.root.innerHTML = `<p aria-live="polite" style="color:var(--color-text-muted); font-size:9pt;">Checking access&hellip;</p>`;
+        this.root.innerHTML = `<p aria-live="polite" style="color:var(--color-text-muted); font-size:12px;">Checking access&hellip;</p>`;
         const access = await ArcadeSystem.checkAccess();
         if (!access.allowed) {
             // The page's own h1 (index.html, matches Billing/Admin's header
@@ -227,7 +227,7 @@ export const ArcadePage = {
             ? new Date(access.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : null;
         this.root.innerHTML = `
-            ${expiresLabel ? `<p style="font-size:9pt; color:var(--color-text-muted); margin:0 0 16px;">Access until ${expiresLabel}</p>` : ""}
+            ${expiresLabel ? `<p style="font-size:12px; color:var(--color-text-muted); margin:0 0 16px;">Access until ${expiresLabel}</p>` : ""}
             <div class="arcade-grid">
                 ${Object.entries(GAME_DEFS)
                     .map(
@@ -330,14 +330,14 @@ export const ArcadePage = {
         const scores = await ArcadeSystem.fetchScores(gameKey);
         sidebar.innerHTML = `
             <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:4px; padding:16px;">
-                <h4 style="font-size:9pt; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">${def.scoreLabel}</h4>
+                <h4 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">${def.scoreLabel}</h4>
                 ${
                     scores.length === 0
-                        ? `<p style="font-size:8pt; color:var(--color-text-muted);">No scores yet - be the first!</p>`
+                        ? `<p style="font-size:11px; color:var(--color-text-muted);">No scores yet - be the first!</p>`
                         : scores
                               .map(
                                   (s, i) => `
-                        <div style="display:flex; justify-content:space-between; font-size:8.5pt; padding:5px 0; ${i < scores.length - 1 ? "border-bottom:1px dashed var(--color-border);" : ""}">
+                        <div style="display:flex; justify-content:space-between; font-size:12px; padding:5px 0; ${i < scores.length - 1 ? "border-bottom:1px dashed var(--color-border);" : ""}">
                             <span>${i + 1}. ${escapeHtml(s.name)}</span>
                             <span style="color:var(--color-accent); font-weight:bold;">${s.score}</span>
                         </div>

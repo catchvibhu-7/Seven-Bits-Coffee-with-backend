@@ -47,25 +47,25 @@ export function renderTableModal({ tableCount, table = null, onSave }) {
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(380px, 92vw); font-family: 'Courier New', monospace;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${isEdit ? "EDIT TABLE" : "OPEN TABLE"}</h2>
-            <p id="tm-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 8px;"></p>
+            <p id="tm-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 8px;"></p>
 
-            <label for="tm-table-number" style="font-size: 7pt; color: var(--color-text-muted);">TABLE NUMBER</label>
+            <label for="tm-table-number" style="font-size: 10px; color: var(--color-text-muted);">TABLE NUMBER</label>
             ${
                 tableCount > 0
                     ? `<select id="tm-table-number" style="${fieldStyle}">${tableOptions}</select>`
-                    : `<p style="font-size:8pt; color:var(--color-danger); margin:4px 0 12px;">No tables configured - set "Number of Tables" in Admin &gt; Global Settings first.</p>`
+                    : `<p style="font-size:11px; color:var(--color-danger); margin:4px 0 12px;">No tables configured - set "Number of Tables" in Admin &gt; Global Settings first.</p>`
             }
 
-            <label for="tm-customer-name" style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER NAME (OPTIONAL - for identifying repeat customers / discounts)</label>
+            <label for="tm-customer-name" style="font-size: 10px; color: var(--color-text-muted);">CUSTOMER NAME (OPTIONAL - for identifying repeat customers / discounts)</label>
             <input id="tm-customer-name" type="text" maxlength="60" value="${table ? escapeHtml(table.customerName || "") : ""}" style="${fieldStyle}" />
 
-            <label for="tm-customer-phone" style="font-size: 7pt; color: var(--color-text-muted);">CUSTOMER PHONE (OPTIONAL)</label>
+            <label for="tm-customer-phone" style="font-size: 10px; color: var(--color-text-muted);">CUSTOMER PHONE (OPTIONAL)</label>
             <input id="tm-customer-phone" type="tel" maxlength="15" value="${table ? escapeHtml(table.customerPhone || "") : ""}" style="${fieldStyle}" />
 
             ${
                 !isEdit
                     ? `
-            <label for="tm-note" style="font-size: 7pt; color: var(--color-text-muted);">NOTE (OPTIONAL)</label>
+            <label for="tm-note" style="font-size: 10px; color: var(--color-text-muted);">NOTE (OPTIONAL)</label>
             <input id="tm-note" type="text" maxlength="140" style="${fieldStyle}" />`
                     : ""
             }
@@ -151,18 +151,18 @@ export function renderTableBillModal({ table, onClose, onDismiss }) {
         overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(420px, 92vw); font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">TABLE ${escapeHtml(table.tableNumber)} - BILL</h2>
-            ${table.customerName || table.customerPhone ? `<p style="font-size:8pt; color:var(--color-text-muted); margin: -6px 0 12px;">${escapeHtml(table.customerName || "")} ${table.customerPhone ? `(${escapeHtml(table.customerPhone)})` : ""}</p>` : ""}
+            ${table.customerName || table.customerPhone ? `<p style="font-size:11px; color:var(--color-text-muted); margin: -6px 0 12px;">${escapeHtml(table.customerName || "")} ${table.customerPhone ? `(${escapeHtml(table.customerPhone)})` : ""}</p>` : ""}
 
             <div style="max-height: 260px; overflow-y: auto; margin: 10px 0; border-bottom: 1px dashed var(--color-border); padding-bottom: 10px;">
                 ${table.items
                     .map(
                         (i, idx) => `
-                    <div style="display:flex; align-items:center; gap:8px; font-size: 9pt; margin-bottom: 6px;">
-                        <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(i.name)} <span style="color:var(--color-text-muted); font-size:7pt;">(#${escapeHtml(i.orderId)})</span></span>
+                    <div style="display:flex; align-items:center; gap:8px; font-size: 12px; margin-bottom: 6px;">
+                        <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(i.name)} <span style="color:var(--color-text-muted); font-size:10px;">(#${escapeHtml(i.orderId)})</span></span>
                         <span style="flex:none; display:flex; align-items:center; gap:4px;">
-                            <button type="button" class="tb-item-qty-btn" data-index="${idx}" data-delta="-1" aria-label="Remove one ${escapeHtml(i.name)}" style="width:20px; height:20px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); cursor:pointer; font-family:inherit; font-size:9pt; line-height:1;">-</button>
+                            <button type="button" class="tb-item-qty-btn" data-index="${idx}" data-delta="-1" aria-label="Remove one ${escapeHtml(i.name)}" style="width:20px; height:20px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); cursor:pointer; font-family:inherit; font-size:12px; line-height:1;">-</button>
                             <span style="width:16px; text-align:center; color:var(--color-accent); font-weight:bold;">${i.quantity}</span>
-                            <button type="button" class="tb-item-qty-btn" data-index="${idx}" data-delta="1" aria-label="Add one ${escapeHtml(i.name)}" style="width:20px; height:20px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); cursor:pointer; font-family:inherit; font-size:9pt; line-height:1;">+</button>
+                            <button type="button" class="tb-item-qty-btn" data-index="${idx}" data-delta="1" aria-label="Add one ${escapeHtml(i.name)}" style="width:20px; height:20px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); cursor:pointer; font-family:inherit; font-size:12px; line-height:1;">+</button>
                         </span>
                         <span style="flex:none; width:56px; text-align:right;">${currencySymbol()}${(i.price * i.quantity).toFixed(2)}</span>
                         <button type="button" class="tb-item-remove-btn" data-index="${idx}" title="Remove ${escapeHtml(i.name)}" aria-label="Remove ${escapeHtml(i.name)}" style="flex:none; background:none; border:none; color:var(--color-danger); font-size:13px; cursor:pointer; padding:0 2px;">&times;</button>
@@ -173,24 +173,24 @@ export function renderTableBillModal({ table, onClose, onDismiss }) {
             </div>
 
             <div style="display:flex; gap:6px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
-                <select id="tb-add-item-select" style="flex:1 1 130px; min-width:110px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 7px; font-family:inherit; font-size:9pt;">
+                <select id="tb-add-item-select" style="flex:1 1 130px; min-width:110px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 7px; font-family:inherit; font-size:12px;">
                     ${menuItems.map((m) => `<option value="${m.id}">${escapeHtml(m.name)} (${currencySymbol()}${m.price})</option>`).join("")}
                 </select>
-                <input id="tb-add-item-qty" type="number" min="1" value="1" style="width:46px; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 7px; font-family:inherit; font-size:9pt;" />
-                <button type="button" id="tb-add-item-btn" style="flex:none; padding:6px 12px; background:var(--color-border); color:var(--color-text); border:none; font-size:8.5pt; font-weight:bold; letter-spacing:.05em; text-transform:uppercase; cursor:pointer;">+ Add</button>
+                <input id="tb-add-item-qty" type="number" min="1" value="1" style="width:46px; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 7px; font-family:inherit; font-size:12px;" />
+                <button type="button" id="tb-add-item-btn" style="flex:none; padding:6px 12px; background:var(--color-border); color:var(--color-text); border:none; font-size:12px; font-weight:bold; letter-spacing:.05em; text-transform:uppercase; cursor:pointer;">+ Add</button>
             </div>
-            <p id="tb-item-error" style="color:var(--color-danger); font-size:8pt; min-height:11px; margin:-8px 0 8px;"></p>
+            <p id="tb-item-error" style="color:var(--color-danger); font-size:11px; min-height:11px; margin:-8px 0 8px;"></p>
 
-            <div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Subtotal</span><span>${currencySymbol()}${table.subtotal.toFixed(2)}</span></div>
-            <div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>CGST + SGST</span><span>${currencySymbol()}${(table.cgst + table.sgst).toFixed(2)}</span></div>
-            ${table.serviceCharge ? `<div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Service Charge</span><span>${currencySymbol()}${table.serviceCharge.toFixed(2)}</span></div>` : ""}
-            ${table.tipAmount ? `<div style="font-size: 9pt; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Tip</span><span>${currencySymbol()}${table.tipAmount.toFixed(2)}</span></div>` : ""}
-            <div style="font-size: 1.2rem; font-weight:bold; color:var(--color-accent); display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:10px; margin-top:6px;"><span>TOTAL</span><span>${currencySymbol()}${table.total.toFixed(2)}</span></div>
+            <div style="font-size: 12px; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Subtotal</span><span>${currencySymbol()}${table.subtotal.toFixed(2)}</span></div>
+            <div style="font-size: 12px; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>CGST + SGST</span><span>${currencySymbol()}${(table.cgst + table.sgst).toFixed(2)}</span></div>
+            ${table.serviceCharge ? `<div style="font-size: 12px; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Service Charge</span><span>${currencySymbol()}${table.serviceCharge.toFixed(2)}</span></div>` : ""}
+            ${table.tipAmount ? `<div style="font-size: 12px; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Tip</span><span>${currencySymbol()}${table.tipAmount.toFixed(2)}</span></div>` : ""}
+            <div style="font-size: 19px; font-weight:bold; color:var(--color-accent); display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:10px; margin-top:6px;"><span>TOTAL</span><span>${currencySymbol()}${table.total.toFixed(2)}</span></div>
 
             <div style="display: grid; gap: 10px; margin-top: 20px;">
                 <button id="tb-close-paid" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">CLOSE &amp; MARK PAID</button>
                 <button id="tb-close-unpaid" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CLOSE AS UNPAID (SETTLE LATER)</button>
-                <button id="tb-cancel" style="background: none; border: none; color: var(--color-text-muted); font-size: 7pt; cursor: pointer; text-decoration: underline; padding: 4px;">CANCEL</button>
+                <button id="tb-cancel" style="background: none; border: none; color: var(--color-text-muted); font-size: 10px; cursor: pointer; text-decoration: underline; padding: 4px;">CANCEL</button>
             </div>
         </div>
     `;

@@ -51,7 +51,7 @@ export const InvadersGame = {
         this.root = root;
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">SPACE INVADERS</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="inv-score" style="color:var(--color-accent);">0</strong> &middot; LIVES: <strong id="inv-lives" style="color:var(--color-accent);">3</strong></p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="inv-score" style="color:var(--color-accent);">0</strong> &middot; LIVES: <strong id="inv-lives" style="color:var(--color-accent);">3</strong></p>
             <div class="arcade-canvas-wrap">
                 <canvas id="inv-canvas" width="${WIDTH}" height="${HEIGHT}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
             </div>
@@ -60,12 +60,12 @@ export const InvadersGame = {
                 <button id="inv-fire" class="admin-btn-primary">FIRE</button>
                 <button id="inv-right" class="admin-btn">→</button>
             </div>
-            <p id="inv-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
+            <p id="inv-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="inv-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
                 <button id="inv-back" class="admin-btn">BACK</button>
             </div>
-            <p style="text-align:center; font-size:7pt; color:var(--color-text-muted); margin-top:8px;">Arrow keys to move, Space to fire.</p>
+            <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">Arrow keys to move, Space to fire.</p>
         `;
         this.canvas = this.root.querySelector("#inv-canvas");
         this.ctx = this.canvas.getContext("2d");

@@ -173,7 +173,7 @@ export const TicTacToeGame = {
     renderBotBoard(message = "Your move (X)") {
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">TIC-TAC-TOE - VS BOT</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:16px;">${message}</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:16px;">${message}</p>
             ${gridHtml(this.board, this.botTurn)}
             <div style="text-align:center; margin-top:16px;">
                 <button id="ttt-back" class="admin-btn">BACK</button>
@@ -219,7 +219,7 @@ export const TicTacToeGame = {
         }
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">TIC-TAC-TOE - VS BOT</h3>
-            <p style="text-align:center; font-size:1.1rem; color:var(--color-accent); margin-bottom:16px;">${message}</p>
+            <p style="text-align:center; font-size:18px; color:var(--color-accent); margin-bottom:16px;">${message}</p>
             ${gridHtml(this.board, true)}
             <div style="display:grid; gap:10px; max-width:280px; margin:16px auto 0;">
                 <button id="ttt-again" class="admin-btn-primary">PLAY AGAIN</button>
@@ -241,7 +241,7 @@ export const TicTacToeGame = {
         this.processedResultFor = null;
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:16px;">TIC-TAC-TOE - FINDING AN OPPONENT...</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted);">Waiting for another player at the store to queue up.</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted);">Waiting for another player at the store to queue up.</p>
             <div style="text-align:center; margin-top:20px;">
                 <button id="ttt-cancel" class="admin-btn">CANCEL</button>
             </div>
@@ -323,7 +323,7 @@ export const TicTacToeGame = {
 
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:4px;">TIC-TAC-TOE - VS ${opponentName.toUpperCase()}</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:16px;">You are ${mySymbol} &middot; ${message}</p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:16px;">You are ${mySymbol} &middot; ${message}</p>
             ${gridHtml(match.board, !isMyTurn || !!match.winner)}
             <div style="display:grid; gap:10px; max-width:280px; margin:16px auto 0;">
                 ${match.winner ? `<button id="ttt-again" class="admin-btn-primary">PLAY AGAIN</button>` : ""}

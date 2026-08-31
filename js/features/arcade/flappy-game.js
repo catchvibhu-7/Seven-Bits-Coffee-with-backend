@@ -49,12 +49,12 @@ export const FlappyGame = {
         this.difficulty = loadDifficulty(DIFFICULTY_KEY);
         this.root.innerHTML = `
             <h3 style="text-align:center; margin-bottom:8px;">FLAPPY BIT</h3>
-            <p style="text-align:center; font-size:9pt; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="flap-score" style="color:var(--color-accent);">0</strong></p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="flap-score" style="color:var(--color-accent);">0</strong></p>
             <div class="arcade-canvas-wrap">
                 <canvas id="flap-canvas" width="${WIDTH}" height="${HEIGHT}" style="background:var(--color-bg); border:1px solid var(--color-border); cursor:pointer;"></canvas>
             </div>
             ${difficultySelectorHtml("flap-diff", this.difficulty)}
-            <p id="flap-message" style="text-align:center; font-size:1.05rem; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;">Click/tap or press Space to flap.</p>
+            <p id="flap-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;">Click/tap or press Space to flap.</p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="flap-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
                 <button id="flap-back" class="admin-btn">BACK</button>

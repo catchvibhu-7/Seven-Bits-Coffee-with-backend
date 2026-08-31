@@ -18,26 +18,26 @@ const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color
  *  rather than showing both. */
 function statusPillHtml(order) {
     const color = STATUS_COLORS[order.status] || "var(--color-accent)";
-    return `<div style="margin-top:8px; font-size:8pt; font-weight:bold; letter-spacing:0.05em; color:${color};">${escapeHtml(order.status)}</div>`;
+    return `<div style="margin-top:8px; font-size:11px; font-weight:bold; letter-spacing:0.05em; color:${color};">${escapeHtml(order.status)}</div>`;
 }
 
 function starsHtml(order) {
     if (order.rating) {
         return `
-            <div style="margin-top:8px; font-size:9pt; color:var(--color-accent);">
+            <div style="margin-top:8px; font-size:12px; color:var(--color-accent);">
                 YOUR RATING: ${"\u2605".repeat(order.rating)}${"\u2606".repeat(5 - order.rating)}
-                ${order.feedbackComment ? `<div style="font-size:8pt; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(order.feedbackComment)}"</div>` : ""}
+                ${order.feedbackComment ? `<div style="font-size:11px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(order.feedbackComment)}"</div>` : ""}
             </div>
         `;
     }
     return `
         <div class="mo-feedback" data-order-id="${order.id}" style="margin-top:8px;">
-            <div class="mo-stars" role="group" aria-label="Rate this order" style="font-size:14pt; letter-spacing:2px;">
+            <div class="mo-stars" role="group" aria-label="Rate this order" style="font-size:19px; letter-spacing:2px;">
                 ${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="mo-star" data-value="${n}" aria-label="${n} star${n === 1 ? "" : "s"}" aria-pressed="false" style="background:none; border:none; padding:0; cursor:pointer; font-size:inherit; color:var(--color-text-muted);">\u2606</button>`).join("")}
             </div>
             <div style="display:none;" class="mo-comment-row">
-                <input type="text" class="mo-comment-input" placeholder="Add a comment (optional)" maxlength="500" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px; font-family:inherit; font-size:8pt; margin:6px 0;" />
-                <button class="mo-feedback-submit admin-btn" style="font-size:7pt; width:100%; box-sizing:border-box; margin:0; text-align:center;">SUBMIT RATING</button>
+                <input type="text" class="mo-comment-input" placeholder="Add a comment (optional)" maxlength="500" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px; font-family:inherit; font-size:11px; margin:6px 0;" />
+                <button class="mo-feedback-submit admin-btn" style="font-size:10px; width:100%; box-sizing:border-box; margin:0; text-align:center;">SUBMIT RATING</button>
             </div>
         </div>
     `;
@@ -55,19 +55,19 @@ export function renderMyOrdersModal(orders, { onReorder }) {
         ? orders
               .map(
                   (order) => `
-            <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 10px 0; font-size: 9pt;">
+            <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 10px 0; font-size: 12px;">
                 <div style="display:flex; justify-content: space-between;">
-                    <button type="button" class="mo-bill-number-btn" data-order-id="${order.id}" style="background:none; border:none; padding:0; cursor:pointer; color:var(--color-text); font-family:inherit; font-size:inherit; text-decoration:underline; text-underline-offset:2px;">#${order.orderNumber || order.id} <span style="color:var(--color-text-muted); font-size:7pt; text-decoration:none;">${new Date(order.createdAt).toLocaleDateString()}</span></button>
+                    <button type="button" class="mo-bill-number-btn" data-order-id="${order.id}" style="background:none; border:none; padding:0; cursor:pointer; color:var(--color-text); font-family:inherit; font-size:inherit; text-decoration:underline; text-underline-offset:2px;">#${order.orderNumber || order.id} <span style="color:var(--color-text-muted); font-size:10px; text-decoration:none;">${new Date(order.createdAt).toLocaleDateString()}</span></button>
                     <span style="font-weight:bold;">${currencySymbol()}${order.total.toFixed(2)}</span>
                 </div>
-                <div style="font-size:8pt; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
-                <button class="mo-reorder-btn" data-order-id="${order.id}" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 6px 12px; font-size: 7pt; cursor: pointer; text-transform: uppercase; font-family: inherit;">REORDER</button>
+                <div style="font-size:11px; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
+                <button class="mo-reorder-btn" data-order-id="${order.id}" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 6px 12px; font-size: 10px; cursor: pointer; text-transform: uppercase; font-family: inherit;">REORDER</button>
                 ${order.status && order.status !== "SERVED" ? statusPillHtml(order) : starsHtml(order)}
             </div>
         `
               )
               .join("")
-        : `<p style="font-size: 9pt; color: var(--color-text-muted); text-align:center; padding: 20px 0;">No past orders yet.</p>`;
+        : `<p style="font-size: 12px; color: var(--color-text-muted); text-align:center; padding: 20px 0;">No past orders yet.</p>`;
 
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(400px, 92vw); font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
@@ -126,9 +126,9 @@ export function renderMyOrdersModal(orders, { onReorder }) {
             if (res.ok) {
                 const data = await res.json();
                 block.outerHTML = `
-                    <div style="margin-top:8px; font-size:9pt; color:var(--color-accent);">
+                    <div style="margin-top:8px; font-size:12px; color:var(--color-accent);">
                         YOUR RATING: ${"\u2605".repeat(data.rating)}${"\u2606".repeat(5 - data.rating)}
-                        ${data.comment ? `<div style="font-size:8pt; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(data.comment)}"</div>` : ""}
+                        ${data.comment ? `<div style="font-size:11px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(data.comment)}"</div>` : ""}
                     </div>
                 `;
             }

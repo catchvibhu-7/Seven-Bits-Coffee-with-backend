@@ -42,36 +42,36 @@ export function renderLoginModal(onSuccess, options = {}) {
                 <input id="lf-username" type="text" placeholder="USERNAME OR PHONE" aria-label="Username or phone" autocomplete="username" style="${fieldStyle()}" />
                 <input id="lf-password" type="password" placeholder="PASSWORD" aria-label="Password" autocomplete="current-password" style="${fieldStyle("margin-bottom:8px;")}" />
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px;">
-                    <button id="lf-forgot-link" type="button" style="background:none; border:none; color:var(--color-text-muted); font-size:7pt; text-decoration:underline; cursor:pointer; padding:0; font-family:inherit; white-space:nowrap;">Forgot password?</button>
-                    <span id="login-error" style="color:var(--color-danger); font-size:7pt; text-align:right;"></span>
+                    <button id="lf-forgot-link" type="button" style="background:none; border:none; color:var(--color-text-muted); font-size:10px; text-decoration:underline; cursor:pointer; padding:0; font-family:inherit; white-space:nowrap;">Forgot password?</button>
+                    <span id="login-error" style="color:var(--color-danger); font-size:10px; text-align:right;"></span>
                 </div>
             `;
         } else if (mode === "guest") {
             fields = `
-                <p style="font-size: 8pt; color: var(--color-text-muted); margin-top:0;">No account needed - we'll use this number to show your order status. You'll only ever see orders placed under this number.</p>
+                <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">No account needed - we'll use this number to show your order status. You'll only ever see orders placed under this number.</p>
                 <input id="lf-phone" type="tel" placeholder="PHONE NUMBER" aria-label="Phone number" autocomplete="tel" style="${fieldStyle()}" />
-                <p id="login-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 6px 0 0;"></p>
+                <p id="login-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 6px 0 0;"></p>
             `;
         } else if (mode === "register") {
             fields = `
                 <input id="lf-name" type="text" placeholder="YOUR NAME" aria-label="Your name" style="${fieldStyle()}" />
                 <input id="lf-phone" type="tel" placeholder="PHONE NUMBER" aria-label="Phone number" autocomplete="tel" style="${fieldStyle()}" />
                 <input id="lf-username" type="text" placeholder="CHOOSE A USERNAME" aria-label="Choose a username" autocomplete="username" style="${fieldStyle()}" />
-                <div id="lf-username-status" style="font-size: 7pt; min-height: 11px; margin-bottom: 6px;"></div>
+                <div id="lf-username-status" style="font-size: 10px; min-height: 11px; margin-bottom: 6px;"></div>
                 <input id="lf-password" type="password" placeholder="CHOOSE A PASSWORD" aria-label="Choose a password" autocomplete="new-password" style="${fieldStyle()}" />
                 <div id="lf-password-meter"></div>
-                <p id="login-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 6px 0 0;"></p>
+                <p id="login-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 6px 0 0;"></p>
             `;
         } else if (mode === "forgot") {
             fields = `
-                <p style="font-size: 8pt; color: var(--color-text-muted); margin-top:0;">Enter the username and phone number on your account to set a new password.</p>
+                <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">Enter the username and phone number on your account to set a new password.</p>
                 <input id="lf-username" type="text" placeholder="USERNAME" aria-label="Username" autocomplete="username" style="${fieldStyle()}" />
                 <input id="lf-phone" type="tel" placeholder="PHONE NUMBER ON YOUR ACCOUNT" aria-label="Phone number on your account" autocomplete="tel" style="${fieldStyle()}" />
                 <input id="lf-password" type="password" placeholder="NEW PASSWORD" aria-label="New password" autocomplete="new-password" style="${fieldStyle()}" />
                 <div id="lf-password-meter"></div>
-                <p style="font-size: 7pt; color: var(--color-text-muted); margin: 10px 0 0;">Staff account? Ask an owner or admin to reset it for you instead.</p>
-                <p id="login-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 6px 0 0;"></p>
-                <p id="login-success" style="color:var(--color-success); font-size: 8pt; min-height: 12px; margin: 0;"></p>
+                <p style="font-size: 10px; color: var(--color-text-muted); margin: 10px 0 0;">Staff account? Ask an owner or admin to reset it for you instead.</p>
+                <p id="login-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 6px 0 0;"></p>
+                <p id="login-success" style="color:var(--color-success); font-size: 11px; min-height: 12px; margin: 0;"></p>
             `;
         }
 
@@ -101,7 +101,7 @@ export function renderLoginModal(onSuccess, options = {}) {
         `;
 
         overlay.querySelectorAll(".login-tab").forEach((btn) => {
-            btn.style.cssText = `flex:1; padding:8px; font-family:inherit; font-size:8pt; cursor:pointer; border:1px solid var(--color-accent); background:${btn.classList.contains("active") ? "var(--color-accent)" : "transparent"}; color:${btn.classList.contains("active") ? "var(--color-accent-contrast)" : "var(--color-accent)"};`;
+            btn.style.cssText = `flex:1; padding:8px; font-family:inherit; font-size:11px; cursor:pointer; border:1px solid var(--color-accent); background:${btn.classList.contains("active") ? "var(--color-accent)" : "transparent"}; color:${btn.classList.contains("active") ? "var(--color-accent-contrast)" : "var(--color-accent)"};`;
             btn.addEventListener("click", () => {
                 mode = btn.dataset.mode;
                 render();
@@ -226,8 +226,8 @@ export function renderForceChangePasswordModal(onSuccess, onLogout) {
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 320px; font-family: 'Courier New', monospace;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">SET A NEW PASSWORD</h2>
-            <p style="font-size: 8pt; color: var(--color-text-muted); margin-top:0;">You're using a temporary password. Set your own before continuing.</p>
-            <p id="fcp-error" style="color:var(--color-danger); font-size: 8pt; min-height: 12px; margin: 0 0 10px;"></p>
+            <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">You're using a temporary password. Set your own before continuing.</p>
+            <p id="fcp-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 10px;"></p>
             <input id="fcp-current" type="password" placeholder="TEMPORARY PASSWORD" aria-label="Temporary password" autocomplete="current-password" style="${fieldStyle()}" />
             <input id="fcp-new" type="password" placeholder="NEW PASSWORD" aria-label="New password" autocomplete="new-password" style="${fieldStyle()}" />
             <div id="fcp-meter"></div>

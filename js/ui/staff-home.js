@@ -89,7 +89,7 @@ export async function renderStaffHome(session) {
                         &gt; BOOT.OK &mdash; ${escapeHtml(roleLabel)}<span class="staff-blink-cursor" style="color:var(--color-accent);" aria-hidden="true">_</span>
                     </h1>
                 </div>
-                <button type="button" id="staff-home-new-order" class="staff-logout-btn" style="background:var(--color-accent); color:var(--color-accent-contrast); border:2px solid var(--color-accent); padding:14px 24px; font-size:12.5px; min-height:44px;">[ NEW ORDER ]</button>
+                <button type="button" id="staff-home-new-order" class="staff-logout-btn" style="background:var(--color-accent); color:var(--color-accent-contrast); border:2px solid var(--color-accent); padding:14px 24px; font-size:13px; min-height:44px;">[ NEW ORDER ]</button>
             </div>
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(212px,1fr)); gap:14px; margin-top:26px;">
@@ -105,7 +105,7 @@ export async function renderStaffHome(session) {
                         <div style="font-size:10px; letter-spacing:.16em; color:var(--color-text-muted); text-transform:uppercase;">${escapeHtml(label)}</div>
                         ${
                             value === null
-                                ? `<div style="font-size:10.5px; color:var(--color-text-muted); margin-top:16px; text-transform:uppercase; letter-spacing:.06em;">Manager+ only</div>`
+                                ? `<div style="font-size:11px; color:var(--color-text-muted); margin-top:16px; text-transform:uppercase; letter-spacing:.06em;">Manager+ only</div>`
                                 : `<div class="staff-stat-value" style="font-size:28px; font-weight:bold; letter-spacing:1px; margin-top:12px; color:var(--color-accent);">${value}</div>`
                         }
                     </div>
@@ -118,18 +118,18 @@ export async function renderStaffHome(session) {
                 <div class="staff-widget-card" style="padding:18px 20px 8px; min-width:0;">
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; border-left:5px solid var(--color-accent); padding-left:12px;">
                         <h2 style="font-size:13px; font-weight:bold; letter-spacing:.24em; margin:0; text-transform:uppercase; color:var(--color-accent);">Live pass</h2>
-                        <button type="button" id="staff-home-all-orders" style="background:none; border:0; padding:0 0 0 12px; cursor:pointer; font-size:11.5px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; min-height:44px;">All &gt;</button>
+                        <button type="button" id="staff-home-all-orders" style="background:none; border:0; padding:0 0 0 12px; cursor:pointer; font-size:12px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; min-height:44px;">All &gt;</button>
                     </div>
                     <div style="margin-top:10px;">
                         ${
                             liveRows.length === 0
-                                ? `<p style="padding:20px 2px; color:var(--color-text-muted); font-size:11.5px;">No live tickets right now.</p>`
+                                ? `<p style="padding:20px 2px; color:var(--color-text-muted); font-size:12px;">No live tickets right now.</p>`
                                 : liveRows
                                       .map((o) => {
                                           const status = orderStatus(o);
                                           const summary = o.items.map((i) => `${i.quantity}x ${i.name}`).join(" · ");
                                           return `
-                                <div class="staff-home-order-row" data-order-id="${escapeHtml(o.id)}" role="button" tabindex="0" style="display:flex; align-items:center; gap:14px; padding:12px 2px; border-top:1px dashed var(--color-border); cursor:pointer; font-size:12.5px; min-height:44px;">
+                                <div class="staff-home-order-row" data-order-id="${escapeHtml(o.id)}" role="button" tabindex="0" style="display:flex; align-items:center; gap:14px; padding:12px 2px; border-top:1px dashed var(--color-border); cursor:pointer; font-size:13px; min-height:44px;">
                                     <span style="flex:none; color:var(--color-text-muted); width:58px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(o.id)}</span>
                                     <span style="flex:none; font-weight:bold; width:92px; letter-spacing:.06em; text-transform:uppercase; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(o.tableSessionId ? "TABLE" : o.method || "ORDER")}</span>
                                     <span style="color:var(--color-text-muted); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(summary)}</span>
@@ -160,14 +160,14 @@ export async function renderStaffHome(session) {
                         <button type="button" id="staff-home-billing" style="margin-top:16px; width:100%; padding:11px; background:transparent; border:2px solid var(--color-accent); color:var(--color-accent); font-size:12px; font-weight:bold; letter-spacing:.12em; text-transform:uppercase; cursor:pointer; min-height:44px;">Open billing</button>
                     </div>
                     <div class="staff-widget-card" style="padding:18px 20px;">
-                        <h2 style="font-size:12.5px; font-weight:bold; letter-spacing:.22em; margin:0 0 6px; text-transform:uppercase; color:var(--color-danger);">! Low stock</h2>
+                        <h2 style="font-size:13px; font-weight:bold; letter-spacing:.22em; margin:0 0 6px; text-transform:uppercase; color:var(--color-danger);">! Low stock</h2>
                         ${
                             lowStock.length === 0
-                                ? `<p style="padding:14px 0 4px; color:var(--color-text-muted); font-size:11.5px;">All stocked.</p>`
+                                ? `<p style="padding:14px 0 4px; color:var(--color-text-muted); font-size:12px;">All stocked.</p>`
                                 : lowStock
                                       .map(
                                           (m) => `
-                                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; border-top:1px dashed var(--color-border); font-size:12.5px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; border-top:1px dashed var(--color-border); font-size:13px;">
                                     <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(m.name)}</span>
                                     <span class="staff-stat-number" style="flex:none; font-weight:bold; white-space:nowrap; color:${m.stockCount === 0 ? "var(--color-danger)" : "var(--color-accent)"};">${m.stockCount === 0 ? "OUT OF STOCK" : `${m.stockCount} LEFT`}</span>
                                 </div>

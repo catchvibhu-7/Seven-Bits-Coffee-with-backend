@@ -29,7 +29,7 @@ export function renderAccountSettingsModal(session) {
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 320px; font-family: 'Courier New', monospace;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">ACCOUNT SETTINGS</h2>
 
-            <div style="font-size: 9pt; color: var(--color-text-muted); margin-bottom: 15px;">
+            <div style="font-size: 12px; color: var(--color-text-muted); margin-bottom: 15px;">
                 <div>NAME: <span style="color: var(--color-text);">${session.name || "\u2014"}</span></div>
                 <div>ROLE: <span style="color: var(--color-accent);">${(session.role || "").toUpperCase()}</span></div>
             </div>
@@ -37,10 +37,10 @@ export function renderAccountSettingsModal(session) {
             ${
                 hasLayoutChoice
                     ? `
-            <h3 style="font-size: 9pt; letter-spacing: 1px; margin-bottom: 10px;">SITE LAYOUT</h3>
+            <h3 style="font-size: 12px; letter-spacing: 1px; margin-bottom: 10px;">SITE LAYOUT</h3>
             <div style="display:flex; gap:8px; margin-bottom: 18px;">
-                <button type="button" id="am-layout-rail" style="flex:1; padding:10px; background:${currentLayout === "rail" ? "rgba(217,119,6,.12)" : "transparent"}; border:1px solid ${currentLayout === "rail" ? "var(--color-accent)" : "var(--color-border)"}; color:${currentLayout === "rail" ? "var(--color-accent)" : "var(--color-text)"}; font-family:inherit; font-size:8pt; font-weight:bold; letter-spacing:.05em; text-transform:uppercase; cursor:pointer;">Left pane</button>
-                <button type="button" id="am-layout-topbar" style="flex:1; padding:10px; background:${currentLayout === "topbar" ? "rgba(217,119,6,.12)" : "transparent"}; border:1px solid ${currentLayout === "topbar" ? "var(--color-accent)" : "var(--color-border)"}; color:${currentLayout === "topbar" ? "var(--color-accent)" : "var(--color-text)"}; font-family:inherit; font-size:8pt; font-weight:bold; letter-spacing:.05em; text-transform:uppercase; cursor:pointer;">Top bar</button>
+                <button type="button" id="am-layout-rail" style="flex:1; padding:10px; background:${currentLayout === "rail" ? "rgba(217,119,6,.12)" : "transparent"}; border:1px solid ${currentLayout === "rail" ? "var(--color-accent)" : "var(--color-border)"}; color:${currentLayout === "rail" ? "var(--color-accent)" : "var(--color-text)"}; font-family:inherit; font-size:11px; font-weight:bold; letter-spacing:.05em; text-transform:uppercase; cursor:pointer;">Left pane</button>
+                <button type="button" id="am-layout-topbar" style="flex:1; padding:10px; background:${currentLayout === "topbar" ? "rgba(217,119,6,.12)" : "transparent"}; border:1px solid ${currentLayout === "topbar" ? "var(--color-accent)" : "var(--color-border)"}; color:${currentLayout === "topbar" ? "var(--color-accent)" : "var(--color-text)"}; font-family:inherit; font-size:11px; font-weight:bold; letter-spacing:.05em; text-transform:uppercase; cursor:pointer;">Top bar</button>
             </div>
             `
                     : ""
@@ -49,10 +49,10 @@ export function renderAccountSettingsModal(session) {
             <!-- Collapsed by default - the fields/meter/error-success
                  paragraphs used to always be visible, reserving dead space
                  in the modal even when nobody was changing anything. -->
-            <button type="button" id="am-toggle-password" aria-expanded="false" aria-controls="am-password-fields" style="width:100%; text-align:left; background:none; border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; font-size:9pt; letter-spacing:1px; cursor:pointer; text-transform:uppercase;">&gt; Change password</button>
+            <button type="button" id="am-toggle-password" aria-expanded="false" aria-controls="am-password-fields" style="width:100%; text-align:left; background:none; border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; font-size:12px; letter-spacing:1px; cursor:pointer; text-transform:uppercase;">&gt; Change password</button>
             <div id="am-password-fields" style="display:none; margin-top:12px;">
-                <p id="account-modal-error" style="color:var(--color-danger); font-size: 8pt; margin: 0 0 8px;"></p>
-                <p id="account-modal-success" style="color:var(--color-success); font-size: 8pt; margin: 0 0 8px;"></p>
+                <p id="account-modal-error" style="color:var(--color-danger); font-size: 11px; margin: 0 0 8px;"></p>
+                <p id="account-modal-success" style="color:var(--color-success); font-size: 11px; margin: 0 0 8px;"></p>
 
                 <input id="am-current" type="password" placeholder="CURRENT PASSWORD" aria-label="Current password" autocomplete="current-password"
                     style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin-bottom: 8px;" />

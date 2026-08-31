@@ -40,7 +40,7 @@ export function renderPasswordStrengthMeter(container, password) {
             <div style="height: 4px; background: #222; border-radius: 2px; overflow: hidden;">
                 <div style="height: 100%; width: ${pct}%; background: ${color}; transition: width 0.2s;"></div>
             </div>
-            <div style="font-size: 7pt; color: ${color}; margin-top: 3px;">${label}</div>
+            <div style="font-size: 10px; color: ${color}; margin-top: 3px;">${label}</div>
         </div>
     `
         : "";

@@ -12,10 +12,10 @@ export function renderInfoModal({ title, message, monospaceValue = null, confirm
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 320px; font-family: 'Courier New', monospace;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${title}</h2>
-            <p style="font-size: 9pt; color: var(--color-text-muted); white-space: pre-line;">${message}</p>
+            <p style="font-size: 12px; color: var(--color-text-muted); white-space: pre-line;">${message}</p>
             ${
                 monospaceValue
-                    ? `<div style="background:var(--color-bg); border:1px solid var(--color-accent); color:var(--color-accent); padding:10px; font-size: 11pt; text-align:center; letter-spacing: 1px; margin: 10px 0; user-select: all;">${monospaceValue}</div>`
+                    ? `<div style="background:var(--color-bg); border:1px solid var(--color-accent); color:var(--color-accent); padding:10px; font-size: 15px; text-align:center; letter-spacing: 1px; margin: 10px 0; user-select: all;">${monospaceValue}</div>`
                     : ""
             }
             <div style="display:grid; gap:10px; margin-top: 10px;">

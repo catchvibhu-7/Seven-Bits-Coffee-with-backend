@@ -35,13 +35,13 @@ export async function renderCustomizeModal({ item, onAdd }) {
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(380px, 92vw); font-family: 'Courier New', monospace; max-height: 88vh; overflow-y: auto;">
             <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${escapeHtml(item.name)}</h2>
-            <p style="font-size: 8pt; color: var(--color-text-muted); margin-top:-6px;">${escapeHtml(item.story || "")}</p>
+            <p style="font-size: 12px; line-height: 1.4; color: var(--color-text-muted); margin: 6px 0 16px;">${escapeHtml(item.story || "")}</p>
 
             ${
                 isDrink
                     ? `
-            <span id="cm-size-label" style="font-size: 7pt; color: var(--color-text-muted);">SIZE</span>
-            <div id="cm-size-group" class="cm-pill-group" role="group" aria-labelledby="cm-size-label" style="display:flex; gap:8px; margin: 4px 0 12px; flex-wrap: wrap;">
+            <span id="cm-size-label" class="cm-field-label">SIZE</span>
+            <div id="cm-size-group" class="cm-pill-group" role="group" aria-labelledby="cm-size-label" style="display:flex; gap:8px; margin: 6px 0 16px; flex-wrap: wrap;">
                 ${opts.sizeOptions
                     .map(
                         (o) => `
@@ -51,8 +51,8 @@ export async function renderCustomizeModal({ item, onAdd }) {
                     .join("")}
             </div>
 
-            <span id="cm-milk-label" style="font-size: 7pt; color: var(--color-text-muted);">MILK</span>
-            <div id="cm-milk-group" class="cm-pill-group" role="group" aria-labelledby="cm-milk-label" style="display:flex; gap:8px; margin: 4px 0 12px; flex-wrap: wrap;">
+            <span id="cm-milk-label" class="cm-field-label">MILK</span>
+            <div id="cm-milk-group" class="cm-pill-group" role="group" aria-labelledby="cm-milk-label" style="display:flex; gap:8px; margin: 6px 0 16px; flex-wrap: wrap;">
                 ${opts.milkOptions
                     .map(
                         (o) => `
@@ -64,8 +64,8 @@ export async function renderCustomizeModal({ item, onAdd }) {
                     : ""
             }
 
-            <span id="cm-extras-label" style="font-size: 7pt; color: var(--color-text-muted);">EXTRAS (OPTIONAL)</span>
-            <div id="cm-extras-group" class="cm-pill-group" role="group" aria-labelledby="cm-extras-label" style="display:flex; gap:8px; margin: 4px 0 12px; flex-wrap: wrap;">
+            <span id="cm-extras-label" class="cm-field-label">EXTRAS (OPTIONAL)</span>
+            <div id="cm-extras-group" class="cm-pill-group" role="group" aria-labelledby="cm-extras-label" style="display:flex; gap:8px; margin: 6px 0 16px; flex-wrap: wrap;">
                 ${opts.extraOptions
                     .map(
                         (o) => `
@@ -75,11 +75,11 @@ export async function renderCustomizeModal({ item, onAdd }) {
                     .join("")}
             </div>
 
-            <label for="cm-notes" style="font-size: 7pt; color: var(--color-text-muted);">SPECIAL INSTRUCTIONS</label>
-            <textarea id="cm-notes" rows="2" maxlength="${opts.maxNotesLength}" placeholder="e.g. less ice, extra hot..." style="${fieldStyle} resize: vertical;"></textarea>
+            <label for="cm-notes" class="cm-field-label">SPECIAL INSTRUCTIONS</label>
+            <textarea id="cm-notes" rows="2" maxlength="${opts.maxNotesLength}" placeholder="e.g. less ice, extra hot..." style="${fieldStyle} resize: vertical; font-size: 13px;"></textarea>
 
-            <div style="display:flex; align-items:center; justify-content:space-between; margin: 10px 0 16px;">
-                <span id="cm-qty-label" style="font-size: 7pt; color: var(--color-text-muted);">QUANTITY</span>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin: 14px 0 18px;">
+                <span id="cm-qty-label" class="cm-field-label">QUANTITY</span>
                 <div class="btn-qty-container" role="group" aria-labelledby="cm-qty-label">
                     <button id="cm-qty-minus" type="button" aria-label="Decrease quantity">-</button>
                     <span id="cm-qty-value">1</span>
@@ -102,7 +102,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
             const key = btn.dataset.key;
             const selected = group === "extras" ? state.extras.includes(key) : state[group] === key;
             btn.setAttribute("aria-pressed", String(selected));
-            btn.style.cssText = `padding:6px 10px; font-size:7.5pt; cursor:pointer; font-family:inherit; border:1px solid var(--color-border); background:${selected ? "var(--color-accent)" : "var(--color-bg)"}; color:${selected ? "var(--color-accent-contrast)" : "var(--color-text)"};`;
+            btn.style.cssText = `padding:7px 11px; font-size:11px; cursor:pointer; font-family:inherit; border:1px solid var(--color-border); background:${selected ? "var(--color-accent)" : "var(--color-bg)"}; color:${selected ? "var(--color-accent-contrast)" : "var(--color-text)"};`;
         });
     }
     applyPillStyles();
