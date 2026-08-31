@@ -13,6 +13,21 @@ import { currencySymbol } from "../features/config-logic.js";
 
 const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
 
+/** Client-side mirror of server.js's computeOrderGroupBill() - merges a
+ *  root order with everything staff have attached to it (see
+ *  attachedToOrderId) so the printed/previewed receipt shows the combined
+ *  bill, not just this one order's own slice of it. Duplicated (not
+ *  imported) from billing-page.js's identical helper - the two modules
+ *  don't otherwise share code, same as lineToRawItem's existing precedent
+ *  across billing-page.js/table-modal.js. */
+function mergeOrderGroup(orders) {
+    const root = orders[0];
+    const mergedItems = [];
+    orders.forEach((o) => o.items.forEach((i) => mergedItems.push({ ...i, orderId: o.id })));
+    const sum = (f) => Math.round(orders.reduce((s, o) => s + (o[f] || 0), 0) * 100) / 100;
+    return { ...root, items: mergedItems, subtotal: sum("subtotal"), cgst: sum("cgst"), sgst: sum("sgst"), serviceCharge: sum("serviceCharge"), tipAmount: sum("tipAmount"), total: sum("total") };
+}
+
 /** A live status pill for an order that hasn't been picked up yet - rating
  *  only makes sense once it has, so this replaces starsHtml() for those
  *  rather than showing both. */
@@ -51,21 +66,27 @@ export function renderMyOrdersModal(orders, { onReorder }) {
     overlay.className = "modal-overlay";
     overlay.style.zIndex = "4500";
 
-    const rows = orders.length
-        ? orders
-              .map(
-                  (order) => `
+    // An attached (non-root) order isn't a bill of its own - it only ever
+    // shows up merged into its root's row below, same reasoning as
+    // billing-page.js's open-bills list.
+    const visibleOrders = orders.filter((o) => !o.attachedToOrderId);
+    const rows = visibleOrders.length
+        ? visibleOrders
+              .map((order) => {
+                  const linkedCount = orders.filter((o) => o.attachedToOrderId === order.id).length;
+                  return `
             <div class="cart-row" style="border-bottom: 1px dashed var(--color-border); padding: 10px 0; font-size: 12px;">
                 <div style="display:flex; justify-content: space-between;">
                     <button type="button" class="mo-bill-number-btn" data-order-id="${order.id}" style="background:none; border:none; padding:0; cursor:pointer; color:var(--color-text); font-family:inherit; font-size:inherit; text-decoration:underline; text-underline-offset:2px;">#${order.orderNumber || order.id} <span style="color:var(--color-text-muted); font-size:10px; text-decoration:none;">${new Date(order.createdAt).toLocaleDateString()}</span></button>
                     <span style="font-weight:bold;">${currencySymbol()}${order.total.toFixed(2)}</span>
                 </div>
                 <div style="font-size:11px; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
+                ${linkedCount > 0 ? `<div style="font-size:10px; color:var(--color-accent); margin-bottom:4px;">+ ${linkedCount} order${linkedCount === 1 ? "" : "s"} added to this bill</div>` : ""}
                 <button class="mo-reorder-btn" data-order-id="${order.id}" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 6px 12px; font-size: 10px; cursor: pointer; text-transform: uppercase; font-family: inherit;">REORDER</button>
                 ${order.status && order.status !== "SERVED" ? statusPillHtml(order) : starsHtml(order)}
             </div>
-        `
-              )
+        `;
+              })
               .join("")
         : `<p style="font-size: 12px; color: var(--color-text-muted); text-align:center; padding: 20px 0;">No past orders yet.</p>`;
 
@@ -82,7 +103,9 @@ export function renderMyOrdersModal(orders, { onReorder }) {
     overlay.querySelectorAll(".mo-bill-number-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
             const order = orders.find((o) => o.id === btn.dataset.orderId);
-            if (order) window.showBillPreview?.(order);
+            if (!order) return;
+            const linked = orders.filter((o) => o.attachedToOrderId === order.id);
+            window.showBillPreview?.(linked.length ? mergeOrderGroup([order, ...linked]) : order);
         });
     });
     overlay.querySelectorAll(".mo-reorder-btn").forEach((btn) => {

@@ -11,6 +11,7 @@
 import { currencySymbol } from "../features/config-logic.js";
 import { KitchenSystem } from "../features/kitchen-logic.js";
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
+import { PAYMENT_METHODS } from "./billing-page.js";
 
 let menuItemsCache = null; // lazy-loaded once for the add-items picker below
 async function loadMenuItems() {
@@ -185,9 +186,19 @@ export function renderTableBillModal({ table, onClose, onDismiss }) {
             <div style="font-size: 12px; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>CGST + SGST</span><span>${currencySymbol()}${(table.cgst + table.sgst).toFixed(2)}</span></div>
             ${table.serviceCharge ? `<div style="font-size: 12px; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Service Charge</span><span>${currencySymbol()}${table.serviceCharge.toFixed(2)}</span></div>` : ""}
             ${table.tipAmount ? `<div style="font-size: 12px; color: var(--color-text-muted); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Tip</span><span>${currencySymbol()}${table.tipAmount.toFixed(2)}</span></div>` : ""}
-            <div style="font-size: 19px; font-weight:bold; color:var(--color-accent); display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:10px; margin-top:6px;"><span>TOTAL</span><span>${currencySymbol()}${table.total.toFixed(2)}</span></div>
+            ${
+                table.settledTotal > 0
+                    ? `
+            <div style="font-size: 12px; color: var(--color-success); display:flex; justify-content:space-between; margin-bottom:4px;"><span>Already Settled</span><span>${currencySymbol()}${table.settledTotal.toFixed(2)}</span></div>
+            <div style="font-size: 19px; font-weight:bold; color:var(--color-accent); display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:10px; margin-top:6px;"><span>DUE NOW</span><span>${currencySymbol()}${(table.dueTotal || 0).toFixed(2)}</span></div>`
+                    : `
+            <div style="font-size: 19px; font-weight:bold; color:var(--color-accent); display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:10px; margin-top:6px;"><span>TOTAL</span><span>${currencySymbol()}${table.total.toFixed(2)}</span></div>`
+            }
 
-            <div style="display: grid; gap: 10px; margin-top: 20px;">
+            <div id="tb-settle-picker" style="display:none; margin-top:16px; border-top:1px dashed var(--color-border); padding-top:14px;"></div>
+
+            <div id="tb-close-buttons" style="display: grid; gap: 10px; margin-top: 20px;">
+                ${table.dueOrderCount > 0 ? `<button id="tb-settle-round" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">SETTLE ROUND (KEEP TABLE OPEN)</button>` : ""}
                 <button id="tb-close-paid" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">CLOSE &amp; MARK PAID</button>
                 <button id="tb-close-unpaid" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CLOSE AS UNPAID (SETTLE LATER)</button>
                 <button id="tb-cancel" style="background: none; border: none; color: var(--color-text-muted); font-size: 10px; cursor: pointer; text-decoration: underline; padding: 4px;">CANCEL</button>
@@ -196,6 +207,7 @@ export function renderTableBillModal({ table, onClose, onDismiss }) {
     `;
 
         const errorEl = document.getElementById("tb-item-error");
+        let settleMethod = "Cash";
         async function refresh() {
             const fresh = await TableSessionsSystem.get(table.id);
             if (fresh) await renderContent(fresh);
@@ -265,6 +277,57 @@ export function renderTableBillModal({ table, onClose, onDismiss }) {
             } catch (e) {
                 errorEl.textContent = e.message || "Could not add item";
             }
+        });
+
+        // "Settle round" opens an inline payment-method picker (same chips
+        // billing-page.js already uses) rather than settling immediately -
+        // swaps out the close-button row while the picker is open so there's
+        // never two conflicting actions visible at once.
+        document.getElementById("tb-settle-round")?.addEventListener("click", () => {
+            const picker = document.getElementById("tb-settle-picker");
+            const paintMethods = () => {
+                picker.querySelectorAll(".billing-pay-method").forEach((btn) => {
+                    btn.classList.toggle("active", btn.dataset.method === settleMethod);
+                });
+            };
+            picker.innerHTML = `
+                <div style="font-size:9px; letter-spacing:.14em; color:var(--color-text-muted); text-transform:uppercase; border-left:4px solid var(--color-accent); padding-left:10px;">Settle current round by</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:8px; margin:12px 0;">
+                    ${PAYMENT_METHODS.map(
+                        (p) => `
+                        <button type="button" class="billing-pay-method${settleMethod === p.key ? " active" : ""}" data-method="${p.key}">
+                            <div style="font-size:11px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase;">${p.key}</div>
+                        </button>
+                    `
+                    ).join("")}
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <button type="button" id="tb-settle-confirm" style="padding:11px; background:var(--color-cyan); color:var(--color-accent-contrast); border:none; font-weight:bold; cursor:pointer; text-transform:uppercase;">Confirm ${currencySymbol()}${(table.dueTotal || 0).toFixed(2)}</button>
+                    <button type="button" id="tb-settle-cancel" style="padding:11px; background:var(--color-border); color:var(--color-text); border:none; cursor:pointer; text-transform:uppercase;">Cancel</button>
+                </div>
+            `;
+            picker.style.display = "block";
+            document.getElementById("tb-close-buttons").style.display = "none";
+            picker.querySelectorAll(".billing-pay-method").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    settleMethod = btn.dataset.method;
+                    paintMethods();
+                });
+            });
+            document.getElementById("tb-settle-cancel").addEventListener("click", () => {
+                picker.style.display = "none";
+                picker.innerHTML = "";
+                document.getElementById("tb-close-buttons").style.display = "grid";
+            });
+            document.getElementById("tb-settle-confirm").addEventListener("click", async () => {
+                errorEl.textContent = "";
+                try {
+                    await TableSessionsSystem.settleRound(table.id, settleMethod);
+                    await refresh();
+                } catch (e) {
+                    errorEl.textContent = e.message || "Could not settle this round";
+                }
+            });
         });
 
         // Refreshes whatever list is showing behind this modal (order

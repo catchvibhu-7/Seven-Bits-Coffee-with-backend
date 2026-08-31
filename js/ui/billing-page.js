@@ -16,7 +16,7 @@ import { TableSessionsSystem } from "../features/table-sessions-logic.js";
 import { KitchenSystem } from "../features/kitchen-logic.js";
 import { AdminConfig, currencySymbol } from "../features/config-logic.js";
 
-const PAYMENT_METHODS = [
+export const PAYMENT_METHODS = [
     { key: "UPI", note: "Scan / VPA" },
     { key: "Card", note: "Tap / insert" },
     { key: "Cash", note: "Drawer" },
@@ -29,6 +29,38 @@ function escapeHtml(str) {
 
 function money(n) {
     return currencySymbol() + Number(n || 0).toFixed(2);
+}
+
+function round2(n) {
+    return Math.round(n * 100) / 100;
+}
+
+/** Client-side mirror of server.js's computeOrderGroupBill()/
+ *  splitDueSettled() - merges a root order + everything staff have attached
+ *  to it (see attachedToOrderId) into one combined bill for display/print,
+ *  same shape a table-session bill already has (items tagged per-line with
+ *  orderId/isPaid, dueTotal/settledTotal split) so both bill kinds can share
+ *  one rendering path below. */
+function mergeOrderGroup(orders) {
+    const root = orders[0];
+    const dueOrders = orders.filter((o) => !o.isPaid);
+    const paidOrders = orders.filter((o) => o.isPaid);
+    const mergedItems = [];
+    orders.forEach((o) => o.items.forEach((i) => mergedItems.push({ ...i, orderId: o.id, isPaid: o.isPaid })));
+    const sum = (list, f) => round2(list.reduce((s, o) => s + (o[f] || 0), 0));
+    return {
+        ...root,
+        items: mergedItems,
+        subtotal: sum(orders, "subtotal"),
+        cgst: sum(orders, "cgst"),
+        sgst: sum(orders, "sgst"),
+        serviceCharge: sum(orders, "serviceCharge"),
+        tipAmount: sum(orders, "tipAmount"),
+        total: sum(orders, "total"),
+        dueTotal: sum(dueOrders, "total"),
+        settledTotal: sum(paidOrders, "total"),
+        dueOrderCount: dueOrders.length
+    };
 }
 
 let selectedBill = null; // { kind: "table"|"order", id }
@@ -108,11 +140,31 @@ export async function renderBillingPage() {
     root.innerHTML = `<p style="color:var(--color-text-muted); font-size:12px;">Loading open bills…</p>`;
 
     const [openTables, allOrders] = await Promise.all([TableSessionsSystem.list("open"), KitchenSystem.fetchOrders()]);
-    const standaloneOrders = KitchenSystem.orders.filter((o) => !o.isPaid && !o.tableSessionId);
+    // Attached (non-root) orders aren't a separate bill of their own - they
+    // only ever show up merged into their root's detail view (see
+    // renderBillDetail()'s group handling) - listing them here too would
+    // show the same money twice. A root that's personally already paid
+    // still belongs in this list if something ATTACHED to it is still due -
+    // otherwise a staff-attached follow-up order would have nowhere to be
+    // found/settled from (its own root never appears in the list to select).
+    const standaloneOrders = KitchenSystem.orders.filter((o) => {
+        if (o.tableSessionId || o.attachedToOrderId) return false;
+        if (!o.isPaid) return true;
+        return KitchenSystem.orders.some((x) => x.attachedToOrderId === o.id && !x.isPaid);
+    });
 
     const openBills = [
         ...openTables.map((t) => ({ kind: "table", id: t.id, label: `TABLE ${t.tableNumber}`, sub: t.customerName || `${t.orderCount} order${t.orderCount === 1 ? "" : "s"}`, total: t.total })),
-        ...standaloneOrders.map((o) => ({ kind: "order", id: o.id, label: `#${o.orderNumber || o.id}`, sub: o.method === "ONLINE" ? "Online order" : o.method || "Counter", total: o.total }))
+        ...standaloneOrders.map((o) => {
+            const linked = KitchenSystem.orders.filter((x) => x.attachedToOrderId === o.id);
+            return {
+                kind: "order",
+                id: o.id,
+                label: `#${o.orderNumber || o.id}`,
+                sub: linked.length > 0 ? `+${linked.length} linked order${linked.length === 1 ? "" : "s"}` : o.method === "ONLINE" ? "Online order" : o.method || "Counter",
+                total: round2(o.total + linked.reduce((s, x) => s + x.total, 0))
+            };
+        })
     ].sort((a, b) => b.total - a.total);
 
     // Keep whatever was selected if it's still open; otherwise default to the first bill.
@@ -218,7 +270,8 @@ async function renderBillDetail() {
     }
 
     let bill;
-    let order = null; // only set for a standalone order bill - see the tag-info section below
+    let order = null; // the single order, OR the ROOT order of a group - tag-info/adjust-bill act on this alone, never the group as a whole
+    let group = null; // [order, ...attachedOrders] when there's more than one order on this bill, else null
     if (selectedBill.kind === "table") {
         bill = await TableSessionsSystem.get(selectedBill.id);
         if (!bill) {
@@ -229,32 +282,43 @@ async function renderBillDetail() {
         }
         printableBill = billToPrintableOrder(bill, "table");
     } else {
-        order = KitchenSystem.orders.find((o) => o.id === selectedBill.id);
-        if (!order) {
+        const found = KitchenSystem.orders.find((o) => o.id === selectedBill.id);
+        if (!found) {
             printableBill = null;
             detail.innerHTML = `<p style="color:var(--color-danger); font-size:12px;">That order was already settled elsewhere. Pick another bill.</p>`;
             selectedBill = null;
             return;
         }
-        bill = {
-            id: order.id,
-            orderNumber: order.orderNumber,
-            tableNumber: null,
-            items: order.items,
-            subtotal: order.subtotal,
-            discountAmount: order.discountAmount,
-            couponCode: order.couponCode,
-            cgst: order.cgst,
-            sgst: order.sgst,
-            serviceCharge: order.serviceCharge,
-            tipAmount: order.tipAmount,
-            total: order.total
-        };
-        // The raw order (not the trimmed `bill` above) already matches what
-        // window.printBill()/printKOT() expect exactly - orderNumber,
-        // createdAt, method, promo/coupon fields and all - so print from
-        // that directly instead of re-deriving a lossier copy.
-        printableBill = order;
+        // Always resolve to the ROOT of an attach chain, so selecting either
+        // the root or something attached to it lands on the same combined
+        // view - there's no separate "just the attached order" view.
+        order = found.attachedToOrderId ? KitchenSystem.orders.find((o) => o.id === found.attachedToOrderId) || found : found;
+        const attached = KitchenSystem.orders.filter((o) => o.attachedToOrderId === order.id);
+        if (attached.length > 0) {
+            group = [order, ...attached];
+            bill = mergeOrderGroup(group);
+            printableBill = bill;
+        } else {
+            bill = {
+                id: order.id,
+                orderNumber: order.orderNumber,
+                tableNumber: null,
+                items: order.items,
+                subtotal: order.subtotal,
+                discountAmount: order.discountAmount,
+                couponCode: order.couponCode,
+                cgst: order.cgst,
+                sgst: order.sgst,
+                serviceCharge: order.serviceCharge,
+                tipAmount: order.tipAmount,
+                total: order.total
+            };
+            // The raw order (not the trimmed `bill` above) already matches what
+            // window.printBill()/printKOT() expect exactly - orderNumber,
+            // createdAt, method, promo/coupon fields and all - so print from
+            // that directly instead of re-deriving a lossier copy.
+            printableBill = order;
+        }
     }
 
     // Tag who a standalone order is for (phone/username - a guest order or a
@@ -263,7 +327,7 @@ async function renderBillDetail() {
     // from when the tab was opened. No separate save button - whatever's in
     // these fields is picked up when Settle is clicked (see below), same as
     // any other bill detail that's read fresh at settle time.
-    const tagInfoHtml = order
+    const tagInfoHtml = order && !group
         ? `
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px; flex-wrap:wrap;">
             <div style="flex:0 1 100px;">
@@ -284,8 +348,15 @@ async function renderBillDetail() {
     // from several separate order records, each needing its own edit
     // target - out of scope for this pass, see renderTablesPanel's own
     // "+ ADD ITEMS" instead for adding more to an open table).
-    const itemsEditable = !!(order && !order.isPaid);
-    const menuItemsForPicker = itemsEditable ? await loadMenuItems() : [];
+    // With a group, "+ Add item" needs exactly ONE unpaid order to target -
+    // if staff have attached more than one still-unsettled order to the same
+    // root (rare), adding a brand new line is ambiguous, so the control is
+    // hidden until only one is left due; per-LINE qty/remove editing doesn't
+    // have this problem since each existing line already know which order
+    // it belongs to (see lineEditable below).
+    const unpaidInGroup = group ? group.filter((o) => !o.isPaid) : null;
+    const addItemTargetOrder = group ? (unpaidInGroup.length === 1 ? unpaidInGroup[0] : null) : order && !order.isPaid ? order : null;
+    const menuItemsForPicker = addItemTargetOrder ? await loadMenuItems() : [];
 
     const cfg = AdminConfig.settings || {};
     const cgstPct = ((cfg.cgstRate ?? 0.05) * 100).toFixed(1);
@@ -296,7 +367,7 @@ async function renderBillDetail() {
     // its own existing close flow) and only once the order hasn't been
     // settled yet.
     const adjustBillHtml =
-        order && !order.isPaid
+        order && !group && !order.isPaid
             ? `
         <div style="background:var(--color-surface); border:1px solid var(--color-border); margin-top:12px; padding:16px;">
             <div style="font-size:9px; letter-spacing:.14em; color:var(--color-text-muted); text-transform:uppercase; border-left:4px solid var(--color-accent); padding-left:10px;">Adjust bill</div>
@@ -341,12 +412,20 @@ async function renderBillDetail() {
                 <span style="flex:1 1 100px; min-width:80px;">Item</span><span style="flex:none; width:32px; text-align:center;">Qty</span><span style="flex:none; width:64px; text-align:right;">Amount</span>
             </div>
             ${bill.items
-                .map(
-                    (l, i) => `
+                .map((l, i) => {
+                    // A group line knows its own paid state (l.isPaid, see
+                    // mergeOrderGroup()); a plain single-order bill's lines
+                    // don't carry that field at all, so they're all editable
+                    // or none are, matching the whole order's own isPaid. A
+                    // table bill has neither group nor order set at all
+                    // (item editing was never supported for table bills here
+                    // - see the file's own header comment) - never editable.
+                    const lineEditable = group ? !l.isPaid : order ? !order.isPaid : false;
+                    return `
                 <div style="display:flex; gap:12px; align-items:center; padding:10px 14px; border-bottom:1px dashed var(--color-border); font-size:11px;">
                     <span style="flex:1 1 100px; min-width:80px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(l.name)}</span>
                     ${
-                        itemsEditable
+                        lineEditable
                             ? `<span style="flex:none; display:flex; align-items:center; gap:4px;">
                             <button type="button" class="billing-item-qty-btn" data-index="${i}" data-delta="-1" aria-label="Remove one ${escapeHtml(l.name)}" style="width:22px; height:22px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); cursor:pointer; font-family:inherit;">-</button>
                             <span style="width:18px; text-align:center; color:var(--color-accent); font-weight:bold;">${l.quantity}</span>
@@ -355,13 +434,18 @@ async function renderBillDetail() {
                             : `<span style="flex:none; width:32px; text-align:center; color:var(--color-accent); font-weight:bold;">${l.quantity}</span>`
                     }
                     <span style="flex:none; width:64px; text-align:right; font-weight:bold;">${money(l.price * l.quantity)}</span>
-                    ${itemsEditable ? `<button type="button" class="billing-item-remove-btn" data-index="${i}" title="Remove ${escapeHtml(l.name)}" aria-label="Remove ${escapeHtml(l.name)}" style="flex:none; background:none; border:none; color:var(--color-danger); font-size:14px; cursor:pointer; padding:0 2px;">&times;</button>` : ""}
+                    ${lineEditable ? `<button type="button" class="billing-item-remove-btn" data-index="${i}" title="Remove ${escapeHtml(l.name)}" aria-label="Remove ${escapeHtml(l.name)}" style="flex:none; background:none; border:none; color:var(--color-danger); font-size:14px; cursor:pointer; padding:0 2px;">&times;</button>` : ""}
                 </div>
-            `
-                )
+            `;
+                })
                 .join("")}
             ${
-                itemsEditable
+                group && !addItemTargetOrder && unpaidInGroup.length > 1
+                    ? `<p style="font-size:10px; color:var(--color-text-muted); padding:10px 14px 0; margin:0;">More than one order on this bill is still unpaid - open each order's own bill to add items to it.</p>`
+                    : ""
+            }
+            ${
+                addItemTargetOrder
                     ? `
             <div id="billing-add-item-row" style="padding:10px 14px; display:flex; justify-content:flex-end;">
                 <button type="button" id="billing-add-item-toggle" style="padding:7px 14px; background:var(--color-border); color:var(--color-text); border:none; font-size:10px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;">+ Add item</button>
@@ -375,12 +459,27 @@ async function renderBillDetail() {
                 <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-muted);"><span>SGST (${sgstPct}%)</span><span>${money(bill.sgst || 0)}</span></div>
                 ${bill.serviceCharge ? `<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-muted);"><span>SERVICE CHARGE</span><span>${money(bill.serviceCharge)}</span></div>` : ""}
                 ${bill.tipAmount ? `<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-cyan);"><span>TIP</span><span>${money(bill.tipAmount)}</span></div>` : ""}
+                ${
+                    bill.settledTotal > 0
+                        ? `
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-success);"><span>ALREADY SETTLED</span><span>${money(bill.settledTotal)}</span></div>
+                <div style="display:flex; justify-content:space-between; align-items:baseline; border-top:1px solid var(--color-border); margin-top:4px; padding-top:11px;">
+                    <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">DUE NOW</span>
+                    <span style="font-size:24px; font-weight:bold; color:var(--color-accent);">${money(bill.dueTotal || 0)}</span>
+                </div>`
+                        : `
                 <div style="display:flex; justify-content:space-between; align-items:baseline; border-top:1px solid var(--color-border); margin-top:4px; padding-top:11px;">
                     <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">AMOUNT PAYABLE</span>
                     <span style="font-size:24px; font-weight:bold; color:var(--color-accent);">${money(bill.total)}</span>
-                </div>
+                </div>`
+                }
             </div>
         </div>
+        ${
+            selectedBill.kind === "order"
+                ? `<button type="button" id="billing-new-order-for-bill" style="width:100%; margin-top:10px; padding:10px; background:none; border:1px dashed var(--color-accent); color:var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;">+ New order for this bill</button>`
+                : ""
+        }
         ${adjustBillHtml}
 
         <div style="background:var(--color-surface); border:1px solid var(--color-border); margin-top:12px; padding:16px;">
@@ -395,17 +494,24 @@ async function renderBillDetail() {
                 `
                 ).join("")}
             </div>
-            <button type="button" id="billing-settle-btn" style="width:100%; margin-top:14px; padding:13px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-size:12px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; min-height:44px;">[ Settle ${money(bill.total)} by ${selectedMethod} ]</button>
+            <button type="button" id="billing-settle-btn" style="width:100%; margin-top:14px; padding:13px; background:var(--color-accent); color:var(--color-accent-contrast); border:none; font-size:12px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; min-height:44px;">[ Settle ${money(bill.settledTotal > 0 ? bill.dueTotal || 0 : bill.total)} by ${selectedMethod} ]</button>
         </div>
     `;
 
-    // Item qty +/-, remove, and add-item all submit the SAME way: take this
-    // order's current lines, apply the one change, convert back to raw
-    // cart shape (see lineToRawItem()), and let the server re-price/re-tax
-    // the whole thing from scratch via editItems().
-    async function submitItemEdit(rawItems) {
+    // A line's edit target is whichever underlying order it actually belongs
+    // to - a plain single-order bill only ever has one (order.id itself); a
+    // merged group tags each line with its own orderId (see
+    // mergeOrderGroup()), same idea as table-modal.js's editLine().
+    async function editLine(index, mutate) {
+        const line = bill.items[index];
+        const targetOrderId = line.orderId || order.id;
+        const targetOrder = group ? group.find((o) => o.id === targetOrderId) : order;
+        const siblingLines = bill.items.filter((i) => (i.orderId || order.id) === targetOrderId);
+        const rawItems = siblingLines.map(lineToRawItem);
+        const posInOrder = siblingLines.indexOf(line);
+        mutate(rawItems, posInOrder);
         try {
-            await KitchenSystem.editItems(order.id, rawItems);
+            await KitchenSystem.editItems(targetOrder.id, rawItems);
             window.showToast?.("Items updated");
             await renderBillDetail();
         } catch (e) {
@@ -414,28 +520,26 @@ async function renderBillDetail() {
     }
     detail.querySelectorAll(".billing-item-qty-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
-            const i = Number(btn.dataset.index);
+            const index = Number(btn.dataset.index);
             const delta = Number(btn.dataset.delta);
-            const rawItems = order.items.map(lineToRawItem);
-            const nextQty = rawItems[i].quantity + delta;
-            if (nextQty <= 0) {
-                rawItems.splice(i, 1);
-            } else {
-                rawItems[i].quantity = nextQty;
-            }
-            submitItemEdit(rawItems);
+            editLine(index, (items, pos) => {
+                const nextQty = items[pos].quantity + delta;
+                if (nextQty <= 0) items.splice(pos, 1);
+                else items[pos].quantity = nextQty;
+            });
         });
     });
     detail.querySelectorAll(".billing-item-remove-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
-            const i = Number(btn.dataset.index);
-            const rawItems = order.items.map(lineToRawItem);
-            rawItems.splice(i, 1);
-            if (rawItems.length === 0) {
-                window.showToast?.("A bill needs at least one item - settle or cancel it instead of removing the last line", "error");
+            const index = Number(btn.dataset.index);
+            const line = bill.items[index];
+            const targetOrderId = line.orderId || order.id;
+            const remainingInOrder = bill.items.filter((i) => (i.orderId || order.id) === targetOrderId).length;
+            if (remainingInOrder <= 1) {
+                window.showToast?.("That's the only item left on its order - remove the whole order instead.", "error");
                 return;
             }
-            submitItemEdit(rawItems);
+            editLine(index, (items, pos) => items.splice(pos, 1));
         });
     });
     // The add-item control starts as just a right-aligned button - expanding
@@ -506,7 +610,7 @@ async function renderBillDetail() {
                 searchInput.focus();
                 return;
             }
-            const rawItems = order.items.map(lineToRawItem);
+            const rawItems = addItemTargetOrder.items.map(lineToRawItem);
             // "regular"/"regular", no extras/notes - the same default shape the
             // customer-facing ADD BIT stepper uses (see defaultCartKey() in
             // app.js) - merges into an existing plain line for the same item
@@ -515,7 +619,12 @@ async function renderBillDetail() {
             const existing = rawItems.find((r) => r.id === selectedItem.id && isDefault(r.customization));
             if (existing) existing.quantity += quantity;
             else rawItems.push({ id: selectedItem.id, quantity, customization: { size: "regular", milk: "regular", extras: [], notes: "" } });
-            submitItemEdit(rawItems);
+            KitchenSystem.editItems(addItemTargetOrder.id, rawItems)
+                .then(() => {
+                    window.showToast?.("Items updated");
+                    renderBillDetail();
+                })
+                .catch((e) => window.showToast?.(e.message || "Could not update items", "error"));
         });
         searchInput.focus();
     });
@@ -562,8 +671,16 @@ async function renderBillDetail() {
             // order object and silently discard whatever staff just typed.
             detail.querySelectorAll(".billing-pay-method").forEach((b) => b.classList.toggle("active", b === btn));
             const settleBtn = detail.querySelector("#billing-settle-btn");
-            if (settleBtn) settleBtn.textContent = `[ Settle ${money(bill.total)} by ${selectedMethod} ]`;
+            if (settleBtn) settleBtn.textContent = `[ Settle ${money(bill.settledTotal > 0 ? bill.dueTotal || 0 : bill.total)} by ${selectedMethod} ]`;
         });
+    });
+    detail.querySelector("#billing-new-order-for-bill")?.addEventListener("click", () => {
+        // Mirror of selectBillForOrder() (this file) - that one pre-selects a
+        // bill in Billing after checkout creates an order; this stores the
+        // reverse intent so checkout-modal.js can pre-fill its own "attach
+        // to existing bill" picker with THIS bill once it opens.
+        KitchenSystem.pendingAttachTarget = { id: order.id, orderNumber: order.orderNumber };
+        window.showPage?.("menu");
     });
     detail.querySelector("#billing-settle-btn")?.addEventListener("click", async () => {
         const btn = detail.querySelector("#billing-settle-btn");
@@ -571,18 +688,23 @@ async function renderBillDetail() {
         try {
             // Whatever's currently in the table/phone fields is saved as part
             // of settling - no separate save step for a standalone order.
-            if (order) {
+            // Only rendered (and thus only relevant) for a plain single
+            // order, never a table or a multi-order group - see tagInfoHtml.
+            if (order && !group) {
                 await KitchenSystem.tagOrderInfo(order.id, {
                     contact: detail.querySelector("#billing-tag-phone").value.trim(),
                     tableNumber: detail.querySelector("#billing-tag-table").value.trim()
                 });
             }
+            const settledAmount = bill.settledTotal > 0 ? bill.dueTotal || 0 : bill.total;
             if (selectedBill.kind === "table") {
                 await TableSessionsSystem.close(selectedBill.id, true, selectedMethod);
+            } else if (group) {
+                await KitchenSystem.settleGroup(order.id, selectedMethod);
             } else {
                 await KitchenSystem.markPaid(selectedBill.id, selectedMethod);
             }
-            window.showToast?.(`Settled ${money(bill.total)} by ${selectedMethod}`);
+            window.showToast?.(`Settled ${money(settledAmount)} by ${selectedMethod}`);
             selectedBill = null;
             await renderBillingPage();
         } catch (e) {

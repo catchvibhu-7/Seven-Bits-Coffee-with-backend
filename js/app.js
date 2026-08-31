@@ -1193,6 +1193,7 @@ window.startCheckout = async (method) => {
 
     try {
         const tableSessionId = document.getElementById("checkout-table-session")?.value || null;
+        const attachToOrderId = document.getElementById("checkout-attach-search")?.dataset.orderId || null;
         const discount = window.__checkoutDiscount || {};
         const order = await KitchenSystem.pushOrder(cart, method, {
             serviceChargeActive,
@@ -1200,6 +1201,7 @@ window.startCheckout = async (method) => {
             phone,
             markPaidNow: false,
             tableSessionId,
+            attachToOrderId,
             couponCode: discount.couponCode || null,
             redeemPoints: discount.redeemPoints || 0,
             guestOrder,

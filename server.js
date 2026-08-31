@@ -3694,6 +3694,51 @@ route("GET", /^\/api\/orders\/track\/(?<token>[a-f0-9]+)\/?$/, async (req, res, 
   });
 });
 
+// Staff-only lookup for the "attach to existing bill" picker (checkout-
+// modal.js / billing-page.js). A short, capped, server-filtered result list
+// since this fires on every keystroke - deliberately NOT reusing GET
+// /api/orders (the full unpaginated Order History list, which only ever
+// grows) for a typed-as-you-go autocomplete. No route-ordering conflict:
+// there's no GET /api/orders/:id today (only /mine and /track/:token) - but
+// keep this registered before any such route is ever added.
+route("GET", /^\/api\/orders\/search\/?$/, async (req, res, params, url) => {
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+  if (!q) return sendJson(res, 200, []);
+  const qDigits = q.replace(/\D/g, "");
+  let allOrders = readJson(ORDERS_FILE, []);
+  const allowed = accessibleStoreIds(session);
+  if (allowed) allOrders = allOrders.filter((o) => o.storeId == null || allowed.includes(o.storeId));
+  const roots = allOrders.filter((o) => !o.attachedToOrderId); // root bills only - no attach chains
+  const matches = roots.filter(
+    (o) =>
+      String(o.orderNumber || o.id).toLowerCase().includes(q) ||
+      (o.customerName || "").toLowerCase().includes(q) ||
+      (qDigits && (o.customerPhone || "").replace(/\D/g, "").includes(qDigits)) ||
+      (o.tableNumber != null && String(o.tableNumber).toLowerCase().includes(q))
+  );
+  matches.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  sendJson(
+    res,
+    200,
+    matches.slice(0, 15).map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      createdAt: o.createdAt,
+      customerName: o.customerName,
+      customerPhone: o.customerPhone,
+      tableNumber: o.tableNumber,
+      total: o.total,
+      isPaid: o.isPaid,
+      // Checked against the FULL order list, not the roots-only one above -
+      // an attachment's own attachedToOrderId would never survive that
+      // filter, so this would silently always be false otherwise.
+      hasAttachments: allOrders.some((x) => x.attachedToOrderId === o.id)
+    }))
+  );
+});
+
 route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   // Placing an order needs SOME identity (customer login or guest phone) so
   // it can be tracked afterwards - but no staff-only permissions are needed,
@@ -3818,6 +3863,11 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     // Only staff can tag an order to an open table tab, and only if that
     // table is actually still open - never trust an arbitrary id from the client.
     tableSessionId: null,
+    // Staff-manual "attach to existing bill" (see GET /api/orders/search) -
+    // an alternative to tableSessionId for a customer who isn't at a table
+    // but wants a new order to count toward a bill they already have. Set
+    // below, validated after the order object exists.
+    attachedToOrderId: null,
     ...computed
   };
   orders.push(order);
@@ -3831,6 +3881,16 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
       order.tableSessionId = targetTable.id;
       order.tableNumber = targetTable.tableNumber; // denormalized for KOT/Bill display even after the table later closes
     }
+  }
+
+  // Staff manually attaching this new order to a previous bill - independent
+  // of tableSessionId above; a staff order uses one or the other, never
+  // both. Only a ROOT order (no attachedToOrderId of its own) is a valid
+  // target - no attach chains, so a search picker can never surface an
+  // already-attached order as something else could attach to.
+  if (KITCHEN_ROLES.includes(session.role) && body.attachToOrderId && !order.tableSessionId) {
+    const targetOrder = orders.find((o) => o.id === body.attachToOrderId && !o.attachedToOrderId);
+    if (targetOrder) order.attachedToOrderId = targetOrder.id;
   }
 
   writeJson(ORDERS_FILE, orders);
@@ -4121,6 +4181,33 @@ route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => 
   writeJson(ORDERS_FILE, orders);
   broadcastOrdersChanged();
   sendJson(res, 200, order);
+});
+
+// Settles a root order AND everything staff have attached to it (see
+// attachedToOrderId above / GET /api/orders/search) in one shared payment
+// event - the combined-bill counterpart to /table-sessions/:id/settle-round.
+// Each attached order still keeps its own id/items/isDone/servedAt
+// untouched; only isPaid/paymentMethod change here.
+route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/settle-group\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
+  const orders = readJson(ORDERS_FILE, []);
+  const rootOrder = orders.find((o) => o.id === params.id && !o.attachedToOrderId);
+  if (!rootOrder) return sendJson(res, 404, { error: "Bill not found" });
+
+  const paymentMethod = PAYMENT_METHODS.includes(body.paymentMethod) ? body.paymentMethod : "Cash";
+  const group = [rootOrder, ...orders.filter((o) => o.attachedToOrderId === rootOrder.id)];
+  const dueOrders = group.filter((o) => !o.isPaid);
+  if (dueOrders.length === 0) return sendJson(res, 400, { error: "This bill is already fully settled" });
+
+  dueOrders.forEach((o) => {
+    o.isPaid = true;
+    o.paymentMethod = paymentMethod;
+  });
+  writeJson(ORDERS_FILE, orders);
+  broadcastOrdersChanged();
+  sendJson(res, 200, computeOrderGroupBill(rootOrder, orders));
 });
 
 /** The customer/guest who placed the order rates it, once - same ownership
@@ -4974,21 +5061,50 @@ route("POST", /^\/api\/arcade\/checkers\/(?<id>\d+)\/leave\/?$/, async (req, res
 // staff-side concept; customers never see or interact with this.
 // ---------------------------------------------------------------------------
 
+// Splits the merged bill into "already settled" vs "still due" on top of the
+// existing combined total - lets a table (or an attached-order group, see
+// computeOrderGroupBill below) settle one round of orders while leaving
+// others still outstanding, without losing the single "one running tab"
+// view. `total`/`items`/etc. keep their original combined shape so every
+// existing caller (PATCH /api/table-sessions/:id, the close route, KPI-
+// adjacent code) keeps working unchanged - dueTotal/settledTotal are purely
+// additive.
+function splitDueSettled(orders) {
+  const dueOrders = orders.filter((o) => !o.isPaid);
+  const paidOrders = orders.filter((o) => o.isPaid);
+  const mergedItems = [];
+  orders.forEach((o) => o.items.forEach((i) => mergedItems.push({ ...i, orderId: o.id, isPaid: o.isPaid })));
+  const sum = (list, f) => round2(list.reduce((s, o) => s + (o[f] || 0), 0));
+  return {
+    orderCount: orders.length,
+    items: mergedItems,
+    subtotal: sum(orders, "subtotal"),
+    cgst: sum(orders, "cgst"),
+    sgst: sum(orders, "sgst"),
+    serviceCharge: sum(orders, "serviceCharge"),
+    tipAmount: sum(orders, "tipAmount"),
+    total: sum(orders, "total"),
+    dueTotal: sum(dueOrders, "total"),
+    settledTotal: sum(paidOrders, "total"),
+    dueOrderCount: dueOrders.length
+  };
+}
+
 function computeTableSessionBill(session, allOrders) {
   const orders = allOrders.filter((o) => o.tableSessionId === session.id);
-  const mergedItems = [];
-  orders.forEach((o) =>
-    o.items.forEach((i) => {
-      mergedItems.push({ ...i, orderId: o.id });
-    })
-  );
-  const subtotal = round2(orders.reduce((sum, o) => sum + o.subtotal, 0));
-  const cgst = round2(orders.reduce((sum, o) => sum + o.cgst, 0));
-  const sgst = round2(orders.reduce((sum, o) => sum + o.sgst, 0));
-  const serviceCharge = round2(orders.reduce((sum, o) => sum + (o.serviceCharge || 0), 0));
-  const tipAmount = round2(orders.reduce((sum, o) => sum + (o.tipAmount || 0), 0));
-  const total = round2(orders.reduce((sum, o) => sum + o.total, 0));
-  return { ...session, orderCount: orders.length, items: mergedItems, subtotal, cgst, sgst, serviceCharge, tipAmount, total };
+  return { ...session, ...splitDueSettled(orders) };
+}
+
+/** Same shape as computeTableSessionBill, keyed by a root order's
+ *  attachedToOrderId chain instead of a tableSessionId - lets a staff-
+ *  manual "attach to existing bill" order (see POST /api/orders'
+ *  attachToOrderId handling) be billed/settled together with its root,
+ *  the same way a table's multiple orders already are. `rootOrder` must
+ *  itself have no attachedToOrderId (enforced by callers). */
+function computeOrderGroupBill(rootOrder, allOrders) {
+  const attached = allOrders.filter((o) => o.attachedToOrderId === rootOrder.id);
+  const orders = [rootOrder, ...attached];
+  return { ...rootOrder, ...splitDueSettled(orders) };
 }
 
 // Table count is now fully per-store (see mergeStoreOverrides()), so table
@@ -5118,7 +5234,11 @@ route("POST", /^\/api\/table-sessions\/(?<id>[\w-]+)\/close\/?$/, async (req, re
     tableSession.paymentMethod = paymentMethod;
     const orders = readJson(ORDERS_FILE, []);
     orders.forEach((o) => {
-      if (o.tableSessionId === tableSession.id) {
+      // Only touch orders still due - an earlier round already settled via
+      // /settle-round (possibly by a different payment method) keeps its
+      // own record intact instead of being silently overwritten to match
+      // whatever method closes the table.
+      if (o.tableSessionId === tableSession.id && !o.isPaid) {
         o.isPaid = true;
         o.paymentMethod = paymentMethod;
       }
@@ -5132,6 +5252,36 @@ route("POST", /^\/api\/table-sessions\/(?<id>[\w-]+)\/close\/?$/, async (req, re
   sendJson(res, 200, computeTableSessionBill(tableSession, orders));
 });
 
+// Settles whatever's currently due on an open table WITHOUT closing it - the
+// customer can keep ordering under the same tab afterward (new orders still
+// attach via tableSessionId exactly as they do today; nothing about that
+// path changes). Mirrors /close's markPaid branch above, minus the status
+// flip - same reasoning, deliberately not a new pattern.
+route("POST", /^\/api\/table-sessions\/(?<id>[\w-]+)\/settle-round\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const body = await readBody(req);
+  const sessions = readJson(TABLE_SESSIONS_FILE, []);
+  const tableSession = sessions.find((s) => s.id === params.id);
+  if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
+  if (tableSession.status !== "open") return sendJson(res, 400, { error: "Table is already closed" });
+
+  const paymentMethod = PAYMENT_METHODS.includes(body.paymentMethod) ? body.paymentMethod : "Cash";
+  const orders = readJson(ORDERS_FILE, []);
+  const dueOrders = orders.filter((o) => o.tableSessionId === tableSession.id && !o.isPaid);
+  if (dueOrders.length === 0) return sendJson(res, 400, { error: "Nothing due on this table right now" });
+
+  dueOrders.forEach((o) => {
+    o.isPaid = true;
+    o.paymentMethod = paymentMethod;
+  });
+  writeJson(ORDERS_FILE, orders);
+  tableSession.lastSettledAt = new Date().toISOString();
+  tableSession.lastSettledBy = session.name;
+  writeJson(TABLE_SESSIONS_FILE, sessions);
+  broadcastOrdersChanged();
+  sendJson(res, 200, computeTableSessionBill(tableSession, orders));
+});
 
 route("GET", /^\/api\/orders\/stream\/?$/, async (req, res) => {
   // Any signed-in role can listen (it only signals "something changed" -

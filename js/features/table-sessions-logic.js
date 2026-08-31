@@ -53,5 +53,19 @@ export const TableSessionsSystem = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not close table");
         return data;
+    },
+
+    /** Settles whatever's currently due on this table WITHOUT closing it -
+     *  the table stays open for more rounds afterward. */
+    async settleRound(id, paymentMethod = null) {
+        const res = await fetch(`/api/table-sessions/${id}/settle-round`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paymentMethod })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not settle this round");
+        return data;
     }
 };

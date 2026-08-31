@@ -10,6 +10,12 @@
 export const KitchenSystem = {
     orders: [],
 
+    // Set by billing-page.js's "+ New order for this bill" shortcut, read
+    // and cleared by checkout-modal.js the next time it opens - the mirror
+    // image of selectBillForOrder() (billing-page.js), which pre-selects a
+    // bill in Billing AFTER checkout creates an order. { id, orderNumber } or null.
+    pendingAttachTarget: null,
+
     async fetchOrders() {
         const res = await fetch("/api/orders", { credentials: "include" });
         if (res.ok) this.orders = await res.json();
@@ -32,6 +38,7 @@ export const KitchenSystem = {
             phone = null,
             markPaidNow = false,
             tableSessionId = null,
+            attachToOrderId = null,
             couponCode = null,
             redeemPoints = 0,
             guestOrder = false,
@@ -59,6 +66,7 @@ export const KitchenSystem = {
                 phone,
                 markPaidNow,
                 tableSessionId,
+                attachToOrderId,
                 couponCode,
                 redeemPoints,
                 guestOrder,
@@ -122,6 +130,30 @@ export const KitchenSystem = {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not update items");
+        await this.fetchOrders();
+        return data;
+    },
+
+    /** Staff-only typeahead for the "attach to existing bill" picker - short,
+     *  capped, server-filtered (not the full order list) since this fires on
+     *  every keystroke. */
+    async searchBills(query) {
+        const res = await fetch(`/api/orders/search?q=${encodeURIComponent(query)}`, { credentials: "include" });
+        return res.ok ? res.json() : [];
+    },
+
+    /** Settles a root order and everything staff have attached to it in one
+     *  shared payment event - the standalone-order counterpart to
+     *  TableSessionsSystem.settleRound(). */
+    async settleGroup(rootOrderId, paymentMethod = null) {
+        const res = await fetch(`/api/orders/${encodeURIComponent(rootOrderId)}/settle-group`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paymentMethod })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not settle this bill");
         await this.fetchOrders();
         return data;
     },

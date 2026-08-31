@@ -14,6 +14,7 @@ import { AdminConfig, currencySymbol } from "../features/config-logic.js";
 import { AuthSystem } from "../features/auth-logic.js";
 import { CustomizationSystem } from "../features/customization-logic.js";
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
+import { KitchenSystem } from "../features/kitchen-logic.js";
 import { SoundSystem } from "../features/sound-logic.js";
 import { NotificationSystem } from "../features/notification-logic.js";
 
@@ -220,7 +221,13 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                 </select>
             </label>`
                     : ""
-            }`
+            }
+            <label style="display:block; font-size: 11px; color: var(--color-text-muted); margin-bottom: 12px; position:relative;">
+                ATTACH TO EXISTING BILL (e.g. a customer who already settled, ordering more)
+                <input id="checkout-attach-search" type="text" autocomplete="off" placeholder="Search order #, phone, or table..." style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; margin-top:4px;" />
+                <div id="checkout-attach-results" style="display:none; position:absolute; top:100%; left:0; right:0; margin-top:2px; z-index:20; background:var(--color-surface); border:1px solid var(--color-accent); box-shadow:4px 4px 0 rgba(0,0,0,0.4); max-height:180px; overflow-y:auto;"></div>
+                <button type="button" id="checkout-attach-clear" style="display:none; margin-top:6px; background:none; border:none; color:var(--color-text-muted); font-size:10px; text-decoration:underline; cursor:pointer; font-family:inherit; padding:0;">Clear</button>
+            </label>`
                     : ""
             }
 
@@ -272,6 +279,84 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
     document.getElementById("btn-pay-cash")?.addEventListener("click", () => window.startCheckout("COUNTER"));
     document.getElementById("btn-pay-online")?.addEventListener("click", () => window.startCheckout("ONLINE"));
     document.getElementById("checkout-back-btn")?.addEventListener("click", () => window.closeModal());
+
+    // "Attach to existing bill" - a staff-only typeahead against
+    // GET /api/orders/search, mutually exclusive with the table select
+    // above (a new order uses tableSessionId OR attachedToOrderId, never
+    // both - see server.js's POST /api/orders). The picked order's id lives
+    // on the search input's own dataset so window.startCheckout (app.js)
+    // can read it without needing a closure variable shared across modules.
+    const attachSearch = document.getElementById("checkout-attach-search");
+    const attachResults = document.getElementById("checkout-attach-results");
+    const attachClearBtn = document.getElementById("checkout-attach-clear");
+    const tableSelect = document.getElementById("checkout-table-session");
+    if (attachSearch) {
+        const clearAttach = () => {
+            attachSearch.value = "";
+            delete attachSearch.dataset.orderId;
+            attachClearBtn.style.display = "none";
+        };
+        const pickAttach = (o) => {
+            attachSearch.dataset.orderId = o.id;
+            attachSearch.value = `#${o.orderNumber || o.id}${o.customerName ? ` - ${o.customerName}` : ""}`;
+            attachResults.style.display = "none";
+            attachClearBtn.style.display = "inline";
+            if (tableSelect) tableSelect.value = "";
+        };
+        let searchDebounce = null;
+        attachSearch.addEventListener("input", () => {
+            delete attachSearch.dataset.orderId; // typing invalidates whatever was picked before
+            attachClearBtn.style.display = "none";
+            clearTimeout(searchDebounce);
+            const query = attachSearch.value.trim();
+            if (!query) {
+                attachResults.style.display = "none";
+                return;
+            }
+            searchDebounce = setTimeout(async () => {
+                const matches = await KitchenSystem.searchBills(query);
+                if (!matches.length) {
+                    attachResults.style.display = "none";
+                    attachResults.innerHTML = "";
+                    return;
+                }
+                attachResults.innerHTML = matches
+                    .map(
+                        (o) => `
+                    <button type="button" class="checkout-attach-result" data-id="${o.id}" style="display:block; width:100%; text-align:left; padding:8px 10px; background:none; border:none; border-bottom:1px solid var(--color-border); color:var(--color-text); font-family:inherit; font-size:10px; cursor:pointer;">
+                        #${escapeHtml(String(o.orderNumber || o.id))} ${o.customerName ? `- ${escapeHtml(o.customerName)}` : ""} <span style="color:var(--color-text-muted);">${currencySymbol()}${o.total.toFixed(2)}${o.isPaid ? " (paid)" : ""}${o.hasAttachments ? " +linked" : ""}</span>
+                    </button>
+                `
+                    )
+                    .join("");
+                attachResults.style.display = "block";
+                attachResults.querySelectorAll(".checkout-attach-result").forEach((btn) => {
+                    // mousedown (not click) fires before the input's blur, so
+                    // the dropdown doesn't close itself out from under the click.
+                    btn.addEventListener("mousedown", (e) => {
+                        e.preventDefault();
+                        const match = matches.find((o) => o.id === btn.dataset.id);
+                        if (match) pickAttach(match);
+                    });
+                });
+            }, 250);
+        });
+        attachSearch.addEventListener("blur", () => {
+            setTimeout(() => (attachResults.style.display = "none"), 150);
+        });
+        attachClearBtn?.addEventListener("click", clearAttach);
+        tableSelect?.addEventListener("change", () => {
+            if (tableSelect.value) clearAttach();
+        });
+
+        // Pre-fill from Billing's "+ New order for this bill" shortcut, if
+        // that's why this checkout was opened - consumed once, not
+        // persisted, so it doesn't leak into the next unrelated checkout.
+        if (KitchenSystem.pendingAttachTarget) {
+            pickAttach(KitchenSystem.pendingAttachTarget);
+            KitchenSystem.pendingAttachTarget = null;
+        }
+    }
     document.getElementById("checkout-remove-service-charge")?.addEventListener("click", () => window.removeServiceCharge());
     document.getElementById("checkout-tip-checkbox")?.addEventListener("change", (e) => window.toggleTip(e.target.checked));
 
