@@ -225,21 +225,38 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
   confirmed `attachedToOrderId` linked correctly), and Billing's single-
   order AND merged-group detail views all confirmed working against real
   integer ids with zero new console errors.
+- **Address editor: search + City/State fields** (`js/ui/address-modal.js`,
+  requested to match a pasted Amazon/Myntra-style screenshot). Added
+  `city`/`state` fields alongside the existing `landmark`/`pincode` (same
+  pattern, both server routes + `address-logic.js`'s `add()`). New debounced
+  search box queries `https://nominatim.openstreetmap.org/search` (OSM's
+  free address-search endpoint - added to CSP `connect-src`; distinct from
+  the tile-serving endpoint already allowed) and shows a mousedown-select
+  dropdown (same pattern as Billing's item-search); picking a result
+  auto-fills address/city/state/pincode AND moves the map pin - manual
+  pin-drop and "use my location" both still work as fallbacks. This is a
+  deliberate reversal of the earlier "manual pin-drop only, no geocoding
+  API" decision - justified by the user's explicit ask for searchable
+  address entry, kept within the "free OSM infra, no paid vendor" spirit of
+  the original choice. Verified live: search → pick → fields + pin
+  auto-fill → save → `GET /api/addresses` confirms city/state/pincode/
+  lat/lng all persisted correctly.
 - **New delivery order type**, end-to-end: a customer (never guest, never
   staff-placed) can now check out with `orderType: "delivery"`, which
   requires online payment, a saved address, and a store within 5km of that
-  address. Manual pin-drop on an OpenStreetMap map (Leaflet, vendored under
+  address. Address location on an OpenStreetMap map (Leaflet, vendored under
   `js/vendor/leaflet.js` + `css/vendor/leaflet.css` + `css/vendor/images/`,
-  no CDN/API key/geocoding service - a deliberate decision, since the CSP's
-  `script-src` only allows `'self'` plus the two Razorpay domains) - the
-  customer drops a pin, we just read `lat`/`lng` off the click, no
-  address-to-coordinates lookup at all.
-  - **Data model**: new `data/addresses.json` (`{id, customerId, label,
-    addressText, lat, lng, isDefault, createdAt}`, customer-owned, capped at
-    10/customer). Orders gained a frozen `deliveryAddress` snapshot (same
-    reasoning as `customerName`/`customerPhone` - never a live reference,
-    so an edited/deleted address or a deleted account can never change what
-    a past delivery order shows). Stores' `operations` object (same place
+  no CDN, since the CSP's `script-src` only allows `'self'` plus the two
+  Razorpay domains) - originally manual-pin-drop-only, later extended (see
+  "Address search" below) with free Nominatim text search as well; either
+  way we only ever read `lat`/`lng` off the result, never a paid geocoding
+  vendor.
+  - **Data model**: `data/addresses.json` (`{id, customerId, label,
+    addressText, landmark, city, state, pincode, lat, lng, isDefault,
+    active, createdAt}`, customer-owned, capped at 10/customer). Addresses
+    are **versioned, not mutated** (see "Address editing redesigned" below)
+    - orders reference `addressId`, not a frozen snapshot, since a
+    versioned address never goes stale. Stores' `operations` object (same place
     `tableCount`/`arcade`/`waitTime` already live) gained `delivery: {
     enabled, lockedBy, message: {preset, customText} }`.
   - **Server**: new `haversineKm()` distance helper (pure math, no

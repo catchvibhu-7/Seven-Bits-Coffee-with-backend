@@ -12,12 +12,12 @@ export const AddressSystem = {
         return res.ok ? res.json() : [];
     },
 
-    async add({ label, addressText, landmark = "", pincode = "", lat, lng, isDefault = false }) {
+    async add({ label, addressText, landmark = "", city = "", state = "", pincode = "", lat, lng, isDefault = false }) {
         const res = await fetch("/api/addresses", {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ label, addressText, landmark, pincode, lat, lng, isDefault })
+            body: JSON.stringify({ label, addressText, landmark, city, state, pincode, lat, lng, isDefault })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not save address");

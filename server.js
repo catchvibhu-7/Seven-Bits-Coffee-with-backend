@@ -4728,6 +4728,8 @@ route("POST", /^\/api\/addresses\/?$/, async (req, res) => {
   const label = String(body.label || "").trim().slice(0, 40);
   const addressText = String(body.addressText || "").trim().slice(0, 200);
   const landmark = String(body.landmark || "").trim().slice(0, 100);
+  const city = String(body.city || "").trim().slice(0, 60);
+  const state = String(body.state || "").trim().slice(0, 60);
   const pincode = String(body.pincode || "").trim().slice(0, 12);
   const lat = parseAddressCoord(body.lat, -90, 90);
   const lng = parseAddressCoord(body.lng, -180, 180);
@@ -4747,6 +4749,8 @@ route("POST", /^\/api\/addresses\/?$/, async (req, res) => {
     label,
     addressText,
     landmark,
+    city,
+    state,
     pincode,
     lat,
     lng,
@@ -4778,6 +4782,8 @@ route("PATCH", /^\/api\/addresses\/(?<id>\d+)\/?$/, async (req, res, params) => 
   if (!label) return sendJson(res, 400, { error: "Give this address a short label" });
   const addressText = typeof body.addressText === "string" ? body.addressText.trim().slice(0, 200) : old.addressText;
   const landmark = typeof body.landmark === "string" ? body.landmark.trim().slice(0, 100) : old.landmark;
+  const city = typeof body.city === "string" ? body.city.trim().slice(0, 60) : old.city;
+  const state = typeof body.state === "string" ? body.state.trim().slice(0, 60) : old.state;
   const pincode = typeof body.pincode === "string" ? body.pincode.trim().slice(0, 12) : old.pincode;
   let lat = old.lat;
   let lng = old.lng;
@@ -4801,6 +4807,8 @@ route("PATCH", /^\/api\/addresses\/(?<id>\d+)\/?$/, async (req, res, params) => 
     label,
     addressText,
     landmark,
+    city,
+    state,
     pincode,
     lat,
     lng,

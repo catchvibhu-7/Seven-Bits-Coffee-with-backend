@@ -74,7 +74,7 @@ export function renderAddressModal() {
                                 <strong style="font-size:12px;">${escapeHtml(a.label)}</strong>
                                 ${a.isDefault ? `<span style="font-size:9px; color:var(--color-accent); margin-left:6px; text-transform:uppercase;">Default</span>` : ""}
                                 ${a.addressText ? `<div style="font-size:11px; color:var(--color-text-muted); margin-top:4px;">${escapeHtml(a.addressText)}</div>` : ""}
-                                ${a.landmark || a.pincode ? `<div style="font-size:11px; color:var(--color-text-muted); margin-top:2px;">${[a.landmark, a.pincode].filter(Boolean).map(escapeHtml).join(" &middot; ")}</div>` : ""}
+                                ${a.landmark || a.city || a.state || a.pincode ? `<div style="font-size:11px; color:var(--color-text-muted); margin-top:2px;">${[a.landmark, a.city, a.state, a.pincode].filter(Boolean).map(escapeHtml).join(" &middot; ")}</div>` : ""}
                             </div>
                         </div>
                         <div style="display:flex; gap:6px; margin-top:8px;">
@@ -128,17 +128,28 @@ export function renderAddressModal() {
                 <input id="addr-label" type="text" maxlength="40" value="${escapeHtml(existing?.label || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                 <label for="addr-text" style="font-size:10px; color:var(--color-text-muted);">ADDRESS (house/street, shown to staff - not used to place the pin)</label>
                 <textarea id="addr-text" maxlength="200" rows="2" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px; resize:vertical;">${escapeHtml(existing?.addressText || "")}</textarea>
+                <label for="addr-landmark" style="font-size:10px; color:var(--color-text-muted);">LANDMARK (optional)</label>
+                <input id="addr-landmark" type="text" maxlength="100" value="${escapeHtml(existing?.landmark || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                 <div style="display:flex; gap:10px;">
                     <div style="flex:2;">
-                        <label for="addr-landmark" style="font-size:10px; color:var(--color-text-muted);">LANDMARK</label>
-                        <input id="addr-landmark" type="text" maxlength="100" value="${escapeHtml(existing?.landmark || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
+                        <label for="addr-city" style="font-size:10px; color:var(--color-text-muted);">CITY</label>
+                        <input id="addr-city" type="text" maxlength="60" value="${escapeHtml(existing?.city || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
+                    </div>
+                    <div style="flex:2;">
+                        <label for="addr-state" style="font-size:10px; color:var(--color-text-muted);">STATE</label>
+                        <input id="addr-state" type="text" maxlength="60" value="${escapeHtml(existing?.state || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     </div>
                     <div style="flex:1;">
                         <label for="addr-pincode" style="font-size:10px; color:var(--color-text-muted);">PIN CODE</label>
                         <input id="addr-pincode" type="text" inputmode="numeric" maxlength="12" value="${escapeHtml(existing?.pincode || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     </div>
                 </div>
-                <label style="font-size:10px; color:var(--color-text-muted);">DROP A PIN ON THE MAP TO SET YOUR LOCATION</label>
+                <label for="addr-search" style="font-size:10px; color:var(--color-text-muted);">SEARCH FOR YOUR ADDRESS</label>
+                <div style="position:relative;">
+                    <input id="addr-search" type="text" placeholder="Search for area, street, city..." autocomplete="off" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
+                    <div id="addr-search-results" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:10; background:var(--color-surface); border:1px solid var(--color-accent); max-height:180px; overflow-y:auto;"></div>
+                </div>
+                <label style="font-size:10px; color:var(--color-text-muted);">OR DROP A PIN ON THE MAP TO SET YOUR LOCATION</label>
                 <div style="display:flex; justify-content:flex-end; margin:4px 0;">
                     <button type="button" id="addr-use-location" style="background:none; border:none; color:var(--color-accent); font-size:10px; text-decoration:underline; cursor:pointer; font-family:inherit; padding:0;">&gt; Use my current location</button>
                 </div>
@@ -196,6 +207,68 @@ export function renderAddressModal() {
             el.textContent = pickedLatLng ? `Pin set: ${pickedLatLng.lat.toFixed(5)}, ${pickedLatLng.lng.toFixed(5)}` : "No pin set yet - click the map.";
         }
 
+        function movePin(lat, lng, zoom) {
+            pickedLatLng = { lat, lng };
+            map.setView([lat, lng], zoom || PIN_ZOOM);
+            if (marker) marker.setLatLng([lat, lng]);
+            else marker = window.L.marker([lat, lng]).addTo(map);
+            updateCoordsLabel();
+        }
+
+        // Nominatim (OSM's free address-search endpoint, no key) - debounced,
+        // ~1 req/sec usage policy ceiling. Selecting a result auto-fills the
+        // text fields and moves the pin; manual pin-drop stays available too.
+        let searchTimer = null;
+        const searchInput = document.getElementById("addr-search");
+        const resultsBox = document.getElementById("addr-search-results");
+        searchInput.addEventListener("input", () => {
+            clearTimeout(searchTimer);
+            const q = searchInput.value.trim();
+            if (q.length < 3) {
+                resultsBox.style.display = "none";
+                return;
+            }
+            searchTimer = setTimeout(async () => {
+                let results = [];
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=in&limit=5&q=${encodeURIComponent(q)}`);
+                    results = await res.json();
+                } catch {
+                    resultsBox.style.display = "none";
+                    return;
+                }
+                if (!results.length) {
+                    resultsBox.innerHTML = `<div style="padding:8px; font-size:11px; color:var(--color-text-muted);">No matches</div>`;
+                    resultsBox.style.display = "block";
+                    return;
+                }
+                resultsBox.innerHTML = results
+                    .map(
+                        (r, i) => `<div data-idx="${i}" style="padding:8px; font-size:11px; cursor:pointer; border-bottom:1px solid var(--color-border);">${escapeHtml(r.display_name)}</div>`
+                    )
+                    .join("");
+                resultsBox.style.display = "block";
+                resultsBox.querySelectorAll("[data-idx]").forEach((row) => {
+                    // mousedown, not click - fires before the input's blur closes this dropdown out from under it
+                    row.addEventListener("mousedown", (e) => {
+                        e.preventDefault();
+                        const r = results[Number(row.dataset.idx)];
+                        const addr = r.address || {};
+                        document.getElementById("addr-text").value = r.display_name;
+                        document.getElementById("addr-city").value = addr.city || addr.town || addr.village || addr.suburb || "";
+                        document.getElementById("addr-state").value = addr.state || "";
+                        document.getElementById("addr-pincode").value = addr.postcode || "";
+                        searchInput.value = r.display_name;
+                        resultsBox.style.display = "none";
+                        movePin(Number(r.lat), Number(r.lon));
+                    });
+                });
+            }, 400);
+        });
+        overlay.addEventListener("click", (e) => {
+            if (e.target !== searchInput) resultsBox.style.display = "none";
+        });
+
         // No geocoding API (pincode/landmark below are staff-facing text
         // only) - the browser's own GPS is the one free, instant way to
         // actually narrow the map down instead of panning/zooming by hand.
@@ -227,6 +300,8 @@ export function renderAddressModal() {
             const label = document.getElementById("addr-label").value.trim();
             const addressText = document.getElementById("addr-text").value.trim();
             const landmark = document.getElementById("addr-landmark").value.trim();
+            const city = document.getElementById("addr-city").value.trim();
+            const state = document.getElementById("addr-state").value.trim();
             const pincode = document.getElementById("addr-pincode").value.trim();
             if (!label) {
                 errorEl.textContent = "Give this address a short label.";
@@ -238,9 +313,9 @@ export function renderAddressModal() {
             }
             try {
                 if (existing) {
-                    await AddressSystem.update(existing.id, { label, addressText, landmark, pincode, lat: pickedLatLng.lat, lng: pickedLatLng.lng });
+                    await AddressSystem.update(existing.id, { label, addressText, landmark, city, state, pincode, lat: pickedLatLng.lat, lng: pickedLatLng.lng });
                 } else {
-                    await AddressSystem.add({ label, addressText, landmark, pincode, lat: pickedLatLng.lat, lng: pickedLatLng.lng });
+                    await AddressSystem.add({ label, addressText, landmark, city, state, pincode, lat: pickedLatLng.lat, lng: pickedLatLng.lng });
                 }
                 await renderList();
             } catch (e) {
