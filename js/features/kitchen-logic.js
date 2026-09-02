@@ -7,6 +7,8 @@
  * connectLiveUpdates() opens a Server-Sent Events stream so every connected
  * station refreshes automatically when any station changes an order.
  */
+import { StoreSystem } from "./store-logic.js";
+
 export const KitchenSystem = {
     orders: [],
 
@@ -17,7 +19,13 @@ export const KitchenSystem = {
     pendingAttachTarget: null,
 
     async fetchOrders() {
-        const res = await fetch("/api/orders", { credentials: "include" });
+        // A single-store manager/employee never has this set (server already
+        // pins them to their own store regardless) - only a multi-store
+        // account (owner/Global Admin/multi-store Local Admin) ever picks a
+        // value here, via the store switcher on the Orders/Billing pages.
+        const storeId = StoreSystem.getStaffSelectedStoreId();
+        const url = storeId != null ? `/api/orders?storeId=${storeId}` : "/api/orders";
+        const res = await fetch(url, { credentials: "include" });
         if (res.ok) this.orders = await res.json();
         return this.orders;
     },
@@ -43,7 +51,8 @@ export const KitchenSystem = {
             redeemPoints = 0,
             guestOrder = false,
             orderType = "takeaway",
-            storeId = null
+            storeId = null,
+            addressId = null
         } = {}
     ) {
         const res = await fetch("/api/orders", {
@@ -75,7 +84,8 @@ export const KitchenSystem = {
                 // their own - see js/features/store-logic.js); ignored
                 // server-side for a staff session, which always keeps its
                 // own assigned store.
-                storeId
+                storeId,
+                addressId
             })
         });
         const data = await res.json();

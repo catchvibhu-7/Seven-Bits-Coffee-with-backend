@@ -8,7 +8,10 @@
  * on that, this module doesn't duplicate the check.
  */
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"];
+// SVG excluded - server.js's UPLOAD_MIME_EXT dropped it (stored-XSS vector,
+// an uploaded SVG can carry <script>/event-handler payloads) - keep these
+// two lists in sync or a client "looks accepted" file just 400s on submit.
+const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 export const UploadsSystem = {
     async list() {

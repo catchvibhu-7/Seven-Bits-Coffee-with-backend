@@ -102,7 +102,8 @@ export function renderMyOrdersModal(orders, { onReorder }) {
     document.getElementById("mo-close").addEventListener("click", () => overlay.remove());
     overlay.querySelectorAll(".mo-bill-number-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
-            const order = orders.find((o) => o.id === btn.dataset.orderId);
+            // dataset.orderId is always a string - order.id is a real number.
+            const order = orders.find((o) => o.id === Number(btn.dataset.orderId));
             if (!order) return;
             const linked = orders.filter((o) => o.attachedToOrderId === order.id);
             window.showBillPreview?.(linked.length ? mergeOrderGroup([order, ...linked]) : order);
@@ -110,7 +111,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
     });
     overlay.querySelectorAll(".mo-reorder-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
-            const order = orders.find((o) => o.id === btn.dataset.orderId);
+            const order = orders.find((o) => o.id === Number(btn.dataset.orderId));
             if (order) onReorder(order);
             overlay.remove();
         });

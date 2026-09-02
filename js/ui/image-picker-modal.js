@@ -40,7 +40,7 @@ export function renderImagePickerModal({ onSelect }) {
             <p id="ip-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 8px;"></p>
 
             <label for="ip-file-input" class="admin-btn" style="display:inline-block; cursor:pointer; margin-bottom:16px;">[ UPLOAD NEW IMAGE ]</label>
-            <input id="ip-file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="display:none;" />
+            <input id="ip-file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none;" />
             <span id="ip-upload-status" aria-live="polite" style="font-size:11px; color:var(--color-text-muted); margin-left:8px;"></span>
 
             <div style="font-size:9px; letter-spacing:.12em; color:var(--color-text-muted); text-transform:uppercase; margin: 12px 0 8px; border-left:3px solid var(--color-accent); padding-left:8px;">Bucket</div>
@@ -85,7 +85,7 @@ export function renderImagePickerModal({ onSelect }) {
         gridEl.querySelectorAll(".ip-delete").forEach((btn) => {
             btn.addEventListener("click", async (e) => {
                 e.stopPropagation();
-                if (!confirm("Delete this image? Anything still pointing at it (a menu item photo, the hero image) will show a broken image instead.")) return;
+                if (!confirm("Delete this image?")) return;
                 try {
                     await UploadsSystem.remove(btn.dataset.id);
                     await refreshGrid();

@@ -7,10 +7,20 @@
  * authoritative for who can open/close/tag (see server.js KITCHEN_ROLES
  * checks) - this is just the fetch wrapper.
  */
+import { StoreSystem } from "./store-logic.js";
+
 export const TableSessionsSystem = {
     async list(status = null) {
-        const url = status ? `/api/table-sessions?status=${encodeURIComponent(status)}` : "/api/table-sessions";
-        const res = await fetch(url, { credentials: "include" });
+        // storeId narrows to one of a multi-store account's several
+        // accessible stores (the Orders/Billing store switcher) - a
+        // single-store manager/employee never has this set, so this is a
+        // no-op for them.
+        const storeId = StoreSystem.getStaffSelectedStoreId();
+        const params = new URLSearchParams();
+        if (status) params.set("status", status);
+        if (storeId != null) params.set("storeId", storeId);
+        const qs = params.toString();
+        const res = await fetch(`/api/table-sessions${qs ? `?${qs}` : ""}`, { credentials: "include" });
         return res.ok ? res.json() : [];
     },
 

@@ -17,7 +17,10 @@ re-explained — read it before making changes.
   `generateOrderNumber` (the `SBYYMMDD01`-style display number, separate
   from `order.id`'s internal PK), `computeWaitTimeMins` (backlog +
   parallelism wait estimate), `mergeStoreOverrides`/
-  `DEFAULT_STORE_OPERATIONS` (multi-store settings resolution).
+  `DEFAULT_STORE_OPERATIONS` (multi-store settings resolution),
+  `computeOrderGroupBill`/`attachedToOrderId` (staff-attached follow-up
+  orders billed together with a root order, same merge shape as
+  `computeTableSessionBill`).
 - `js/app.js` — main frontend controller (~2700 lines): cart, menu
   rendering, checkout orchestration, kitchen ticket rendering, table panel,
   `applyBranding()` (sets CSS custom properties from server config on boot +
@@ -81,6 +84,14 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
   browser tab (their page loaded the old `app.js` before your fix landed) —
   ask for a hard refresh (Ctrl+Shift+R / Cmd+Shift+R) before re-diagnosing
   from scratch.
+- **`main` and `pos-redesign-mobile` have diverged again as of this
+  session's end**: the font-size sweep and the attach-to-bill feature (see
+  "Recent work") are committed on `pos-redesign-mobile` but the user
+  explicitly said not to merge them into `main` yet ("not for now") — don't
+  merge on your own initiative; ask first. Everything from earlier sessions
+  IS already merged into `main` (see the older "Merged `pos-redesign-
+  mobile` into `main`" entry below) — only these two newest commits are
+  pending.
 
 ## Testing conventions
 
@@ -114,6 +125,412 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
 
 ## Recent work (most recent session)
 
+- **Raw material inventory** (was in "Not yet done", now built): a new
+  Admin > Menu > Raw Materials tab, manager+ only to view/add/rename/
+  deactivate (`GET`/`POST`/`PATCH /api/raw-materials`, MANAGER_UP_ROLES),
+  but any `KITCHEN_ROLES` staff can PATCH just the `quantity` field even
+  though they can't reach the Admin panel to use it through this UI yet -
+  confirmed live: an employee session gets a 403 on `GET` but a 200 on a
+  quantity-only `PATCH`, with a `name`/`unit`/`active` change in that same
+  request silently ignored rather than erroring. Deliberately just a flat
+  name/quantity/unit/active list, same soft-delete convention menu items
+  already use (`SHOW INACTIVE` checkbox) - no recipe/BOM link to menu items
+  and no auto-deduction on order placement, neither was asked for.
+- **Server-side pagination for order history** (was in "Not yet done", now
+  built): `GET /api/orders` gained `?page=`/`?limit=` (returns `{items,
+  total}` instead of a bare array) plus `?from=`/`?to=`/`?status=`/`?sort=`
+  so filtering/sorting happens server-side too - all backward compatible,
+  a request with no page/limit still gets the plain full array exactly as
+  before (Kitchen board and Billing are untouched, they still want the
+  whole scoped set for their own client-side grouping). Only Admin Order
+  History was migrated to actually request pages (`loadPage()` replacing
+  the old fetch-everything-then-filter-locally `renderList()`) - it's the
+  one place that already had its own page-based browsing UI and no natural
+  upper bound on total orders, unlike Kitchen/Billing which are inherently
+  bounded to "active + recent" or "currently open bills." Kitchen's own
+  HISTORY/SHOW ALL tabs have the identical fetch-everything scaling
+  concern and could be migrated the same way later if it becomes a problem.
+- **Addresses are now versioned, not mutated** - editing a saved address
+  (`PATCH /api/addresses/:id`) never rewrites the row: it sets the old
+  row's `active: false` and inserts a brand new row with a new id, which is
+  what the customer sees going forward and what any NEW order will
+  reference. `DELETE` does the same (deactivate, never remove). This is
+  what let `order.deliveryAddress` (a duplicated snapshot blob) become
+  `order.addressId` (a real reference) - the address row itself now plays
+  the "frozen at order time" role, so nothing is stored twice. Account
+  deletion's address cleanup changed to match: an address a past order's
+  `addressId` still points to is left alone (same reasoning as
+  `customerName`/`customerPhone` surviving on old orders); anything else of
+  that customer's, referenced by nothing, is removed outright.
+- **Fixed the three flagged spots from the data-fabric write-up**:
+  `favorites.json`'s polymorphic `ownerKey` string (`"customer:17"`) split
+  into real `ownerType`/`ownerId` fields (`favoritesOwner()`/
+  `favoritesMatch()` in server.js); `GET /api/orders` gained a `?couponId=`
+  filter so "which orders used this code" is a live query instead of a
+  stored reverse-index on the coupon (which would've just duplicated the
+  relationship a second way) - wired into a clickable usedCount in Admin >
+  Discounts; `DELETE /api/uploads/:id` now 409s with exactly what's still
+  using it (`findUploadUsage()`, checks menu item photos + the three
+  branding image fields + customIcons) unless `?force=true` is passed.
+  Found in passing while touching uploads: the client's accepted-file-types
+  list still allowed SVG after server.js dropped it for the stored-XSS fix
+  earlier this session - a real client/server mismatch, fixed in both
+  `uploads-logic.js` and the file-picker's `accept` attribute.
+- **Fixed a real bug while wiring the delivery map**: this app's global
+  `Referrer-Policy: no-referrer` (set for privacy on API responses) was
+  ALSO suppressing the referer on the page's own resource loads, including
+  Leaflet's OpenStreetMap tile requests - OSM's tile servers now reject
+  referrer-less requests outright ("Access blocked" hazard-stripe page,
+  not a CSP or network issue). Changed to `strict-origin-when-cross-origin`
+  (the browser's own default) - sends the bare origin cross-origin, full
+  URL same-origin, which satisfies OSM without leaking any path/query to
+  third parties. Addresses also gained `landmark`/`pincode` as plain
+  staff-facing reference text (not used for geocoding - no such API/vendor
+  decision has been made) plus a "use my current location" button
+  (`navigator.geolocation`, free, native) as the actual "narrow down the
+  search" mechanism instead.
+- **Order IDs migrated to plain incrementing integers** (`order.id`, was a
+  random `SB-XXXXXX` string). `order.orderNumber` (the customer-facing bill
+  number, `SB26090205`-style) is completely untouched - the two fields are,
+  and always were, fully independent. `POST /api/orders` now generates
+  `orderId` the same way users/stores/menu items already do
+  (`Math.max(...orders.map(o=>o.id))+1`). A one-time migration script
+  (`migrate_order_ids.js`, not checked in - ran once from the scratchpad)
+  renumbered every existing order sorted by `createdAt` and rewrote
+  `attachedToOrderId` pointers (the one real internal foreign key) through
+  an old-id→new-id map; the real `data/orders.json` has a
+  `data/orders.json.bak-pre-id-migration` sitting next to it as a safety net
+  - safe to delete once you've confirmed everything looks right, not
+    needed for the app to run.
+  **Fixed as part of this** (every spot a `.dataset.*` DOM attribute - always
+  a string - got compared against `order.id` with `===`, which would
+  otherwise silently break the instant `id` became a number): Admin Order
+  History's row-selection (`admin-portal.js`), My Orders' bill-preview/
+  reorder buttons (`my-orders-modal.js`), checkout's attach-to-bill picker
+  AND the `attachToOrderId` it sends server-side (`checkout-modal.js` +
+  server.js), and **Billing's own bill-selection** (`billing-page.js` -
+  found live during verification, not by the earlier static-code scoping
+  pass, since it stores order ids under a generic `data-id`/`kind` pair
+  rather than anything named `orderId`; masked in first-pass testing
+  because Billing's auto-select-first-bill path happens to stay type-safe,
+  it only broke once you actually clicked a specific bill row). Also fixed:
+  backup/restore's collision-regeneration map
+  (`reassignStoreScopedIds`/`idStyles`, server.js) used to hardcode
+  `"orders.json": "SB-"`, now `"numeric"` - left as `"SB-"` it would have
+  silently started minting old-format string ids again after any restore
+  that hit a collision. Verified end-to-end after migrating the scratch
+  copy's 62 orders: new order creation, every `PATCH`/settle-group/feedback/
+  verify-payment route, Admin Order History selection, My Orders bill-
+  preview + reorder, checkout attach-to-bill (search → pick → complete →
+  confirmed `attachedToOrderId` linked correctly), and Billing's single-
+  order AND merged-group detail views all confirmed working against real
+  integer ids with zero new console errors.
+- **New delivery order type**, end-to-end: a customer (never guest, never
+  staff-placed) can now check out with `orderType: "delivery"`, which
+  requires online payment, a saved address, and a store within 5km of that
+  address. Manual pin-drop on an OpenStreetMap map (Leaflet, vendored under
+  `js/vendor/leaflet.js` + `css/vendor/leaflet.css` + `css/vendor/images/`,
+  no CDN/API key/geocoding service - a deliberate decision, since the CSP's
+  `script-src` only allows `'self'` plus the two Razorpay domains) - the
+  customer drops a pin, we just read `lat`/`lng` off the click, no
+  address-to-coordinates lookup at all.
+  - **Data model**: new `data/addresses.json` (`{id, customerId, label,
+    addressText, lat, lng, isDefault, createdAt}`, customer-owned, capped at
+    10/customer). Orders gained a frozen `deliveryAddress` snapshot (same
+    reasoning as `customerName`/`customerPhone` - never a live reference,
+    so an edited/deleted address or a deleted account can never change what
+    a past delivery order shows). Stores' `operations` object (same place
+    `tableCount`/`arcade`/`waitTime` already live) gained `delivery: {
+    enabled, lockedBy, message: {preset, customText} }`.
+  - **Server**: new `haversineKm()` distance helper (pure math, no
+    dependency) and `sanitizeDelivery()` (enforces the lock - see below).
+    New customer-only `/api/addresses` CRUD routes. `POST /api/orders`
+    validates all of the above (role/payment-method/address-ownership/
+    store-enabled/distance) BEFORE `computeOrder` runs, so a doomed
+    delivery order never prices out a cart for nothing.
+  - **Hierarchical enable/disable lock** (new pattern, nothing like it
+    existed before this): a manager/Local Admin can toggle their own
+    store's delivery on/off with a message (two presets - "too many
+    orders, queue full" / "no delivery partner available" - or custom
+    text) via the existing Operations edit modal
+    (`renderStoreSettingsPanel`, admin-portal.js). A Global Admin can force
+    it off and **lock** it via a new "FORCE DISABLE & LOCK" button on the
+    cross-store Operations summary (`renderOperations`, Global-Admin-only
+    tab) - while locked, the store's own toggle is rejected **server-side**
+    (not just hidden client-side), and only a Global Admin can clear the
+    lock; clearing it does NOT auto-re-enable delivery, that's a separate
+    subsequent action. Verified live: manager toggle works, Global Admin
+    lock blocks the manager's own PATCH attempt outright, unlock restores
+    the manager's control.
+  - **Client**: cart panel gained a third order-type button ("Delivery",
+    customer-role + store-delivery-enabled only, never shown to
+    guests/staff at all); checkout modal shows an address picker and hides
+    "PAY CASH" entirely when delivery is selected (previously both payment
+    buttons were always shown to every customer with no gating concept at
+    all); a new home-page scrolling ticker
+    (`renderHomeDeliveryTicker()`/`.home-delivery-ticker` in theme.css - a
+    brand new UI element, no prior marquee/ticker precedent existed
+    anywhere in the app) shows the store's message whenever delivery is
+    disabled, refreshing on page-show and on store switch. Checkout also
+    now blocks (and opens the store picker) if a multi-store deployment's
+    customer/guest tries to check out with no store picked at all -
+    previously that order landed with `storeId: null`, which the server's
+    "unscoped orders stay visible everywhere" fallback then showed (and
+    counted toward the active-orders badge) at EVERY store's board, not
+    just the one the customer meant - this was the actual "interstore
+    order counting" bug.
+- **Multi-store staff switcher** for Orders/Kitchen and Billing: an owner/
+  unrestricted-Global-Admin/multi-store-Local-Admin now gets a store
+  picker on both pages (`ensureKitchenStoreSwitcher()` app.js /
+  `buildStoreSwitcherHtml()` billing-page.js), sharing one value
+  (`StoreSystem.getStaffSelectedStoreId()`/`setStaffSelectedStoreId()`,
+  store-logic.js - a separate localStorage key from the customer-facing
+  store picker) so picking a store on either page carries to the other.
+  Picking a specific store does a **strict** id match server-side
+  (`GET /api/orders`'s existing `?storeId=` drill-down), which is what
+  actually fixes "interstore" counting - the default unscoped view
+  intentionally still shows storeId-less orders everywhere, which is
+  correct for a single-store shop but was the root cause of the counting
+  bug in a multi-store one. `GET /api/table-sessions` gained the same
+  `?storeId=` param to match. **Known quirk, not fixed**: this and the
+  rail/topbar layout choice are both plain `localStorage`, not tied to the
+  logged-in account, so switching accounts on the same browser inherits
+  the previous account's store filter - not a security issue (server-side
+  scoping still applies regardless), just a UX surprise worth deciding on
+  later (namespace per-account? clear on logout?).
+- **Kitchen board ticket-grid overflow, actually root-caused**: an earlier
+  session's Explore-agent code read concluded the grid CSS was already
+  correct and couldn't reproduce the reported horizontal-overflow bug -
+  wrong conclusion, because the bug is a RUNTIME override, not a CSS issue.
+  `window.filterKitchen()` (app.js) was setting `kitchen-orders-root`'s
+  inline `style.display = "flex"` on every station switch, clobbering the
+  CSS grid rule that actually wraps tickets into rows. Fixed by clearing
+  the inline override (`""`, deferring to the stylesheet) instead of
+  hardcoding `"flex"`. **Lesson for next time**: a "the CSS already looks
+  right" conclusion from reading source alone doesn't rule out a runtime
+  inline-style override elsewhere - check computed style / take a live
+  screenshot before trusting a static read on a visual bug report.
+- **Orders nav badge refresh bug**: marking an order done/served called
+  `renderKitchen()` immediately but never updated the staff rail's "Orders"
+  badge - it only got a fresh count later, whenever the SSE broadcast
+  round-tripped back to that same tab. Added `refreshOrdersBadge()` called
+  right after both actions. Separately: if the badge shows a nonzero count
+  when you expect zero, that's not necessarily a bug - it counts EVERY
+  not-fully-done order regardless of date, so a stray old order the
+  kitchen never closed out keeps counting forever. Admin Order History's
+  detail view now has a **MARK AS DONE** button (forces every line Done via
+  `station: "MASTER"`) for exactly this - an escape hatch, not a substitute
+  for the real per-station workflow. Also added: the Razorpay payment ID
+  (already being stored on successful verification, but never shown
+  anywhere) now displays in that same detail view for staff reconciliation.
+- **Date range filters** added to both Admin Order History and the Kitchen
+  HISTORY/SHOW ALL views (From/To, inclusive, either side alone is an
+  open-ended range, both set to the same day filters just that day) - the
+  Kitchen page's date inputs are injected dynamically and hidden entirely
+  for the ACTIVE filter (a date range doesn't mean anything for "right
+  now"). Pagination labels across every paginated view (menu items, kitchen
+  tickets, billing, admin order history) now bold+accent-color just the
+  numeric range (`1-10`), leaving "of N" muted - was one uniform style
+  before. Admin Order History's selected-row highlight was a per-`<td>`
+  `border-left`, which under `border-collapse:collapse` drew a vertical
+  accent line at the LEFT edge of every cell (an odd-looking divider
+  between every column, not an outline around the row) - fixed to
+  top/bottom on every cell + left/right only on the first/last cell, so it
+  reads as one clean box around the row.
+- **Fake-order / impersonation prevention, Tier 0**: `POST /api/orders`
+  used to accept `body.phone` over `session.phone` for ANY role, meaning a
+  logged-in customer (or an active guest session) could put a stranger's
+  real phone number on their own order. Fixed: a customer/guest's own
+  order always uses their own session's phone now, never a client-supplied
+  override; only staff (taking a counter order on someone's behalf) can
+  still type an arbitrary phone. The remaining half of this problem - guest
+  login/forgot-password treating "knows the phone number" as full identity
+  proof - needs SMS OTP and is tracked in "Not yet done" below (infra/cost
+  decision, not started).
+- **Security + privacy pass**: ran a full security audit and a follow-up
+  customer-data-privacy audit (both via background agents), then fixed the
+  concrete findings live-verified on the scratch server:
+  - Removed SVG from allowed image uploads (`UPLOAD_MIME_EXT`, server.js) —
+    stored-XSS vector, since an uploaded SVG can carry `<script>`/event-
+    handler payloads that fire if a browser ever opens the file's URL
+    directly.
+  - `getClientIp()` now trusts `X-Forwarded-For` — without this, every
+    request behind the Cloudflare tunnel looked like the same IP, making
+    the existing login rate-limiting (`checkRateLimit`) a no-op in the
+    actual deployed configuration.
+  - Added missing store-scoping (`accessibleStoreIds`) checks to
+    `PATCH /api/orders/:id`, `POST /api/orders/:id/settle-group`, all four
+    single-table-session routes, and `GET /api/admin/customers/:id` — all
+    previously let a store-scoped manager/Local Admin act on or view
+    another store's orders/tables/customer history.
+  - Secure-cookie flag and HSTS now auto-detect via `X-Forwarded-Proto`
+    (`setSessionCookie`, main dispatcher) instead of only the
+    `FORCE_SECURE_COOKIE` env var, which is easy to forget behind a tunnel.
+  - **Self-service account deletion** (`POST /api/account/delete`,
+    customer-only, re-enter password): scrubs name/phone/password hash,
+    clears favorites, kills sessions — but **never touches orders**, since
+    orders already freeze their own name/phone snapshot at checkout time
+    (`computeOrder`). Also reaches the arcade leaderboard now (scores
+    gained a `customerId` field at submission time so deletion can find
+    and anonymize a player's name there too — `ARCADE_SCORES_FILE`).
+    Deletion is sticky across a whole-instance restore
+    (`POST /api/admin/restore`): restoring an OLDER backup that predates
+    someone's deletion re-scrubs that account/those scores immediately
+    rather than quietly resurrecting them — verified live by restoring a
+    synthetic pre-deletion backup and confirming re-scrub.
+  - UI entry point: Account Settings modal (customer role only) has a
+    collapsed "Delete my account" section, two-click arm/confirm, password
+    required.
+  - **Flagged, not fixed** (needs a decision, not code): `data/*.json`
+    (real customer/staff PII, password hashes) is git-tracked with **no
+    `.gitignore` anywhere in the repo** — confirmed real data already
+    committed, not just a theoretical risk. Fixing the historical exposure
+    means rewriting git history (destructive, needs explicit sign-off) —
+    don't do this without being asked. Also unfixed: guest login/forgot-
+    password treat "knows the phone number" as full proof of identity (see
+    the new SMS OTP "Not yet done" item below) — anyone who knows a
+    customer's number gets read access to their order history or can reset
+    their password.
+- **Fake-order / impersonation prevention, Tier 0**: `POST /api/orders`
+  used to accept `body.phone` over `session.phone` for ANY role, meaning a
+  logged-in customer (or an active guest session) could put a stranger's
+  real phone number on their own order — that number then becomes "the
+  customer" staff call back, who never placed the order and never
+  consented. Fixed: a customer/guest's own order always uses their own
+  session's phone now, never a client-supplied override; only staff
+  (`KITCHEN_ROLES`, taking a counter order on someone's behalf) can still
+  type an arbitrary phone. See the new SMS OTP "Not yet done" item for the
+  remaining (infra-blocked) half of this problem.
+- **Multi-store staff switcher for Orders + Billing**: a multi-store
+  account (owner, unrestricted/Global Admin, or a Local Admin whose
+  `storeAccess` spans more than one store) now gets a store picker on both
+  the Orders/Kitchen page (`ensureKitchenStoreSwitcher()`, app.js) and
+  Billing (`buildStoreSwitcherHtml()`, billing-page.js) — picking one
+  narrows both pages to just that store (shared via
+  `StoreSystem.getStaffSelectedStoreId()`/`setStaffSelectedStoreId()`,
+  store-logic.js, a separate localStorage key from the customer-facing
+  store picker). A single-store manager/employee never sees it. Selecting
+  a specific store also fixes "interstore" counting: `GET /api/orders`'s
+  existing `?storeId=` drill-down does a **strict** match
+  (`o.storeId === requestedStoreId`), which excludes storeId-less orders
+  that the "unscoped" default view intentionally still shows everywhere.
+  `GET /api/table-sessions` gained the same `?storeId=` param to match.
+  Also added: checkout now blocks (and opens the store picker) if a
+  customer/guest tries to check out with no store picked at all in a
+  multi-store deployment — previously that order landed with `storeId:
+  null` and showed up (and counted toward the active-orders badge) at
+  EVERY store's board, not just one.
+- **Kitchen board ticket-grid overflow, actually root-caused**: an earlier
+  session's Explore-agent code read concluded the grid CSS was already
+  correct and couldn't reproduce the reported horizontal-overflow bug —
+  wrong conclusion, because the bug is a RUNTIME override, not a CSS issue.
+  `window.filterKitchen()` (app.js) was setting `kitchen-orders-root`'s
+  inline `style.display = "flex"` on every station switch, which clobbers
+  the CSS grid rule that actually wraps tickets into rows
+  (`#kitchen-orders-root { display: grid; ... }` in theme.css) with a
+  non-wrapping flex row instead. Fixed by clearing the inline override
+  (`""`, deferring to the stylesheet) instead of hardcoding `"flex"`.
+  Confirmed fixed for BARISTA/KITCHEN/DESSERTS/ALL STATIONS, both in
+  ACTIVE and HISTORY views. **Lesson for next time**: a "the CSS already
+  looks right" conclusion from reading source alone doesn't rule out a
+  runtime inline-style override elsewhere — check computed style / take a
+  live screenshot before trusting a static read on a visual bug report.
+- **Orders nav badge (staff rail) refresh bug**: marking an order
+  done/served (`window.markCompleted`/`window.markServed`, app.js) called
+  `renderKitchen()` immediately but never updated the "Orders" nav badge —
+  it only got a fresh count later, whenever the SSE broadcast
+  (`ensureOrdersStream`) round-tripped back to that same tab. Added a
+  `refreshOrdersBadge()` helper called right after both actions so the
+  badge updates instantly instead of depending on that echo. (Separately:
+  if the badge shows a nonzero count when you expect zero, that's not
+  necessarily a bug — it counts EVERY not-fully-done order regardless of
+  date, so a stray old order the kitchen never closed out will keep
+  counting forever. Admin Order History's detail view now has a **MARK AS
+  DONE** button for exactly this — see next bullet.)
+- **Admin Order History detail additions**: a **MARK AS DONE** button
+  (only shown for an incomplete order) force-completes every line via the
+  existing `markDone` action with `station: "MASTER"` — an escape hatch
+  for a stray order the kitchen forgot to close out, not a substitute for
+  the real per-station workflow. Also now shows the **Razorpay payment
+  ID** (`order.razorpayPaymentId`) when present — that field was already
+  being stored on successful payment verification but was never surfaced
+  anywhere in the UI, so staff had no way to actually use it for
+  reconciliation. (Not added to Billing's bill-detail view — Billing only
+  ever lists still-unpaid bills, so a settled Razorpay order isn't
+  reachable there in the first place.)
+- **Setup wizard fixed**: `PATCH /api/config` is deliberately Global-Admin-
+  only (owner is read-only there by design — see the franchise-governance
+  model below), but the wizard had no error handling around its save call,
+  so a rejected save (e.g. an owner session hitting that same 403) just
+  silently hung with no error shown and no advance to the next step. Fixed
+  the unhandled-rejection bug (`saveStep()` now surfaces the real error in
+  `#sw-error`), gated the wizard's entry point to Global Admin only on
+  BOTH the Dashboard and a new entry in Store Setup > Locations (owner no
+  longer sees either), and added a close/cancel button to every step (was
+  previously only on the final "Done" step).
+- **Attach a new order to an existing bill** (was in "Not yet done", now
+  built): two ways to keep a customer's new order counting toward a bill
+  they already have.
+  - **Same table, still occupied**: `POST /api/table-sessions/:id/settle-
+    round` marks the table's currently-unpaid orders paid WITHOUT closing
+    the session (unlike `/close`, which always ends it) — the table stays
+    open for more rounds. `computeTableSessionBill` now returns
+    `dueTotal`/`settledTotal`/`dueOrderCount` alongside the existing
+    combined `total`, so the UI can show "Already Settled" vs "Due Now"
+    instead of one number. `table-modal.js` gained a "SETTLE ROUND (KEEP
+    TABLE OPEN)" button with an inline payment-method picker (reuses
+    `PAYMENT_METHODS`, now exported from `billing-page.js`). Also fixed
+    `/close`'s `markPaid` branch, which used to overwrite EVERY order's
+    `paymentMethod` unconditionally — now only touches still-unpaid ones,
+    so an earlier round's real payment method survives a later close.
+  - **Staff picks manually**: new `attachedToOrderId` field on order
+    records (parallel to `tableSessionId`, mutually exclusive with it) +
+    `GET /api/orders/search` (typeahead by order #/phone/table, root bills
+    only — no attach chains) + `POST /api/orders/:id/settle-group` (settles
+    a root and everything attached to it in one payment). Wired into
+    `checkout-modal.js` (a new "ATTACH TO EXISTING BILL" search picker) and
+    `billing-page.js` (a "+ NEW ORDER FOR THIS BILL" shortcut that stores
+    `KitchenSystem.pendingAttachTarget` and jumps to the menu — the mirror
+    image of the existing `selectBillForOrder()`, which does the reverse).
+    **Important constraint driving this whole design**: `editItems`
+    hardcodes `isDone:false` on every line `computeOrder` builds, so
+    mutating an EXISTING order's items to "attach" more would silently
+    un-prepare anything the kitchen already marked done. Attaching is
+    therefore always a NEW, fully independent order (own KOT, own
+    `isDone`/`servedAt`) linked by a pointer — never edit an existing
+    order's `items` to attach something to it. `billing-page.js`'s bill
+    detail renders a merged view when a root has attachments
+    (`computeOrderGroupBill`, same shape as the table-session merge), with
+    per-line edits routed to the correct underlying order via each line's
+    `orderId` tag (same pattern `table-modal.js`'s `editLine()` already
+    used for table bills).
+  - Real bugs found only by testing live, not by reading the code: a root
+    order that's personally paid but has an unpaid attachment didn't show
+    up in Billing's Open Bills list at all (the filter checked the root's
+    own `isPaid`, not the group's) — fixed. The search endpoint's
+    `hasAttachments` flag was computed against an already-filtered
+    roots-only array, so it always read `false` — fixed to check the full
+    order list. A table bill in Billing (which has never supported item
+    editing) crashed on a null `order` reference once the item-row
+    edit-check was generalized for groups — fixed by guarding `order`
+    before touching `.isPaid`.
+- **App-wide blurry/tiny text, fixed everywhere**: a test user reported the
+  customize modal looked blurry. Root cause, and it was systemic: font
+  sizes across the ENTIRE app were set in `pt` (423 instances, 34 files) —
+  `pt` converts to `px` at a 4:3 ratio, so `7pt`/`8pt` land on fractional
+  pixels (`9.33px`/`10.67px`), which forces the browser into sub-pixel
+  anti-aliasing — reads as soft/blurry, especially under non-integer OS
+  display scaling (125%/150%, common on Windows). Swept every `pt` value to
+  the nearest whole pixel, rounding UP (`Math.ceil(pt * 4/3)`) so nothing
+  ever got smaller, only crisper. Found the identical bug expressed two
+  other ways while verifying and fixed those too: fractional `rem` (e.g.
+  `0.85rem` = `13.6px` at the default 16px root) and hand-picked
+  half-pixel `px` literals (`9.5px`, `10.5px`, ...) already in the
+  codebase — same rendering defect, different unit. **Zero fractional
+  font-sizes remain anywhere in the app** (verified by grep across every
+  unit) — if you ever add a new inline `font-size`, use a whole `px` value,
+  never `pt`, and check any new `rem`/`em` value against the 16px root
+  before assuming it's clean.
 - **Wait-time estimates**: `computeWaitTimeMins(cartItems, storeId)` in
   server.js — sums the live backlog (every not-done BARISTA/KITCHEN line
   across every non-served order) plus the prospective cart's own drink
@@ -248,6 +665,18 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
 
 ## Explicitly rejected / do not reintroduce
 
+- Mutating an address record in place on `PATCH /api/addresses/:id`, or
+  hard-deleting one on `DELETE`. Orders reference an address by id
+  (`order.addressId`) instead of snapshotting its fields - editing/deleting
+  in place would silently rewrite what a past delivery order shows it went
+  to. Always deactivate the old row (`active: false`) and insert a new one.
+- Generating `order.id` as a random string (`SB-XXXXXX`, `crypto.randomBytes`)
+  — migrated to a plain incrementing integer this session (see "Recent
+  work"). Don't revert to a random string id; if you touch order creation,
+  keep the `Math.max(...orders.map(o=>o.id))+1` pattern that matches every
+  other entity in this app. `order.orderNumber` (the customer-facing
+  `SB26090205`-style bill number) is the unrelated field that's actually
+  meant to look like that — never confuse the two.
 - Native `prompt()`/`confirm()` for anything staff-facing (table open/
   edit, table close) — always themed modals matching the terminal/
   monospace UI.
@@ -261,9 +690,29 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
 - `scrollIntoView()` targeting `#menu-root` (or anything else adjacent to
   the sticky menu header) to reset scroll position — use
   `window.scrollTo({top:0})` instead; see "Recent work" above for why.
+- Hardcoding `kitchen-orders-root`'s inline `style.display` to `"flex"` in
+  `window.filterKitchen()` (app.js) — this element's real layout is the CSS
+  grid in theme.css that wraps tickets into rows; an inline "flex" silently
+  overrides it with a non-wrapping row, which is exactly the horizontal-
+  overflow bug this session root-caused and fixed. Use `""` (clear the
+  inline override, defer to the stylesheet) to show it, `"none"` to hide it
+  — never a hardcoded display value other than `"none"`.
+- A customer/guest's own order (`POST /api/orders`) trusting a client-
+  supplied `body.phone` over their own `session.phone` — that's the exact
+  impersonation hole this session's Tier 0 fix closed. Only a staff session
+  taking a counter order on someone else's behalf should ever set a phone
+  the way body.phone allows.
 - A plain `<select>` dropdown for Billing's add-item picker, or an
   always-visible (non-collapsed) add-item row — now a collapsed button
   that expands into a typeable search field on click.
+- `pt` units (or an unchecked `rem`/`em`/half-pixel `px` value) for any
+  inline `font-size` — causes the fractional-pixel blur bug described in
+  "Recent work" above. Always use a whole `px` value.
+- Mutating an existing order's `items` array to "attach" more to it (e.g.
+  reusing `editItems` on an order the kitchen already touched) — resets
+  every line's `isDone` back to pending, including ones already prepared.
+  A staff-attached follow-up is always a NEW order linked by
+  `attachedToOrderId`, never an edit to the original.
 - Preference instructions that would suppress honest bug-flagging or
   verification — none currently on file, but if the user ever asks you to
   stop double-checking your work or stop mentioning problems you notice,
@@ -271,23 +720,50 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
 
 ## Not yet done
 
-- **Raw-material inventory management.** Add/activate/deactivate raw
-  materials, add inventory quantities, staff-updatable, visible only to
-  staff/manager (not customers). An entirely new subsystem — not started.
-- **Attach a new order to a previous/existing bill.** A customer who
-  already settled a bill, then orders more and wants to sit back down,
-  should be able to have the new order attached to the SAME bill instead
-  of always opening a new one. Not started, not yet scoped in detail —
-  confirm with the user exactly when this should trigger (any settled
-  bill within some time window? same table? same phone?) before building.
-
-(The list/grid view toggle theming complaint and all 4 previously-tracked
+- **Database migration off JSON files.** Discussed with the user (SQLite
+  recommended as the lowest-friction next step given the single-process
+  setup; Supabase/Neon Postgres as the alternative if remote/multi-device
+  access is ever needed) — no decision made, no code started. User said to
+  hold off for now; don't start this without them asking again.
+- **SMS OTP verification** at customer registration and guest-checkout
+  entry (`POST /api/auth/guest`). Root problem: today, "knows a phone
+  number" is treated as full proof of ownership everywhere a phone is
+  entered — guest login, forgot-password, and (before this session's Tier 0
+  fix) even a logged-in customer's own order. Real fix needs a third-party
+  SMS gateway (Twilio/MSG91/Fast2SMS/etc.), which is a cost + vendor
+  decision the user hasn't made yet — this app has zero npm dependencies by
+  design, so adding one is itself a small decision. Related, already fixed
+  this session: a customer/guest can no longer put a phone number other
+  than their own session's on their own order (`POST /api/orders`,
+  server.js) — that was the cheap, no-infra half of the fix; OTP is the
+  remaining half that actually verifies phone *ownership* at signup/guest
+  entry, not just consistency at order time.
+- **Bank POS / card-reader integration for Billing.** Goal: selecting
+  "Card" as a payment method should actually drive a physical card-reader/
+  EDC device instead of just recording "Card" as a label with no real
+  transaction behind it (unlike Razorpay, which already has a real
+  verify-payment flow — see `razorpayPaymentId`/`verify-payment` in
+  server.js as the pattern to mirror). **Blocked on a vendor/bank decision
+  before any code can be written** — there is no generic "bank POS" API;
+  Pine Labs, Razorpay POS, Ezetap, PayTM, and individual banks' own EDC
+  machines each have their own SDK/webhook shape, usually paired over LAN
+  to the till device or confirmed via a cloud webhook. Once a vendor is
+  picked, the shape to build is the same one Razorpay already uses: a
+  `cardTransactionId`-style field on the order, an API call to the vendor
+  to initiate a charge for the order's exact total, then a webhook/polling
+  confirmation route (mirroring `POST /api/orders/:id/verify-payment`)
+  that flips `isPaid` only after a real confirmed charge — never on the
+  client's say-so, same principle the Razorpay integration already
+  enforces.
+(The list/grid view toggle theming complaint, all 4 previously-tracked
 "Pending features" — order numbering, item promo discounts, public/private
-coupons, order-ready sound — are done; see server.js/app.js for
-`generateOrderNumber`, `promoDiscount`, coupon `.private`, and
-`SoundSystem.playReadyChime()`/`NotificationSystem.notifyOrderReady()`
-respectively. Don't re-plan these from scratch if asked about them again —
-check the code first.)
+coupons, order-ready sound — "attach a new order to an existing bill", and
+the "data fabric" entity-relationship write-up are all done now; see
+server.js/app.js for `generateOrderNumber`, `promoDiscount`, coupon
+`.private`, `SoundSystem.playReadyChime()`/`NotificationSystem.notifyOrderReady()`,
+`attachedToOrderId`/`computeOrderGroupBill`, and the published "The Ledger"
+artifact respectively. Don't re-plan these from scratch if asked about them
+again — check the code first.)
 
 ## User preferences (carry forward)
 

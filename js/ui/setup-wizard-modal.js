@@ -111,13 +111,14 @@ export function renderSetupWizardModal({ onNavigate }) {
         }
 
         overlay.innerHTML = `
-            <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(480px, 92vw); max-height: 85vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
+            <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(480px, 92vw); max-height: 85vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace; position: relative;">
+                <button type="button" id="sw-dismiss" title="Close" style="position:absolute; top:12px; right:12px; background:none; border:none; color:var(--color-text-muted); font-size:18px; line-height:1; cursor:pointer; padding:4px;">&times;</button>
                 <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">SETUP WIZARD</h2>
                 ${stepperHtml()}
                 <p id="sw-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 8px;"></p>
                 ${body}
                 <div style="display:flex; gap:10px; margin-top:20px;">
-                    ${step > 0 ? `<button type="button" class="admin-btn-secondary" id="sw-back" style="flex:1;">BACK</button>` : ""}
+                    ${step > 0 ? `<button type="button" class="admin-btn-secondary" id="sw-back" style="flex:1;">BACK</button>` : `<button type="button" class="admin-btn-secondary" id="sw-cancel" style="flex:1;">CANCEL</button>`}
                     ${
                         step < STEPS.length - 1
                             ? `<button type="button" class="admin-btn-primary" id="sw-next" style="flex:2;">${step === 2 ? "SKIP FOR NOW" : "SAVE &amp; CONTINUE"}</button>`
@@ -133,25 +134,30 @@ export function renderSetupWizardModal({ onNavigate }) {
     async function saveStep() {
         const errorEl = document.getElementById("sw-error");
         errorEl.textContent = "";
-        if (step === 0) {
-            await AdminConfig.saveSettings({
-                shopName: document.getElementById("sw-shop-name").value,
-                logoUrl: document.getElementById("sw-logo").value.trim(),
-                heroImageUrl: document.getElementById("sw-hero").value.trim()
-            });
-        } else if (step === 1) {
-            const cgst = parseFloat(document.getElementById("sw-cgst").value) / 100;
-            const sgst = parseFloat(document.getElementById("sw-sgst").value) / 100;
-            if (!Number.isFinite(cgst) || !Number.isFinite(sgst) || cgst < 0 || sgst < 0) {
-                errorEl.textContent = "CGST/SGST must be positive numbers.";
-                return false;
+        try {
+            if (step === 0) {
+                await AdminConfig.saveSettings({
+                    shopName: document.getElementById("sw-shop-name").value,
+                    logoUrl: document.getElementById("sw-logo").value.trim(),
+                    heroImageUrl: document.getElementById("sw-hero").value.trim()
+                });
+            } else if (step === 1) {
+                const cgst = parseFloat(document.getElementById("sw-cgst").value) / 100;
+                const sgst = parseFloat(document.getElementById("sw-sgst").value) / 100;
+                if (!Number.isFinite(cgst) || !Number.isFinite(sgst) || cgst < 0 || sgst < 0) {
+                    errorEl.textContent = "CGST/SGST must be positive numbers.";
+                    return false;
+                }
+                await AdminConfig.saveSettings({
+                    cgstRate: cgst,
+                    sgstRate: sgst,
+                    gstNumber: document.getElementById("sw-gst-number").value,
+                    upiVpa: document.getElementById("sw-upi").value.trim()
+                });
             }
-            await AdminConfig.saveSettings({
-                cgstRate: cgst,
-                sgstRate: sgst,
-                gstNumber: document.getElementById("sw-gst-number").value,
-                upiVpa: document.getElementById("sw-upi").value.trim()
-            });
+        } catch (e) {
+            errorEl.textContent = e.message || "Could not save settings.";
+            return false;
         }
         if (window.applyBranding) window.applyBranding(AdminConfig.settings);
         return true;
@@ -169,6 +175,8 @@ export function renderSetupWizardModal({ onNavigate }) {
             render();
         });
         document.getElementById("sw-close")?.addEventListener("click", () => overlay.remove());
+        document.getElementById("sw-cancel")?.addEventListener("click", () => overlay.remove());
+        document.getElementById("sw-dismiss")?.addEventListener("click", () => overlay.remove());
         document.getElementById("sw-goto-menu")?.addEventListener("click", () => {
             overlay.remove();
             onNavigate("menu");

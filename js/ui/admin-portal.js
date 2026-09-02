@@ -51,7 +51,8 @@ function tabGroupsForRole(session) {
             tabs: [
                 { id: "menu", label: "Menu Items" },
                 { id: "combos", label: "Combos" },
-                { id: "customization", label: "Customization" }
+                { id: "customization", label: "Customization" },
+                { id: "inventory", label: "Raw Materials" }
             ]
         },
         {
@@ -221,6 +222,7 @@ export const AdminPortal = {
             return this.renderMenuItems(root);
         }
         if (this.activeTab === "combos") return this.renderCombos(root);
+        if (this.activeTab === "inventory") return this.renderInventory(root);
         if (this.activeTab === "customization") return this.renderCustomizationPricing(root);
         if (this.activeTab === "customers") return this.renderCustomers(root);
         if (this.activeTab === "discounts") return this.renderDiscountsLoyalty(root);
@@ -388,22 +390,35 @@ export const AdminPortal = {
     // Store Setup/This Store page.
     async renderOperations(root) {
         const stores = await PayrollSystem.fetchStores();
+        const isGlobalAdmin = this.isGlobalAdmin(); // owner reaches this tab too (hasFranchiseView) but stays read-only, same as everywhere else it writes nothing
         root.innerHTML = `
             <div class="config-controls">
                 <h3 style="margin-top:0;">OPERATIONS BY STORE</h3>
                 <p class="admin-help-text">Table count and arcade settings are per-store - edit a store's own Operations from Store Setup.</p>
                 <table class="admin-table">
-                    <thead><tr><th>STORE</th><th>TABLES</th><th>ARCADE</th><th>WAIT TIME</th></tr></thead>
+                    <thead><tr><th>STORE</th><th>TABLES</th><th>ARCADE</th><th>WAIT TIME</th><th>DELIVERY</th>${isGlobalAdmin ? "<th></th>" : ""}</tr></thead>
                     <tbody>
                         ${stores
                             .map((s) => {
                                 const opsField = s.operations || { tableCount: 10, arcade: { enabled: true, sessionHours: 2 }, waitTime: { enabled: true, minMins: 5 } };
                                 const waitTime = opsField.waitTime || { enabled: true, minMins: 5 };
+                                const delivery = opsField.delivery || { enabled: true, lockedBy: null, message: { preset: null, customText: "" } };
+                                const locked = delivery.lockedBy === "globalAdmin";
                                 return `<tr>
                                     <td>${escapeHtmlAttr(s.name)}</td>
                                     <td>${opsField.tableCount}</td>
                                     <td>${opsField.arcade.enabled ? `Enabled - ${opsField.arcade.sessionHours}h session` : "Disabled"}</td>
                                     <td>${waitTime.enabled ? `Enabled - ${waitTime.minMins} min floor` : "Disabled"}</td>
+                                    <td>${delivery.enabled ? "Enabled" : "Disabled"}${locked ? ' <span style="color:var(--color-danger); font-size:10px;">(LOCKED)</span>' : ""}</td>
+                                    ${
+                                        isGlobalAdmin
+                                            ? `<td>${
+                                                  locked
+                                                      ? `<button class="admin-btn-secondary" data-unlock-delivery="${s.id}" style="font-size:10px; padding:5px 8px;">UNLOCK</button>`
+                                                      : `<button class="admin-btn-danger" data-lock-delivery="${s.id}" style="font-size:10px; padding:5px 8px;">FORCE DISABLE &amp; LOCK</button>`
+                                              }</td>`
+                                            : ""
+                                    }
                                 </tr>`;
                             })
                             .join("")}
@@ -411,6 +426,31 @@ export const AdminPortal = {
                 </table>
             </div>
         `;
+
+        if (isGlobalAdmin) {
+            root.querySelectorAll("[data-lock-delivery]").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    try {
+                        await PayrollSystem.updateStore(Number(btn.dataset.lockDelivery), { operations: { delivery: { lockedBy: "globalAdmin" } } });
+                        ok("Delivery force-disabled and locked for this store");
+                        await this.renderOperations(root);
+                    } catch (e) {
+                        fail(e.message || "Could not lock delivery");
+                    }
+                });
+            });
+            root.querySelectorAll("[data-unlock-delivery]").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    try {
+                        await PayrollSystem.updateStore(Number(btn.dataset.unlockDelivery), { operations: { delivery: { lockedBy: null } } });
+                        ok("Delivery lock cleared - the store can manage it again");
+                        await this.renderOperations(root);
+                    } catch (e) {
+                        fail(e.message || "Could not clear the lock");
+                    }
+                });
+            });
+        }
     },
 
     // ---------------------------------------------------------------- LOCATIONS (STORES)
@@ -436,6 +476,11 @@ export const AdminPortal = {
     async renderStores(root) {
         const isGlobalAdmin = this.isGlobalAdmin();
         root.innerHTML = `
+            ${
+                isGlobalAdmin
+                    ? `<button class="admin-btn-secondary" id="open-setup-wizard-storesetup" style="margin-bottom:16px;">&#9881; GETTING STARTED / SETUP WIZARD</button>`
+                    : ""
+            }
             <div class="config-controls">
                 <h3 style="margin-top:0;">LOCATIONS</h3>
                 <p class="admin-help-text">Every store sells the same menu and shares the same franchise branding - EDIT here covers a store's own contact info, home-page picks, tax/currency override, and operations.</p>
@@ -507,6 +552,17 @@ export const AdminPortal = {
             });
         };
         await renderStoresList();
+
+        document.getElementById("open-setup-wizard-storesetup")?.addEventListener("click", async () => {
+            const mod = await import("./setup-wizard-modal.js");
+            mod.renderSetupWizardModal({
+                onNavigate: (tabId) => {
+                    this.activeTab = tabId;
+                    this.renderTabs();
+                    this.renderActiveTab();
+                }
+            });
+        });
 
         if (isGlobalAdmin) {
             document.getElementById("add-store").addEventListener("click", async () => {
@@ -734,6 +790,15 @@ export const AdminPortal = {
 
         const operations = store.operations || { tableCount: 10, arcade: { enabled: true, sessionHours: 2 }, waitTime: { enabled: true, minMins: 5 } };
         const waitTime = operations.waitTime || { enabled: true, minMins: 5 };
+        const delivery = operations.delivery || { enabled: true, lockedBy: null, message: { preset: null, customText: "" } };
+        // A Global Admin's lock overrides a manager/Local Admin's own toggle -
+        // this session can't touch enabled/message at all while it's locked,
+        // UNLESS this session IS the Global Admin who can lift it (handled on
+        // the separate cross-store Operations summary, not here - a Global
+        // Admin viewing one store's own settings panel isn't restricted by
+        // its own lock).
+        const deliveryLockedForMe = delivery.lockedBy === "globalAdmin" && !this.isGlobalAdmin();
+        const DELIVERY_PRESET_LABELS = { queueFull: "Too many orders, queue full", noPartner: "No delivery partner available" };
         renderReadOnlySection(container.querySelector("#sp-operations"), {
             title: "OPERATIONS",
             canEdit,
@@ -742,7 +807,11 @@ export const AdminPortal = {
                 { label: "Arcade enabled", value: operations.arcade.enabled ? "Yes" : "No" },
                 { label: "Arcade session length", value: `${operations.arcade.sessionHours}h` },
                 { label: "Wait time estimate", value: waitTime.enabled ? "Enabled" : "Disabled" },
-                { label: "Minimum wait shown", value: `${waitTime.minMins} min` }
+                { label: "Minimum wait shown", value: `${waitTime.minMins} min` },
+                {
+                    label: "Delivery",
+                    value: `${delivery.enabled ? "Enabled" : "Disabled"}${deliveryLockedForMe ? " (locked off by a Global Admin)" : ""}`
+                }
             ],
             onEdit: () =>
                 renderSectionEditModal({
@@ -752,7 +821,28 @@ export const AdminPortal = {
                         { id: "sp-arcade-enabled", label: "Enable arcade", value: operations.arcade.enabled, type: "checkbox" },
                         { id: "sp-arcade-hours", label: "Arcade session length (hours)", value: operations.arcade.sessionHours, type: "number", step: 0.5, min: 0.5, max: 24 },
                         { id: "sp-waittime-enabled", label: "Show wait time estimate to customers", value: waitTime.enabled, type: "checkbox" },
-                        { id: "sp-waittime-min", label: "Minimum wait shown (mins)", value: waitTime.minMins, type: "number", min: 0, max: 60, tooltip: "The floor shown when there's no backlog - e.g. daily average with nothing in the queue." }
+                        { id: "sp-waittime-min", label: "Minimum wait shown (mins)", value: waitTime.minMins, type: "number", min: 0, max: 60, tooltip: "The floor shown when there's no backlog - e.g. daily average with nothing in the queue." },
+                        // Locked: omitted entirely rather than shown disabled
+                        // (the field-editor helper has no disabled-field
+                        // support) - the read-only summary row above already
+                        // says it's locked before a manager even opens this.
+                        ...(deliveryLockedForMe
+                            ? []
+                            : [
+                                  { id: "sp-delivery-enabled", label: "Enable delivery", value: delivery.enabled, type: "checkbox" },
+                                  {
+                                      id: "sp-delivery-preset",
+                                      label: "If paused, show customers",
+                                      value: delivery.message.preset || "",
+                                      type: "select",
+                                      options: [
+                                          { value: "", label: "(no preset - use custom text below)" },
+                                          { value: "queueFull", label: DELIVERY_PRESET_LABELS.queueFull },
+                                          { value: "noPartner", label: DELIVERY_PRESET_LABELS.noPartner }
+                                      ]
+                                  },
+                                  { id: "sp-delivery-custom", label: "Custom message (used if no preset picked)", value: delivery.message.customText || "", type: "textarea", maxlength: 200, rows: 2 }
+                              ])
                     ],
                     onSave: async (v) => {
                         const tableCount = parseInt(v["sp-table-count"], 10);
@@ -765,7 +855,10 @@ export const AdminPortal = {
                             operations: {
                                 tableCount,
                                 arcade: { enabled: v["sp-arcade-enabled"], sessionHours: arcadeHours },
-                                waitTime: { enabled: v["sp-waittime-enabled"], minMins: waitMinMins }
+                                waitTime: { enabled: v["sp-waittime-enabled"], minMins: waitMinMins },
+                                ...(deliveryLockedForMe
+                                    ? {}
+                                    : { delivery: { enabled: v["sp-delivery-enabled"], message: { preset: v["sp-delivery-preset"] || null, customText: v["sp-delivery-custom"] || "" } } })
                             }
                         });
                         ok("Operations saved");
@@ -1020,7 +1113,7 @@ export const AdminPortal = {
 
         root.innerHTML = `
             ${
-                this.session.role !== "manager"
+                this.isGlobalAdmin()
                     ? `<button class="admin-btn-secondary" id="open-setup-wizard" style="margin-bottom:16px;">&#9881; GETTING STARTED / SETUP WIZARD</button>`
                     : ""
             }
@@ -1558,7 +1651,7 @@ export const AdminPortal = {
                             ? `<div style="display:flex; align-items:center; gap:2px; margin-top:8px; justify-content:flex-end;">
                             <button class="admin-pg-btn menu-page-first" data-section="${section.id}" ${clampedPage <= 1 ? "disabled" : ""} title="First page" aria-label="First page">\u00ab</button>
                             <button class="admin-pg-btn menu-page-prev" data-section="${section.id}" ${clampedPage <= 1 ? "disabled" : ""} title="Previous page" aria-label="Previous page">\u2039</button>
-                            <span style="font-size:11px; color:var(--color-text-muted); margin:0 6px;">${(clampedPage - 1) * PAGE_SIZE + 1}-${Math.min(clampedPage * PAGE_SIZE, items.length)} of ${items.length}</span>
+                            <span style="font-size:11px; color:var(--color-text-muted); margin:0 6px;"><strong style="color:var(--color-accent);">${(clampedPage - 1) * PAGE_SIZE + 1}-${Math.min(clampedPage * PAGE_SIZE, items.length)}</strong> of ${items.length}</span>
                             <button class="admin-pg-btn menu-page-next" data-section="${section.id}" ${clampedPage >= totalPages ? "disabled" : ""} title="Next page" aria-label="Next page">\u203a</button>
                             <button class="admin-pg-btn menu-page-last" data-section="${section.id}" ${clampedPage >= totalPages ? "disabled" : ""} title="Last page" aria-label="Last page">\u00bb</button>
                         </div>`
@@ -2112,7 +2205,7 @@ export const AdminPortal = {
                 <td>${c.type === "percent" ? `${c.value}% off` : `${currencySymbol()}${c.value} off`}</td>
                 ${c.storeId != null ? `<td style="font-size:11px;">${escapeHtmlAttr(storeName(c.storeId))}</td>` : ""}
                 <td style="font-size:11px; color:var(--color-text-muted);">${c.private ? "PRIVATE" : "PUBLIC"}</td>
-                <td>${c.usedCount} / ${c.usageLimit === null ? "\u221e (until stopped)" : c.usageLimit}</td>
+                <td>${c.usedCount > 0 ? `<button type="button" class="admin-link-btn" data-view-coupon-orders="${c.id}" style="background:none; border:none; padding:0; color:var(--color-text); text-decoration:underline; cursor:pointer; font-family:inherit; font-size:inherit;">${c.usedCount}</button>` : c.usedCount} / ${c.usageLimit === null ? "\u221e (until stopped)" : c.usageLimit}</td>
                 <td style="color:${c.active ? "var(--color-success)" : "var(--color-text-muted)"};">${c.active ? "ACTIVE" : "STOPPED"}</td>
                 <td style="text-align:right;">
                     ${
@@ -2314,6 +2407,20 @@ export const AdminPortal = {
             });
         }
 
+        root.querySelectorAll("[data-view-coupon-orders]").forEach((btn) =>
+            btn.addEventListener("click", async () => {
+                const coupon = coupons.find((c) => c.id === Number(btn.dataset.viewCouponOrders));
+                const res = await fetch(`/api/orders?couponId=${coupon.id}`, { credentials: "include" });
+                const matches = res.ok ? await res.json() : [];
+                renderInfoModal({
+                    title: `ORDERS USING ${escapeHtmlAttr(coupon.code)}`,
+                    message: matches.length
+                        ? matches.map((o) => `#${escapeHtmlAttr(o.orderNumber || o.id)} - ${new Date(o.createdAt).toLocaleDateString()}`).join("\n")
+                        : "No orders found.",
+                    confirmText: "CLOSE"
+                });
+            })
+        );
         root.querySelectorAll("[data-toggle-coupon]").forEach((btn) =>
             btn.addEventListener("click", async () => {
                 const coupon = coupons.find((c) => c.id === Number(btn.dataset.toggleCoupon));
@@ -2466,24 +2573,153 @@ export const AdminPortal = {
         });
     },
 
+    // ------------------------------------------------------------ RAW MATERIALS
+    showInactiveMaterials: false,
+
+    async renderInventory(root) {
+        const res = await fetch("/api/raw-materials", { credentials: "include" });
+        const materials = res.ok ? await res.json() : [];
+        const visible = materials
+            .filter((m) => this.showInactiveMaterials || m.active)
+            .sort((a, b) => (b.active === a.active ? a.name.localeCompare(b.name) : b.active ? 1 : -1));
+
+        root.innerHTML = `
+            <div class="config-controls">
+                <h3 style="margin-top:0;">RAW MATERIALS</h3>
+                <p class="admin-help-text">Staff-facing inventory, never shown to customers. Any staff can adjust a quantity; only a manager can rename, change the unit, or deactivate one.</p>
+                <div class="admin-toolbar" style="justify-content:space-between;">
+                    <label style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--color-text-muted); cursor:pointer;">
+                        <input type="checkbox" id="inv-show-inactive" ${this.showInactiveMaterials ? "checked" : ""} /> SHOW INACTIVE
+                    </label>
+                </div>
+                <table class="admin-table">
+                    <thead><tr><th>NAME</th><th>QUANTITY</th><th>UNIT</th><th>STATUS</th><th></th></tr></thead>
+                    <tbody>
+                        ${
+                            visible.length
+                                ? visible
+                                      .map(
+                                          (m) => `
+                            <tr>
+                                <td>${escapeHtmlAttr(m.name)}</td>
+                                <td><input type="number" min="0" step="any" data-qty-input="${m.id}" value="${m.quantity}" style="width:90px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit;" /></td>
+                                <td style="font-size:11px; color:var(--color-text-muted);">${escapeHtmlAttr(m.unit)}</td>
+                                <td style="color:${m.active ? "var(--color-success)" : "var(--color-text-muted)"};">${m.active ? "ACTIVE" : "INACTIVE"}</td>
+                                <td style="text-align:right; white-space:nowrap;">
+                                    <button class="admin-btn" data-save-qty="${m.id}">SAVE</button>
+                                    <button class="admin-btn" data-toggle-material="${m.id}">${m.active ? "DEACTIVATE" : "ACTIVATE"}</button>
+                                </td>
+                            </tr>
+                        `
+                                      )
+                                      .join("")
+                                : `<tr><td colspan="5" style="text-align:center; color:var(--color-text-muted); padding:20px;">No raw materials yet.</td></tr>`
+                        }
+                    </tbody>
+                </table>
+                <div style="display:flex; gap:8px; margin-top:16px;">
+                    <input type="text" id="inv-new-name" maxlength="60" placeholder="Material name" style="flex:2; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
+                    <input type="number" id="inv-new-qty" min="0" step="any" placeholder="Quantity" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
+                    <input type="text" id="inv-new-unit" maxlength="20" placeholder="Unit (kg, L, pcs...)" style="flex:1; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
+                    <button class="admin-btn" id="inv-add">ADD MATERIAL</button>
+                </div>
+                <p id="inv-error" style="color:var(--color-danger); font-size:11px; margin-top:8px;"></p>
+            </div>
+        `;
+
+        document.getElementById("inv-show-inactive").addEventListener("change", (e) => {
+            this.showInactiveMaterials = e.target.checked;
+            this.renderInventory(root);
+        });
+
+        root.querySelectorAll("[data-save-qty]").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+                const id = Number(btn.dataset.saveQty);
+                const input = root.querySelector(`[data-qty-input="${id}"]`);
+                const quantity = Number(input.value);
+                if (!Number.isFinite(quantity) || quantity < 0) return fail("Quantity must be zero or a positive number");
+                const r = await fetch(`/api/raw-materials/${id}`, {
+                    method: "PATCH",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ quantity })
+                });
+                if (r.ok) ok("Quantity updated");
+                else fail("Could not update quantity");
+            });
+        });
+
+        root.querySelectorAll("[data-toggle-material]").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+                const id = Number(btn.dataset.toggleMaterial);
+                const material = materials.find((m) => m.id === id);
+                const r = await fetch(`/api/raw-materials/${id}`, {
+                    method: "PATCH",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ active: !material.active })
+                });
+                if (r.ok) {
+                    await this.renderInventory(root);
+                    ok(material.active ? "Material deactivated" : "Material activated");
+                } else {
+                    fail("Could not update material");
+                }
+            });
+        });
+
+        document.getElementById("inv-add").addEventListener("click", async () => {
+            const errorEl = document.getElementById("inv-error");
+            errorEl.textContent = "";
+            const name = document.getElementById("inv-new-name").value.trim();
+            const quantity = Number(document.getElementById("inv-new-qty").value);
+            const unit = document.getElementById("inv-new-unit").value.trim();
+            if (!name) return (errorEl.textContent = "Give this material a name.");
+            if (!Number.isFinite(quantity) || quantity < 0) return (errorEl.textContent = "Quantity must be zero or a positive number.");
+            const r = await fetch("/api/raw-materials", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, quantity, unit })
+            });
+            const data = await r.json();
+            if (!r.ok) return (errorEl.textContent = data.error || "Could not add material");
+            await this.renderInventory(root);
+            ok("Material added");
+        });
+    },
+
     // ------------------------------------------------------------ ORDER HISTORY
     orderHistorySort: "newest",
     orderHistoryFilter: "all",
+    orderHistoryFromDate: "", // "" | "YYYY-MM-DD" - matches <input type="date">'s own value format
+    orderHistoryToDate: "",
 
     orderHistoryPage: 1,
     orderHistorySelectedId: null,
 
     async renderOrderHistory(root) {
-        const res = await fetch("/api/orders", { credentials: "include" });
-        const orders = res.ok ? await res.json() : [];
         const PAGE_SIZE = 10;
+        // Fetched fresh per page/filter change instead of once up front -
+        // GET /api/orders does the filtering/sorting/slicing server-side now
+        // (?page/&limit/&status/&from/&to/&sort) so this stays a bounded
+        // fetch even once a store has thousands of orders, not the full
+        // history every time.
+        let pageOrders = [];
 
         root.innerHTML = `
-            <div class="admin-toolbar" style="justify-content: space-between;">
+            <div class="admin-toolbar" style="justify-content: space-between; flex-wrap:wrap; gap:10px;">
                 <div style="display:flex; gap:6px;">
                     <button class="admin-btn ${this.orderHistoryFilter === "all" ? "active" : ""}" data-history-filter="all">ALL</button>
                     <button class="admin-btn ${this.orderHistoryFilter === "active" ? "active" : ""}" data-history-filter="active">ACTIVE</button>
                     <button class="admin-btn ${this.orderHistoryFilter === "completed" ? "active" : ""}" data-history-filter="completed">COMPLETED</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <label for="order-history-from" style="font-size:10px; color:var(--color-text-muted); text-transform:uppercase;">From</label>
+                    <input type="date" id="order-history-from" value="${this.orderHistoryFromDate}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
+                    <label for="order-history-to" style="font-size:10px; color:var(--color-text-muted); text-transform:uppercase;">To</label>
+                    <input type="date" id="order-history-to" value="${this.orderHistoryToDate}" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
+                    ${this.orderHistoryFromDate || this.orderHistoryToDate ? `<button class="admin-btn-secondary" id="order-history-date-clear" style="padding:7px 10px; font-size:10px;">CLEAR</button>` : ""}
                 </div>
                 <select id="order-history-sort" aria-label="Sort order history" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:11px;">
                     <option value="newest" ${this.orderHistorySort === "newest" ? "selected" : ""}>NEWEST FIRST</option>
@@ -2504,21 +2740,17 @@ export const AdminPortal = {
             </div>
         `;
 
-        const renderList = () => {
-            let filtered = orders.filter((o) => {
-                const complete = o.items.every((i) => i.isDone);
-                if (this.orderHistoryFilter === "active") return !complete;
-                if (this.orderHistoryFilter === "completed") return complete;
-                return true;
-            });
-            filtered = filtered.sort((a, b) => {
-                const diff = new Date(a.createdAt) - new Date(b.createdAt);
-                return this.orderHistorySort === "newest" ? -diff : diff;
-            });
+        const loadPage = async () => {
+            const params = new URLSearchParams({ page: this.orderHistoryPage, limit: PAGE_SIZE, sort: this.orderHistorySort });
+            if (this.orderHistoryFilter !== "all") params.set("status", this.orderHistoryFilter);
+            if (this.orderHistoryFromDate) params.set("from", this.orderHistoryFromDate);
+            if (this.orderHistoryToDate) params.set("to", this.orderHistoryToDate);
+            const res = await fetch(`/api/orders?${params}`, { credentials: "include" });
+            const data = res.ok ? await res.json() : { items: [], total: 0 };
 
-            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
             this.orderHistoryPage = Math.min(this.orderHistoryPage, totalPages);
-            const pageOrders = filtered.slice((this.orderHistoryPage - 1) * PAGE_SIZE, this.orderHistoryPage * PAGE_SIZE);
+            pageOrders = data.items;
 
             const tbody = document.getElementById("order-history-tbody");
             tbody.innerHTML = pageOrders.length
@@ -2544,9 +2776,12 @@ export const AdminPortal = {
 
             tbody.querySelectorAll(".order-history-row").forEach((row) => {
                 const select = () => {
-                    this.orderHistorySelectedId = row.dataset.orderId;
-                    renderList();
-                    renderDetail(orders.find((o) => o.id === this.orderHistorySelectedId));
+                    // dataset.orderId is always a string (DOM attribute),
+                    // order.id is a real number now - coerce here so the
+                    // lookup below doesn't silently return undefined.
+                    this.orderHistorySelectedId = Number(row.dataset.orderId);
+                    loadPage();
+                    renderDetail(pageOrders.find((o) => o.id === this.orderHistorySelectedId));
                 };
                 row.addEventListener("click", select);
                 // tabindex makes the row focusable, but a <tr> gets no
@@ -2565,7 +2800,7 @@ export const AdminPortal = {
                     ? `
                 <button class="admin-pg-btn" id="oh-first" ${this.orderHistoryPage <= 1 ? "disabled" : ""} title="First page" aria-label="First page">\u00ab</button>
                 <button class="admin-pg-btn" id="oh-prev" ${this.orderHistoryPage <= 1 ? "disabled" : ""} title="Previous page" aria-label="Previous page">\u2039</button>
-                <span style="font-size:11px; color:var(--color-text-muted); margin:0 6px;">${(this.orderHistoryPage - 1) * PAGE_SIZE + 1}-${Math.min(this.orderHistoryPage * PAGE_SIZE, filtered.length)} of ${filtered.length}</span>
+                <span style="font-size:11px; color:var(--color-text-muted); margin:0 6px;"><strong style="color:var(--color-accent);">${(this.orderHistoryPage - 1) * PAGE_SIZE + 1}-${Math.min(this.orderHistoryPage * PAGE_SIZE, data.total)}</strong> of ${data.total}</span>
                 <button class="admin-pg-btn" id="oh-next" ${this.orderHistoryPage >= totalPages ? "disabled" : ""} title="Next page" aria-label="Next page">\u203a</button>
                 <button class="admin-pg-btn" id="oh-last" ${this.orderHistoryPage >= totalPages ? "disabled" : ""} title="Last page" aria-label="Last page">\u00bb</button>
             `
@@ -2574,10 +2809,10 @@ export const AdminPortal = {
             const prevBtn = document.getElementById("oh-prev");
             const nextBtn = document.getElementById("oh-next");
             const lastBtn = document.getElementById("oh-last");
-            if (firstBtn) firstBtn.addEventListener("click", () => { this.orderHistoryPage = 1; renderList(); });
-            if (prevBtn) prevBtn.addEventListener("click", () => { this.orderHistoryPage--; renderList(); });
-            if (nextBtn) nextBtn.addEventListener("click", () => { this.orderHistoryPage++; renderList(); });
-            if (lastBtn) lastBtn.addEventListener("click", () => { this.orderHistoryPage = totalPages; renderList(); });
+            if (firstBtn) firstBtn.addEventListener("click", () => { this.orderHistoryPage = 1; loadPage(); });
+            if (prevBtn) prevBtn.addEventListener("click", () => { this.orderHistoryPage--; loadPage(); });
+            if (nextBtn) nextBtn.addEventListener("click", () => { this.orderHistoryPage++; loadPage(); });
+            if (lastBtn) lastBtn.addEventListener("click", () => { this.orderHistoryPage = totalPages; loadPage(); });
         };
 
         const renderDetail = (order) => {
@@ -2623,10 +2858,12 @@ export const AdminPortal = {
                 ${order.serviceCharge ? `<div style="font-size:11px; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Service Charge</span><span>${currencySymbol()}${order.serviceCharge.toFixed(2)}</span></div>` : ""}
                 ${order.tipAmount ? `<div style="font-size:11px; color:var(--color-text-muted); margin-bottom:4px; display:flex; justify-content:space-between;"><span>Tip</span><span>${currencySymbol()}${order.tipAmount.toFixed(2)}</span></div>` : ""}
                 <div style="font-size:15px; font-weight:bold; display:flex; justify-content:space-between; border-top:1px solid var(--color-accent); padding-top:8px; margin-top:6px;"><span>TOTAL</span><span>${currencySymbol()}${order.total.toFixed(2)}</span></div>
-                <div style="margin-top:16px; display:flex; gap:8px; align-items:center;">
+                <div style="margin-top:16px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <span style="font-size:11px;">Payment: <strong style="color:${order.isPaid ? "var(--color-success)" : "var(--color-danger)"};">${order.isPaid ? "PAID" : "UNPAID"}</strong></span>
                     ${!order.isPaid ? `<button class="admin-btn admin-btn-primary" id="oh-mark-paid">MARK PAID</button>` : ""}
+                    ${!complete ? `<button class="admin-btn" id="oh-mark-done" title="For an order the kitchen never closed out - force every line to Done">MARK AS DONE</button>` : ""}
                 </div>
+                ${order.razorpayPaymentId ? `<div style="margin-top:8px; font-size:11px; color:var(--color-text-muted);">Razorpay payment ID: <span style="color:var(--color-text); font-family:monospace;">${escapeHtmlAttr(order.razorpayPaymentId)}</span></div>` : ""}
                 ${
                     order.rating
                         ? `<div style="margin-top:10px; font-size:11px; color:var(--color-accent);">
@@ -2649,8 +2886,33 @@ export const AdminPortal = {
                     if (r.ok) {
                         order.isPaid = true;
                         renderDetail(order);
-                        renderList();
+                        loadPage();
                         ok("Order marked paid");
+                    } else {
+                        fail("Could not update order");
+                    }
+                });
+            }
+
+            const markDoneBtn = document.getElementById("oh-mark-done");
+            if (markDoneBtn) {
+                markDoneBtn.addEventListener("click", async () => {
+                    // station:"MASTER" (same bypass the ALL STATIONS kitchen
+                    // tab uses) forces every line Done regardless of which
+                    // station it belongs to - this is for a stray order the
+                    // kitchen forgot to close out, not a substitute for the
+                    // real per-station workflow.
+                    const r = await fetch(`/api/orders/${order.id}`, {
+                        method: "PATCH",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "markDone", station: "MASTER" })
+                    });
+                    if (r.ok) {
+                        order.items.forEach((i) => (i.isDone = true));
+                        renderDetail(order);
+                        loadPage();
+                        ok("Order marked done");
                     } else {
                         fail("Could not update order");
                     }
@@ -2658,20 +2920,38 @@ export const AdminPortal = {
             }
         };
 
-        renderList();
-        if (this.orderHistorySelectedId) renderDetail(orders.find((o) => o.id === this.orderHistorySelectedId));
+        await loadPage();
+        if (this.orderHistorySelectedId) renderDetail(pageOrders.find((o) => o.id === this.orderHistorySelectedId));
 
         root.querySelectorAll("[data-history-filter]").forEach((btn) => {
             btn.addEventListener("click", () => {
                 this.orderHistoryFilter = btn.dataset.historyFilter;
                 this.orderHistoryPage = 1;
                 root.querySelectorAll("[data-history-filter]").forEach((b) => b.classList.toggle("active", b === btn));
-                renderList();
+                loadPage();
             });
         });
         document.getElementById("order-history-sort").addEventListener("change", (e) => {
             this.orderHistorySort = e.target.value;
-            renderList();
+            loadPage();
+        });
+        // Full re-render (not just loadPage()) so the CLEAR button's
+        // visibility in the outer toolbar template updates too.
+        document.getElementById("order-history-from").addEventListener("change", (e) => {
+            this.orderHistoryFromDate = e.target.value;
+            this.orderHistoryPage = 1;
+            this.renderOrderHistory(root);
+        });
+        document.getElementById("order-history-to").addEventListener("change", (e) => {
+            this.orderHistoryToDate = e.target.value;
+            this.orderHistoryPage = 1;
+            this.renderOrderHistory(root);
+        });
+        document.getElementById("order-history-date-clear")?.addEventListener("click", () => {
+            this.orderHistoryFromDate = "";
+            this.orderHistoryToDate = "";
+            this.orderHistoryPage = 1;
+            this.renderOrderHistory(root);
         });
     },
 

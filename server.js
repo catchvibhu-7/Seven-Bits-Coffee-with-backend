@@ -96,6 +96,8 @@ const PAYROLL_FILE = path.join(DATA_DIR, "payroll.json");
 const ATTENDANCE_FILE = path.join(DATA_DIR, "attendance.json");
 const OVERTIME_APPROVALS_FILE = path.join(DATA_DIR, "overtime-approvals.json");
 const FAVORITES_FILE = path.join(DATA_DIR, "favorites.json");
+const ADDRESSES_FILE = path.join(DATA_DIR, "addresses.json");
+const RAW_MATERIALS_FILE = path.join(DATA_DIR, "raw-materials.json");
 const COMBOS_FILE = path.join(DATA_DIR, "combos.json");
 const TABLE_SESSIONS_FILE = path.join(DATA_DIR, "table-sessions.json");
 const COUPONS_FILE = path.join(DATA_DIR, "coupons.json");
@@ -666,7 +668,7 @@ function parseCookies(req) {
   return out;
 }
 
-function setSessionCookie(res, token) {
+function setSessionCookie(res, token, req) {
   const parts = [
     `sb_session=${token}`,
     "Path=/",
@@ -674,7 +676,12 @@ function setSessionCookie(res, token) {
     "SameSite=Strict",
     `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`
   ];
-  if (IS_HTTPS) parts.push("Secure");
+  // IS_HTTPS covers a direct HTTPS deployment; X-Forwarded-Proto covers the
+  // normal case here - the Cloudflare tunnel terminates TLS and talks plain
+  // HTTP to localhost, so the socket itself is never "https" even though the
+  // real client connection is. Without this, the Secure flag silently never
+  // gets set through the tunnel no matter how IS_HTTPS is configured.
+  if (IS_HTTPS || req?.headers["x-forwarded-proto"] === "https") parts.push("Secure");
   res.setHeader("Set-Cookie", parts.join("; "));
 }
 
@@ -690,6 +697,47 @@ function sendJson(res, status, data) {
     "X-Content-Type-Options": "nosniff"
   });
   res.end(body);
+}
+
+/** First 4 digits visible, everything after masked (e.g. 9876543210 ->
+ *  9876XXXXXX) - enough for staff to recognize a regular, not enough to
+ *  read/dial the full number. Too short to usefully mask (<=4 digits) is
+ *  returned as-is rather than fully starred out. */
+function maskPhone(phone) {
+  const digits = String(phone);
+  if (digits.length <= 4) return digits;
+  return digits.slice(0, 4) + "X".repeat(digits.length - 4);
+}
+
+/** Recursively masks every `customerPhone` field in a JSON response body -
+ *  a customer's own `phone` on their own session/order-tracking response is
+ *  a DIFFERENT field name and untouched. Used only for an employee-role
+ *  session (see the server dispatcher below) - manager and up still get the
+ *  real number, same as an employee did before this restriction. */
+function redactCustomerPhones(bodyString) {
+  let data;
+  try {
+    data = JSON.parse(bodyString);
+  } catch (e) {
+    return bodyString;
+  }
+  const walk = (val) => {
+    if (Array.isArray(val)) {
+      val.forEach(walk);
+      return;
+    }
+    if (val && typeof val === "object") {
+      for (const key of Object.keys(val)) {
+        if (key === "customerPhone" && typeof val[key] === "string") {
+          val[key] = maskPhone(val[key]);
+        } else {
+          walk(val[key]);
+        }
+      }
+    }
+  };
+  walk(data);
+  return JSON.stringify(data);
 }
 
 function readBody(req, maxBytes = 1024 * 1024) {
@@ -775,7 +823,16 @@ function requireGlobalAdmin(req, res) {
   return session;
 }
 
+// Trusts X-Forwarded-For's first hop, since this app is only ever reached
+// through a fixed reverse proxy (the Cloudflare tunnel) - without this,
+// req.socket.remoteAddress is just the tunnel's own local address for every
+// request, making IP-based login-attempt rate limiting a no-op (every real
+// client collapses onto one "IP"). If this server is ever exposed directly
+// to the internet without a trusted proxy in front, this header becomes
+// spoofable and should be gated behind a TRUST_PROXY env check instead.
 function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) return String(forwarded).split(",")[0].trim();
   return req.socket.remoteAddress || "unknown";
 }
 
@@ -785,11 +842,16 @@ function normalizePhone(raw) {
   return digits;
 }
 
-/** Stable per-person key for favorites - a signed-in customer keeps favorites
- *  across devices (keyed by account), a guest's favorites are scoped to the
- *  phone number they're currently using, same privacy boundary as /orders/mine. */
-function favoritesOwnerKey(session) {
-  return session.role === "customer" ? `customer:${session.userId}` : `guest:${session.phone}`;
+/** Stable per-person owner for favorites - a signed-in customer keeps
+ *  favorites across devices (keyed by account), a guest's favorites are
+ *  scoped to the phone number they're currently using, same privacy
+ *  boundary as /orders/mine. Two real fields (not one polymorphic string)
+ *  so a customer's favorites can be queried by a plain ownerId match. */
+function favoritesOwner(session) {
+  return session.role === "customer" ? { ownerType: "customer", ownerId: session.userId } : { ownerType: "guest", ownerId: session.phone };
+}
+function favoritesMatch(f, owner) {
+  return f.ownerType === owner.ownerType && f.ownerId === owner.ownerId;
 }
 
 // ---------------------------------------------------------------------------
@@ -1286,7 +1348,7 @@ route("POST", /^\/api\/auth\/register\/?$/, async (req, res) => {
     const user = createUser({ username, password, role: "customer", name, phone });
     recordAuthSuccess(ip);
     const token = createSession({ role: "customer", userId: user.id, name: user.name, phone: user.phone });
-    setSessionCookie(res, token);
+    setSessionCookie(res, token, req);
     sendJson(res, 201, { role: "customer", name: user.name, phone: user.phone });
   } catch (e) {
     recordAuthFailure(ip);
@@ -1317,10 +1379,14 @@ route("POST", /^\/api\/auth\/login\/?$/, async (req, res) => {
     recordAuthFailure(ip);
     return sendJson(res, 401, { error: "This account has been deactivated. Contact your manager or the owner." });
   }
+  if (user.accountDeleted) {
+    recordAuthFailure(ip);
+    return sendJson(res, 401, { error: "This account has been deleted." });
+  }
 
   recordAuthSuccess(ip);
   const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId, storeAccess: user.storeAccess || null });
-  setSessionCookie(res, token);
+  setSessionCookie(res, token, req);
   sendJson(res, 200, { role: user.role, name: user.name, phone: user.phone, storeId: user.storeId, mustChangePassword: !!user.mustChangePassword });
 });
 
@@ -1363,7 +1429,74 @@ route("POST", /^\/api\/auth\/change-password\/?$/, async (req, res) => {
   setUserPassword(user.id, body.newPassword, { mustChangePassword: false });
   clearSessionCookie(res);
   const token = createSession({ role: user.role, userId: user.id, name: user.name, phone: user.phone, storeId: user.storeId, storeAccess: user.storeAccess || null });
-  setSessionCookie(res, token);
+  setSessionCookie(res, token, req);
+  sendJson(res, 200, { ok: true });
+});
+
+/** Self-service account deletion (right-to-erasure): a customer scrubs their
+ *  own PII and permanently loses the ability to log in. The record itself is
+ *  never removed - orders already froze their own copy of customerId/
+ *  customerName/customerPhone at checkout time (see computeOrder's
+ *  snapshotting) and don't read this record live, so order history/reports
+ *  are completely unaffected. accountDeleted is checked at login (blocks
+ *  the account outright) and re-enforced after a whole-instance restore (see
+ *  POST /api/admin/restore) so restoring an older backup can never quietly
+ *  bring a deleted account back to a usable state. */
+route("POST", /^\/api\/account\/delete\/?$/, async (req, res) => {
+  const session = requireRole(req, res, ["customer"]);
+  if (!session) return;
+  const body = await readBody(req);
+  const users = readJson(USERS_FILE, []);
+  const user = users.find((u) => u.id === session.userId);
+  if (!user) return sendJson(res, 404, { error: "Account not found" });
+  if (!verifyPassword(body.password, user.salt, user.hash)) {
+    return sendJson(res, 401, { error: "Password is incorrect" });
+  }
+
+  user.name = "Deleted User";
+  user.phone = null;
+  user.salt = crypto.randomBytes(16).toString("hex");
+  user.hash = crypto.randomBytes(64).toString("hex"); // unguessable - not derived from any real password
+  user.accountDeleted = true;
+  user.deletedAt = new Date().toISOString();
+  user.loyaltyPoints = 0;
+  writeJson(USERS_FILE, users);
+
+  const favorites = readJson(FAVORITES_FILE, []);
+  const owner = favoritesOwner(session);
+  writeJson(
+    FAVORITES_FILE,
+    favorites.filter((f) => !favoritesMatch(f, owner))
+  );
+
+  // Saved delivery addresses: an address a past order actually points to
+  // (order.addressId) is now that order's own business record of where it
+  // went - same reasoning as customerName/customerPhone surviving on old
+  // orders, so it's left alone rather than deleted out from under them. Any
+  // OTHER address of this customer's has no order pointing at it and is
+  // real PII with no remaining purpose, so those are removed outright.
+  const referencedAddressIds = new Set(readJson(ORDERS_FILE, []).map((o) => o.addressId).filter((id) => id != null));
+  writeJson(
+    ADDRESSES_FILE,
+    readJson(ADDRESSES_FILE, []).filter((a) => a.customerId !== user.id || referencedAddressIds.has(a.id))
+  );
+
+  // Arcade leaderboard entries store their own snapshot of the player's
+  // name (like orders do) - unlike orders, this one's just a public
+  // high-score board with no business-record reason to keep the real name
+  // attached once the account is gone.
+  const arcadeScores = readJson(ARCADE_SCORES_FILE, []);
+  let arcadeChanged = false;
+  arcadeScores.forEach((s) => {
+    if (s.customerId === user.id) {
+      s.name = "Deleted User";
+      arcadeChanged = true;
+    }
+  });
+  if (arcadeChanged) writeJson(ARCADE_SCORES_FILE, arcadeScores);
+
+  invalidateSessionsForUser(user.id);
+  clearSessionCookie(res);
   sendJson(res, 200, { ok: true });
 });
 
@@ -1414,7 +1547,7 @@ route("POST", /^\/api\/auth\/guest\/?$/, async (req, res) => {
 
   recordAuthSuccess(ip);
   const token = createSession({ role: "guest", userId: null, name: "Guest", phone });
-  setSessionCookie(res, token);
+  setSessionCookie(res, token, req);
   sendJson(res, 200, { role: "guest", name: "Guest", phone });
 });
 
@@ -1538,8 +1671,9 @@ route("GET", /^\/api\/admin\/customers\/(?<id>\d+)\/?$/, async (req, res, params
   if (!session) return;
   const user = readJson(USERS_FILE, []).find((u) => u.id === Number(params.id) && u.role === "customer");
   if (!user) return sendJson(res, 404, { error: "Customer not found" });
+  const allowedStores = accessibleStoreIds(session);
   const orders = readJson(ORDERS_FILE, [])
-    .filter((o) => o.customerId === user.id)
+    .filter((o) => o.customerId === user.id && (!allowedStores || o.storeId == null || allowedStores.includes(o.storeId)))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   sendJson(res, 200, {
     profile: publicUser(user),
@@ -1881,7 +2015,13 @@ route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
       waitTime:
         body.operations.waitTime !== undefined
           ? sanitizeWaitTime(body.operations.waitTime, existingOps.waitTime || DEFAULT_STORE_OPERATIONS.waitTime)
-          : existingOps.waitTime || DEFAULT_STORE_OPERATIONS.waitTime
+          : existingOps.waitTime || DEFAULT_STORE_OPERATIONS.waitTime,
+      // sanitizeDelivery is called even when body.operations.delivery is
+      // undefined - unlike the other operations fields, it's not a plain
+      // "pass through unchanged" no-op, since a Global-Admin lock (see its
+      // own comment) needs enforcing on every write, not just ones that
+      // explicitly try to touch delivery.
+      delivery: sanitizeDelivery(body.operations.delivery, existingOps.delivery || DEFAULT_STORE_OPERATIONS.delivery, isGlobalAdmin)
     };
   }
   writeJson(STORES_FILE, stores);
@@ -2884,7 +3024,70 @@ function sanitizeWaitTime(rawWaitTime, existing) {
   return merged;
 }
 
-const DEFAULT_STORE_OPERATIONS = { tableCount: 10, arcade: { enabled: true, sessionHours: 2 }, waitTime: { enabled: true, minMins: 5 } };
+const DELIVERY_MESSAGE_PRESETS = {
+  queueFull: "Too many orders right now - delivery is paused, we'll be back shortly.",
+  noPartner: "No delivery partner available at the moment."
+};
+
+/** Merges a delivery-settings patch onto the existing value, enforcing the
+ *  two-tier lock: a manager/Local Admin can flip `enabled`/`message`
+ *  freely UNLESS `lockedBy === "globalAdmin"`, in which case those two
+ *  fields are held at their current value no matter what the caller sent -
+ *  only a Global Admin can touch `lockedBy` itself (to set OR clear it),
+ *  and setting it to "globalAdmin" always forces `enabled: false` in that
+ *  same write, so a lock can never be applied without actually disabling
+ *  delivery. This is the one place in the app where a lower role's write to
+ *  a field can be silently overridden by a standing lock from a higher
+ *  one - every other per-store setting is plain "whoever can manage this
+ *  store can change it," see PATCH /api/stores/:id's operations block. */
+function sanitizeDelivery(raw, existing, isGlobalAdmin) {
+  const current = existing || DEFAULT_STORE_OPERATIONS.delivery;
+  const input = raw && typeof raw === "object" ? raw : {};
+
+  let lockedBy = current.lockedBy || null;
+  let justLocked = false;
+  if ("lockedBy" in input && isGlobalAdmin) {
+    lockedBy = input.lockedBy === "globalAdmin" ? "globalAdmin" : null;
+    justLocked = lockedBy === "globalAdmin";
+  }
+
+  const canEditEnabledAndMessage = isGlobalAdmin || lockedBy !== "globalAdmin";
+
+  let enabled = current.enabled !== false;
+  if (justLocked) {
+    enabled = false;
+  } else if ("enabled" in input && canEditEnabledAndMessage) {
+    enabled = input.enabled !== false;
+  }
+
+  let message = current.message || { preset: null, customText: "" };
+  if ("message" in input && canEditEnabledAndMessage && input.message && typeof input.message === "object") {
+    const preset = typeof input.message.preset === "string" && DELIVERY_MESSAGE_PRESETS[input.message.preset] ? input.message.preset : null;
+    const customText = typeof input.message.customText === "string" ? input.message.customText.trim().slice(0, 200) : "";
+    message = { preset, customText };
+  }
+
+  return { enabled, lockedBy, message };
+}
+
+const DEFAULT_STORE_OPERATIONS = {
+  tableCount: 10,
+  arcade: { enabled: true, sessionHours: 2 },
+  waitTime: { enabled: true, minMins: 5 },
+  delivery: { enabled: true, lockedBy: null, message: { preset: null, customText: "" } }
+};
+
+/** Great-circle distance in km between two lat/lng points (spherical Earth
+ *  approximation) - accurate enough for a same-city delivery-radius check,
+ *  no external service/dependency needed. */
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 /** Resolves a store's own settings on top of the franchise-wide config:
  *  payments/tax fields fall back to the franchise default when the store
@@ -2922,6 +3125,7 @@ function mergeStoreOverrides(config, store) {
     tableCount: operations.tableCount ?? DEFAULT_STORE_OPERATIONS.tableCount,
     arcade: operations.arcade || DEFAULT_STORE_OPERATIONS.arcade,
     waitTime: operations.waitTime || DEFAULT_STORE_OPERATIONS.waitTime,
+    delivery: operations.delivery || DEFAULT_STORE_OPERATIONS.delivery,
     homePicks: store && store.homePicks !== undefined ? store.homePicks : config.homePicks,
     footer: {
       ...config.footer,
@@ -3209,12 +3413,15 @@ route("DELETE", /^\/api\/config\/custom-icons\/(?<key>[\w-]+)\/?$/, async (req, 
 // upload anything.
 // ---------------------------------------------------------------------------
 
+// SVG deliberately excluded: an uploaded SVG can carry <script>/event-handler
+// XSS that fires if a browser ever opens the uploaded file's URL directly
+// (not just when it's used as an <img src>) - not worth it without a
+// sanitizer library, which this hand-rolled server has none of.
 const UPLOAD_MIME_EXT = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
   "image/gif": ".gif",
-  "image/webp": ".webp",
-  "image/svg+xml": ".svg"
+  "image/webp": ".webp"
 };
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB decoded
 
@@ -3241,7 +3448,7 @@ route("POST", /^\/api\/uploads\/?$/, async (req, res) => {
   }
   const mimeType = String(body.mimeType || "");
   const ext = UPLOAD_MIME_EXT[mimeType];
-  if (!ext) return sendJson(res, 400, { error: "Unsupported image type - use PNG, JPEG, GIF, WEBP, or SVG" });
+  if (!ext) return sendJson(res, 400, { error: "Unsupported image type - use PNG, JPEG, GIF, or WEBP" });
   const dataUrlPrefix = /^data:[^;]+;base64,/;
   const base64 = String(body.dataBase64 || "").replace(dataUrlPrefix, "");
   let buffer;
@@ -3278,11 +3485,36 @@ route("POST", /^\/api\/uploads\/?$/, async (req, res) => {
   sendJson(res, 201, { ...entry, url: `/uploads/${filename}` });
 });
 
-route("DELETE", /^\/api\/uploads\/(?<id>[\w-]+)\/?$/, async (req, res, params) => {
+// An upload is referenced by embedding its URL string wherever it's picked
+// (menu item photos, branding images) rather than by the upload's own id -
+// so "is this still used" has to check those URL fields directly, not a
+// foreign key. Checked live at delete time instead of maintaining a stored
+// reverse-index (which would just be the same relationship duplicated).
+function findUploadUsage(url) {
+  const usedIn = [];
+  const menu = readJson(MENU_FILE, { items: [] });
+  menu.items.forEach((i) => {
+    if (i.imageUrl === url) usedIn.push(`menu item "${i.name}"`);
+  });
+  const config = readJson(CONFIG_FILE, {});
+  if (config.heroImageUrl === url) usedIn.push("home page hero image");
+  if (config.logoUrl === url) usedIn.push("logo");
+  if (config.logoWideUrl === url) usedIn.push("wide logo");
+  Object.entries(config.customIcons || {}).forEach(([key, iconUrl]) => {
+    if (iconUrl === url) usedIn.push(`custom icon "${key}"`);
+  });
+  return usedIn;
+}
+
+route("DELETE", /^\/api\/uploads\/(?<id>[\w-]+)\/?$/, async (req, res, params, url) => {
   if (!requireRole(req, res, KITCHEN_ROLES)) return;
   const uploads = readJson(UPLOADS_MANIFEST_FILE, []);
   const entry = uploads.find((u) => u.id === params.id);
   if (!entry) return sendJson(res, 404, { error: "Upload not found" });
+  const usedIn = findUploadUsage(`/uploads/${entry.filename}`);
+  if (usedIn.length && url.searchParams.get("force") !== "true") {
+    return sendJson(res, 409, { error: `Still used by: ${usedIn.join(", ")}`, usedIn });
+  }
   try {
     fs.unlinkSync(path.join(UPLOADS_DIR, entry.filename));
   } catch (e) {
@@ -3315,6 +3547,8 @@ const BACKUP_FILES = {
   "coupons.json": COUPONS_FILE,
   "table-sessions.json": TABLE_SESSIONS_FILE,
   "favorites.json": FAVORITES_FILE,
+  "addresses.json": ADDRESSES_FILE,
+  "raw-materials.json": RAW_MATERIALS_FILE,
   "arcade-scores.json": ARCADE_SCORES_FILE,
   "stores.json": STORES_FILE,
   "timeclock.json": TIMECLOCK_FILE,
@@ -3358,6 +3592,14 @@ route("POST", /^\/api\/admin\/restore\/?$/, async (req, res) => {
   if (!body.files || typeof body.files !== "object") {
     return sendJson(res, 400, { error: "That doesn't look like a backup file" });
   }
+  // A backup taken before someone deleted their account would otherwise
+  // resurrect that account's real login credentials the moment it's
+  // restored - capture who's currently deleted BEFORE users.json gets
+  // overwritten below, then re-scrub those same accounts in the restored
+  // data. Deletion is meant to be permanent from the user's perspective, not
+  // undoable by rolling back to an older snapshot.
+  const previouslyDeleted = readJson(USERS_FILE, []).filter((u) => u.accountDeleted);
+
   let restoredCount = 0;
   for (const [name, filePath] of Object.entries(BACKUP_FILES)) {
     if (body.files[name] !== undefined && body.files[name] !== null) {
@@ -3365,6 +3607,38 @@ route("POST", /^\/api\/admin\/restore\/?$/, async (req, res) => {
       restoredCount++;
     }
   }
+
+  if (previouslyDeleted.length && body.files["users.json"] !== undefined) {
+    const restoredUsers = readJson(USERS_FILE, []);
+    let resealed = false;
+    previouslyDeleted.forEach((deletedUser) => {
+      const match = restoredUsers.find((u) => u.id === deletedUser.id || u.username === deletedUser.username);
+      if (match && !match.accountDeleted) {
+        match.name = "Deleted User";
+        match.phone = null;
+        match.salt = crypto.randomBytes(16).toString("hex");
+        match.hash = crypto.randomBytes(64).toString("hex");
+        match.accountDeleted = true;
+        match.deletedAt = deletedUser.deletedAt || new Date().toISOString();
+        resealed = true;
+      }
+    });
+    if (resealed) writeJson(USERS_FILE, restoredUsers);
+
+    if (body.files["arcade-scores.json"] !== undefined) {
+      const restoredScores = readJson(ARCADE_SCORES_FILE, []);
+      const deletedIds = new Set(previouslyDeleted.map((u) => u.id));
+      let scoresResealed = false;
+      restoredScores.forEach((s) => {
+        if (deletedIds.has(s.customerId) && s.name !== "Deleted User") {
+          s.name = "Deleted User";
+          scoresResealed = true;
+        }
+      });
+      if (scoresResealed) writeJson(ARCADE_SCORES_FILE, restoredScores);
+    }
+  }
+
   sendJson(res, 200, { ok: true, restoredCount });
 });
 
@@ -3495,7 +3769,11 @@ route("POST", /^\/api\/admin\/restore\/store\/(?<id>\d+)\/?$/, async (req, res, 
   const warnings = [];
   let restoredCount = 0;
 
-  const idStyles = { "orders.json": "SB-", "table-sessions.json": "TBL-", "timeclock.json": "numeric" };
+  // "orders.json" changed from "SB-" (random hex string) to "numeric" -
+  // order.id is a plain incrementing integer now (see POST /api/orders),
+  // never touch this back to "SB-" or a restore collision would silently
+  // start minting old-format string ids again.
+  const idStyles = { "orders.json": "numeric", "table-sessions.json": "TBL-", "timeclock.json": "numeric" };
   for (const [name, filePath] of Object.entries(STORE_SCOPED_DIRECT_FILES)) {
     if (!Array.isArray(body.files[name])) continue;
     const existing = readJson(filePath, []);
@@ -3649,6 +3927,47 @@ route("GET", /^\/api\/orders\/?$/, async (req, res, params, url) => {
       orders = orders.filter((o) => o.storeId === requestedStoreId);
     }
   }
+  // Coupon audit ("which orders used code X"): a live filter on the same
+  // couponId every order already stores, not a stored reverse-index on the
+  // coupon itself - a coupon has no business reason to know its own usage
+  // list, that would just be the same relationship duplicated a second way.
+  if (url.searchParams.has("couponId")) {
+    const requestedCouponId = Number(url.searchParams.get("couponId"));
+    if (Number.isFinite(requestedCouponId)) orders = orders.filter((o) => o.couponId === requestedCouponId);
+  }
+  // Same inclusive from/to-day semantics as the client-side date filters
+  // (Admin Order History, Kitchen HISTORY) - either bound alone is an
+  // open-ended range, both set (even to the same day) filters just that day.
+  const fromDate = url.searchParams.get("from");
+  const toDate = url.searchParams.get("to");
+  if (fromDate) {
+    const fromTs = new Date(fromDate + "T00:00:00").getTime();
+    orders = orders.filter((o) => new Date(o.createdAt).getTime() >= fromTs);
+  }
+  if (toDate) {
+    const toTs = new Date(toDate + "T23:59:59.999").getTime();
+    orders = orders.filter((o) => new Date(o.createdAt).getTime() <= toTs);
+  }
+  const statusFilter = url.searchParams.get("status");
+  if (statusFilter === "active" || statusFilter === "completed") {
+    orders = orders.filter((o) => {
+      const complete = o.items.every((i) => i.isDone);
+      return statusFilter === "active" ? !complete : complete;
+    });
+  }
+  orders.sort((a, b) => (url.searchParams.get("sort") === "oldest" ? 1 : -1) * (new Date(a.createdAt) - new Date(b.createdAt)));
+
+  // Only paginates when asked - Kitchen/Billing still want the full
+  // (already store/date/status-scoped) array to do their own client-side
+  // grouping, only Admin Order History's browse-everything view actually
+  // needs a bounded page + total at real scale.
+  if (url.searchParams.has("page") || url.searchParams.has("limit")) {
+    const total = orders.length;
+    const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit"), 10) || 10, 1), 100);
+    const page = Math.max(parseInt(url.searchParams.get("page"), 10) || 1, 1);
+    const items = orders.slice((page - 1) * limit, page * limit);
+    return sendJson(res, 200, { items, total });
+  }
   sendJson(res, 200, orders);
 });
 
@@ -3760,7 +4079,15 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   // can never be tracked/looked-up afterward (no phone, no account) - an
   // accepted trade-off for someone who declines to give a number.
   const isGuestOrder = KITCHEN_ROLES.includes(session.role) && body.guestOrder === true;
-  const phone = isGuestOrder ? null : normalizePhone(body.phone || session.phone);
+  // Staff placing a counter order may type whichever phone the customer in
+  // front of them gives - but a customer/guest placing their OWN order can
+  // never substitute a different number than the one their own session is
+  // already tied to. Without this, a logged-in customer (or an active guest
+  // session) could put a stranger's real phone number on their own order,
+  // which then shows up as "the customer" for staff to call back - that
+  // stranger never placed the order and never consented to being contacted
+  // about it.
+  const phone = isGuestOrder ? null : KITCHEN_ROLES.includes(session.role) ? normalizePhone(body.phone) : session.phone;
   if (!isGuestOrder && !phone) {
     return sendJson(res, 400, { error: "A valid phone number is required to place an order" });
   }
@@ -3768,7 +4095,7 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   const method = body.method === "ONLINE" ? "ONLINE" : "COUNTER";
   const serviceChargeActive = body.serviceChargeActive !== false;
   const tipApplied = !!body.tipApplied;
-  const orderType = body.orderType === "dine-in" ? "dine-in" : "takeaway";
+  const orderType = body.orderType === "dine-in" ? "dine-in" : body.orderType === "delivery" ? "delivery" : "takeaway";
 
   // Staff placing an order on someone's behalf: if the phone they typed
   // matches a registered customer account, attribute the order to that
@@ -3793,6 +4120,40 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     if (allStores.some((s) => s.id === requestedStoreId)) effectiveStoreId = requestedStoreId;
   }
 
+  // Delivery has real-world guardrails a customer choosing takeaway/dine-in
+  // never needs: a real account (never a guest, never staff placing it on
+  // someone's behalf), online payment only (no cash-on-delivery), a saved
+  // address the customer actually owns, and that address has to be within
+  // reach of the store fulfilling it - checked here, BEFORE computeOrder
+  // runs, so a doomed delivery order never prices out a cart for nothing.
+  let deliveryAddressId = null;
+  if (orderType === "delivery") {
+    if (session.role !== "customer") {
+      return sendJson(res, 403, { error: "Sign in with an account to order delivery" });
+    }
+    if (method !== "ONLINE") {
+      return sendJson(res, 400, { error: "Delivery orders must be paid online" });
+    }
+    const addresses = readJson(ADDRESSES_FILE, []);
+    const address = addresses.find((a) => a.id === Number(body.addressId) && a.customerId === session.userId && a.active !== false);
+    if (!address) {
+      return sendJson(res, 400, { error: "Select a delivery address" });
+    }
+    const deliveryStore = allStores.find((s) => s.id === effectiveStoreId);
+    const deliveryOps = deliveryStore && deliveryStore.operations && deliveryStore.operations.delivery ? deliveryStore.operations.delivery : DEFAULT_STORE_OPERATIONS.delivery;
+    if (!deliveryStore || !deliveryOps.enabled) {
+      const msg = deliveryOps.message?.customText || (deliveryOps.message?.preset && DELIVERY_MESSAGE_PRESETS[deliveryOps.message.preset]) || "Delivery isn't available at this store right now";
+      return sendJson(res, 400, { error: msg });
+    }
+    if (deliveryStore.lat == null || deliveryStore.lng == null) {
+      return sendJson(res, 400, { error: "This store hasn't set up delivery coordinates yet" });
+    }
+    if (haversineKm(address.lat, address.lng, deliveryStore.lat, deliveryStore.lng) > 5) {
+      return sendJson(res, 400, { error: "This address is outside our 5km delivery range for the selected store" });
+    }
+    deliveryAddressId = address.id;
+  }
+
   let computed;
   try {
     const customerId = session.role === "customer" ? session.userId : matchedCustomer ? matchedCustomer.id : null;
@@ -3813,7 +4174,15 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   // in Order History afterwards - customers/guests can never self-mark paid.
   const staffMarkedPaid = KITCHEN_ROLES.includes(session.role) && body.markPaidNow === true;
 
-  const orderId = `SB-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  // Plain incrementing integer, same pattern as users/stores/menu items -
+  // this is only ever the internal primary key. The customer-facing bill
+  // number (SB26090205-style, generateOrderNumber() below) is a completely
+  // separate field and is untouched by this - order.id used to be a random
+  // SB-XXXXXX string, migrated to integers because a database-style
+  // auto-increment id makes an eventual real-database migration trivial
+  // (see the "data fabric" note elsewhere) and is easier to type/reference
+  // by hand than a random hex string.
+  const orderId = orders.length ? Math.max(...orders.map((o) => o.id)) + 1 : 1;
   const orderNumber = generateOrderNumber(orders, effectiveStoreId, multiStore);
   // Lets a customer track this one order (GET /api/orders/track/:token,
   // no login needed) by scanning a QR code - an alternative to the
@@ -3849,6 +4218,12 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
     tipApplied,
     serviceChargeActive,
     orderType,
+    // Frozen snapshot, same reasoning as customerName/customerPhone below -
+    // Real reference, not a snapshot - editing an address never mutates the
+    // old row (see PATCH /api/addresses/:id), it deactivates it and inserts
+    // a new one, so this id always resolves to exactly what the address
+    // looked like at order time without duplicating any of its fields here.
+    addressId: deliveryAddressId,
     // Set later from Billing (see PATCH .../tagInfo below) - staff tag which
     // physical table a dine-in order belongs to once seated, rather than
     // asking for it at the moment of ordering.
@@ -3889,7 +4264,10 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
   // target - no attach chains, so a search picker can never surface an
   // already-attached order as something else could attach to.
   if (KITCHEN_ROLES.includes(session.role) && body.attachToOrderId && !order.tableSessionId) {
-    const targetOrder = orders.find((o) => o.id === body.attachToOrderId && !o.attachedToOrderId);
+    // body.attachToOrderId comes from the client's dataset attribute (always
+    // a string, even though order.id is a real number now) - coerce before
+    // comparing, same reasoning as params.id below.
+    const targetOrder = orders.find((o) => o.id === Number(body.attachToOrderId) && !o.attachedToOrderId);
     if (targetOrder) order.attachedToOrderId = targetOrder.id;
   }
 
@@ -3936,11 +4314,18 @@ route("POST", /^\/api\/orders\/?$/, async (req, res) => {
 });
 
 route("PATCH", /^\/api\/orders\/(?<id>[\w-]+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, KITCHEN_ROLES)) return;
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
   const body = await readBody(req);
   const orders = readJson(ORDERS_FILE, []);
-  const order = orders.find((o) => o.id === params.id);
+  // params.id is always a string (regex capture from the URL) - order.id is
+  // a real number now, so this needs an explicit coercion or it never matches.
+  const order = orders.find((o) => o.id === Number(params.id));
   if (!order) return sendJson(res, 404, { error: "Order not found" });
+  const allowedStores = accessibleStoreIds(session);
+  if (allowedStores && order.storeId != null && !allowedStores.includes(order.storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's order" });
+  }
 
   if (body.action === "markPaid") {
     order.isPaid = true;
@@ -4193,8 +4578,12 @@ route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/settle-group\/?$/, async (req, res
   if (!session) return;
   const body = await readBody(req);
   const orders = readJson(ORDERS_FILE, []);
-  const rootOrder = orders.find((o) => o.id === params.id && !o.attachedToOrderId);
+  const rootOrder = orders.find((o) => o.id === Number(params.id) && !o.attachedToOrderId);
   if (!rootOrder) return sendJson(res, 404, { error: "Bill not found" });
+  const allowedStores = accessibleStoreIds(session);
+  if (allowedStores && rootOrder.storeId != null && !allowedStores.includes(rootOrder.storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's order" });
+  }
 
   const paymentMethod = PAYMENT_METHODS.includes(body.paymentMethod) ? body.paymentMethod : "Cash";
   const group = [rootOrder, ...orders.filter((o) => o.attachedToOrderId === rootOrder.id)];
@@ -4220,7 +4609,7 @@ route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/feedback\/?$/, async (req, res, pa
   if (!session) return;
   const body = await readBody(req);
   const orders = readJson(ORDERS_FILE, []);
-  const order = orders.find((o) => o.id === params.id);
+  const order = orders.find((o) => o.id === Number(params.id));
   if (!order) return sendJson(res, 404, { error: "Order not found" });
 
   const owns =
@@ -4252,7 +4641,7 @@ route("POST", /^\/api\/orders\/(?<id>[\w-]+)\/verify-payment\/?$/, async (req, r
   if (!session) return;
   const body = await readBody(req);
   const orders = readJson(ORDERS_FILE, []);
-  const order = orders.find((o) => o.id === params.id);
+  const order = orders.find((o) => o.id === Number(params.id));
   if (!order) return sendJson(res, 404, { error: "Order not found" });
   if (!order.razorpayOrderId) return sendJson(res, 400, { error: "This order isn't a Razorpay payment" });
   if (order.isPaid) return sendJson(res, 200, order); // already verified - idempotent
@@ -4278,8 +4667,8 @@ route("GET", /^\/api\/favorites\/?$/, async (req, res) => {
   const session = requireRole(req, res, TRACKING_ROLES);
   if (!session) return;
   const favorites = readJson(FAVORITES_FILE, []);
-  const key = favoritesOwnerKey(session);
-  const itemIds = favorites.filter((f) => f.ownerKey === key).map((f) => f.itemId);
+  const owner = favoritesOwner(session);
+  const itemIds = favorites.filter((f) => favoritesMatch(f, owner)).map((f) => f.itemId);
   sendJson(res, 200, itemIds);
 });
 
@@ -4292,9 +4681,9 @@ route("POST", /^\/api\/favorites\/(?<itemId>\d+)\/?$/, async (req, res, params) 
     return sendJson(res, 404, { error: "Menu item not found" });
   }
   const favorites = readJson(FAVORITES_FILE, []);
-  const key = favoritesOwnerKey(session);
-  if (!favorites.find((f) => f.ownerKey === key && f.itemId === itemId)) {
-    favorites.push({ ownerKey: key, itemId });
+  const owner = favoritesOwner(session);
+  if (!favorites.find((f) => favoritesMatch(f, owner) && f.itemId === itemId)) {
+    favorites.push({ ownerType: owner.ownerType, ownerId: owner.ownerId, itemId });
     writeJson(FAVORITES_FILE, favorites);
   }
   sendJson(res, 200, { ok: true });
@@ -4305,12 +4694,207 @@ route("DELETE", /^\/api\/favorites\/(?<itemId>\d+)\/?$/, async (req, res, params
   if (!session) return;
   const itemId = Number(params.itemId);
   const favorites = readJson(FAVORITES_FILE, []);
-  const key = favoritesOwnerKey(session);
+  const owner = favoritesOwner(session);
   writeJson(
     FAVORITES_FILE,
-    favorites.filter((f) => !(f.ownerKey === key && f.itemId === itemId))
+    favorites.filter((f) => !(favoritesMatch(f, owner) && f.itemId === itemId))
   );
   sendJson(res, 200, { ok: true });
+});
+
+// Saved delivery addresses - customer-only (a guest has no persistent
+// account to attach one to, and staff never place delivery orders on a
+// customer's behalf). Always scoped to session.userId, same ownership
+// pattern favorites use via ownerKey.
+function parseAddressCoord(value, min, max) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
+}
+
+route("GET", /^\/api\/addresses\/?$/, async (req, res) => {
+  const session = requireRole(req, res, ["customer"]);
+  if (!session) return;
+  // Inactive addresses (superseded by an edit - see PATCH below) stay in the
+  // file forever so a past order's addressId still resolves, but are never
+  // offered to the customer again here.
+  const addresses = readJson(ADDRESSES_FILE, []).filter((a) => a.customerId === session.userId && a.active !== false);
+  sendJson(res, 200, addresses);
+});
+
+route("POST", /^\/api\/addresses\/?$/, async (req, res) => {
+  const session = requireRole(req, res, ["customer"]);
+  if (!session) return;
+  const body = await readBody(req);
+  const label = String(body.label || "").trim().slice(0, 40);
+  const addressText = String(body.addressText || "").trim().slice(0, 200);
+  const landmark = String(body.landmark || "").trim().slice(0, 100);
+  const pincode = String(body.pincode || "").trim().slice(0, 12);
+  const lat = parseAddressCoord(body.lat, -90, 90);
+  const lng = parseAddressCoord(body.lng, -180, 180);
+  if (!label) return sendJson(res, 400, { error: "Give this address a short label" });
+  if (lat === null || lng === null) return sendJson(res, 400, { error: "Drop a pin on the map to set a location" });
+
+  const addresses = readJson(ADDRESSES_FILE, []);
+  const mine = addresses.filter((a) => a.customerId === session.userId && a.active !== false);
+  if (mine.length >= 10) return sendJson(res, 400, { error: "You can save up to 10 addresses" });
+
+  const isDefault = mine.length === 0 || !!body.isDefault;
+  if (isDefault) mine.forEach((a) => (a.isDefault = false));
+
+  const address = {
+    id: addresses.length ? Math.max(...addresses.map((a) => a.id)) + 1 : 1,
+    customerId: session.userId,
+    label,
+    addressText,
+    landmark,
+    pincode,
+    lat,
+    lng,
+    isDefault,
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+  addresses.push(address);
+  writeJson(ADDRESSES_FILE, addresses);
+  sendJson(res, 201, address);
+});
+
+// Editing an address never mutates it in place - past orders reference an
+// address by id (order.addressId), so changing that same record would
+// silently rewrite what an old order's delivery address looked like. Instead
+// this deactivates the old row (kept forever so old orders still resolve)
+// and inserts a new one with a new id, which is what the customer sees and
+// what any NEW order will point to. One row, one real value, ever - no
+// field is ever duplicated onto the order itself.
+route("PATCH", /^\/api\/addresses\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, ["customer"]);
+  if (!session) return;
+  const addresses = readJson(ADDRESSES_FILE, []);
+  const old = addresses.find((a) => a.id === Number(params.id) && a.customerId === session.userId && a.active !== false);
+  if (!old) return sendJson(res, 404, { error: "Address not found" });
+
+  const body = await readBody(req);
+  const label = typeof body.label === "string" ? body.label.trim().slice(0, 40) : old.label;
+  if (!label) return sendJson(res, 400, { error: "Give this address a short label" });
+  const addressText = typeof body.addressText === "string" ? body.addressText.trim().slice(0, 200) : old.addressText;
+  const landmark = typeof body.landmark === "string" ? body.landmark.trim().slice(0, 100) : old.landmark;
+  const pincode = typeof body.pincode === "string" ? body.pincode.trim().slice(0, 12) : old.pincode;
+  let lat = old.lat;
+  let lng = old.lng;
+  if (body.lat !== undefined || body.lng !== undefined) {
+    lat = parseAddressCoord(body.lat, -90, 90);
+    lng = parseAddressCoord(body.lng, -180, 180);
+    if (lat === null || lng === null) return sendJson(res, 400, { error: "Drop a pin on the map to set a location" });
+  }
+  const isDefault = body.isDefault === true || old.isDefault;
+
+  old.active = false;
+  old.isDefault = false;
+  if (isDefault) {
+    addresses.forEach((a) => {
+      if (a.customerId === session.userId && a.active !== false) a.isDefault = false;
+    });
+  }
+  const updated = {
+    id: addresses.length ? Math.max(...addresses.map((a) => a.id)) + 1 : 1,
+    customerId: session.userId,
+    label,
+    addressText,
+    landmark,
+    pincode,
+    lat,
+    lng,
+    isDefault,
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+  addresses.push(updated);
+  writeJson(ADDRESSES_FILE, addresses);
+  sendJson(res, 200, updated);
+});
+
+// Deactivates rather than removes - same reasoning as PATCH above, a past
+// order's addressId must keep resolving to something.
+route("DELETE", /^\/api\/addresses\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  const session = requireRole(req, res, ["customer"]);
+  if (!session) return;
+  const addresses = readJson(ADDRESSES_FILE, []);
+  const address = addresses.find((a) => a.id === Number(params.id) && a.customerId === session.userId && a.active !== false);
+  if (!address) return sendJson(res, 404, { error: "Address not found" });
+  address.active = false;
+  address.isDefault = false;
+  // If the default address was removed and others remain, promote the
+  // customer's next-most-recent one so "isDefault" always has exactly one
+  // holder whenever the customer has any active addresses at all.
+  const mine = addresses.filter((a) => a.customerId === session.userId && a.active !== false).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (mine.length && !mine.some((a) => a.isDefault)) mine[0].isDefault = true;
+  writeJson(ADDRESSES_FILE, addresses);
+  sendJson(res, 200, { ok: true });
+});
+
+// Raw material inventory - staff/manager only, never customer-facing.
+// Deliberately just a flat name/quantity/unit list with an active flag
+// (same soft-delete convention menu items already use) - no recipe/BOM
+// link to menu items and no auto-deduction on order placement, since
+// neither was asked for and both would be a much bigger feature.
+route("GET", /^\/api\/raw-materials\/?$/, async (req, res) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  sendJson(res, 200, readJson(RAW_MATERIALS_FILE, []));
+});
+
+route("POST", /^\/api\/raw-materials\/?$/, async (req, res) => {
+  if (!requireRole(req, res, MANAGER_UP_ROLES)) return;
+  const body = await readBody(req);
+  const name = String(body.name || "").trim().slice(0, 60);
+  const unit = String(body.unit || "").trim().slice(0, 20);
+  const quantity = Number(body.quantity);
+  if (!name) return sendJson(res, 400, { error: "Give this material a name" });
+  if (!Number.isFinite(quantity) || quantity < 0) return sendJson(res, 400, { error: "Quantity must be zero or a positive number" });
+
+  const materials = readJson(RAW_MATERIALS_FILE, []);
+  const material = {
+    id: materials.length ? Math.max(...materials.map((m) => m.id)) + 1 : 1,
+    name,
+    quantity,
+    unit,
+    active: true,
+    updatedAt: new Date().toISOString()
+  };
+  materials.push(material);
+  writeJson(RAW_MATERIALS_FILE, materials);
+  sendJson(res, 201, material);
+});
+
+route("PATCH", /^\/api\/raw-materials\/(?<id>\d+)\/?$/, async (req, res, params) => {
+  // Any staff can restock (quantity); only a manager+ can rename, change
+  // the unit, or activate/deactivate a material - same two-tier split
+  // reasoning as the delivery lock earlier, just simpler since there's no
+  // separate "locked" state to enforce here.
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
+  const materials = readJson(RAW_MATERIALS_FILE, []);
+  const material = materials.find((m) => m.id === Number(params.id));
+  if (!material) return sendJson(res, 404, { error: "Material not found" });
+
+  const body = await readBody(req);
+  if (body.quantity !== undefined) {
+    const quantity = Number(body.quantity);
+    if (!Number.isFinite(quantity) || quantity < 0) return sendJson(res, 400, { error: "Quantity must be zero or a positive number" });
+    material.quantity = quantity;
+  }
+  const isManager = MANAGER_UP_ROLES.includes(session.role);
+  if (isManager) {
+    if (typeof body.name === "string") {
+      const name = body.name.trim().slice(0, 60);
+      if (!name) return sendJson(res, 400, { error: "Give this material a name" });
+      material.name = name;
+    }
+    if (typeof body.unit === "string") material.unit = body.unit.trim().slice(0, 20);
+    if (typeof body.active === "boolean") material.active = body.active;
+  }
+  material.updatedAt = new Date().toISOString();
+  writeJson(RAW_MATERIALS_FILE, materials);
+  sendJson(res, 200, material);
 });
 
 // Per-user preferences (currently just the staff rail/top-bar layout choice)
@@ -4579,6 +5163,10 @@ route("POST", /^\/api\/arcade\/scores\/?$/, async (req, res) => {
     id: scores.length ? Math.max(...scores.map((s) => s.id)) + 1 : 1,
     game,
     name: session.name || "Player",
+    // Lets account deletion (POST /api/account/delete) find and anonymize
+    // this leaderboard entry later - the name alone isn't a safe match key
+    // (two different players can share a display name).
+    customerId: session.role === "customer" ? session.userId : null,
     score,
     achievedAt: new Date().toISOString()
   });
@@ -5163,6 +5751,10 @@ route("PATCH", /^\/api\/table-sessions\/(?<id>[\w-]+)\/?$/, async (req, res, par
   const sessions = readJson(TABLE_SESSIONS_FILE, []);
   const tableSession = sessions.find((s) => s.id === params.id);
   if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
+  const allowedStores = accessibleStoreIds(session);
+  if (allowedStores && tableSession.storeId != null && !allowedStores.includes(tableSession.storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's table" });
+  }
   if (tableSession.status !== "open") return sendJson(res, 400, { error: "Table is already closed" });
   const config = mergeStoreOverrides(readJson(CONFIG_FILE, {}), readJson(STORES_FILE, []).find((s) => s.id === tableSession.storeId));
   const tableCount = config.tableCount ?? 10;
@@ -5196,6 +5788,16 @@ route("GET", /^\/api\/table-sessions\/?$/, async (req, res, params, url) => {
   // Older sessions predating this field (storeId undefined) stay visible to
   // everyone, same "unscoped means visible" fallback orders/KPI already use.
   if (allowed) sessions = sessions.filter((s) => s.storeId == null || allowed.includes(s.storeId));
+  // Same optional single-store drill-down as GET /api/orders?storeId= - for
+  // a multi-store account (owner/Global Admin/multi-store Local Admin) that
+  // wants Billing/Orders narrowed to just one of their several stores at a
+  // time instead of always seeing them all merged.
+  if (url.searchParams.has("storeId")) {
+    const requestedStoreId = Number(url.searchParams.get("storeId"));
+    if (Number.isFinite(requestedStoreId) && (!allowed || allowed.includes(requestedStoreId))) {
+      sessions = sessions.filter((s) => s.storeId === requestedStoreId);
+    }
+  }
   const orders = readJson(ORDERS_FILE, []);
   const statusFilter = url.searchParams.get("status");
   const filtered = statusFilter ? sessions.filter((s) => s.status === statusFilter) : sessions;
@@ -5207,10 +5809,15 @@ route("GET", /^\/api\/table-sessions\/?$/, async (req, res, params, url) => {
 });
 
 route("GET", /^\/api\/table-sessions\/(?<id>[\w-]+)\/?$/, async (req, res, params) => {
-  if (!requireRole(req, res, KITCHEN_ROLES)) return;
+  const session = requireRole(req, res, KITCHEN_ROLES);
+  if (!session) return;
   const sessions = readJson(TABLE_SESSIONS_FILE, []);
   const tableSession = sessions.find((s) => s.id === params.id);
   if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
+  const allowedStores = accessibleStoreIds(session);
+  if (allowedStores && tableSession.storeId != null && !allowedStores.includes(tableSession.storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's table" });
+  }
   const orders = readJson(ORDERS_FILE, []);
   sendJson(res, 200, computeTableSessionBill(tableSession, orders));
 });
@@ -5222,6 +5829,10 @@ route("POST", /^\/api\/table-sessions\/(?<id>[\w-]+)\/close\/?$/, async (req, re
   const sessions = readJson(TABLE_SESSIONS_FILE, []);
   const tableSession = sessions.find((s) => s.id === params.id);
   if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
+  const allowedStores = accessibleStoreIds(session);
+  if (allowedStores && tableSession.storeId != null && !allowedStores.includes(tableSession.storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's table" });
+  }
   if (tableSession.status === "closed") return sendJson(res, 400, { error: "Table is already closed" });
 
   tableSession.status = "closed";
@@ -5264,6 +5875,10 @@ route("POST", /^\/api\/table-sessions\/(?<id>[\w-]+)\/settle-round\/?$/, async (
   const sessions = readJson(TABLE_SESSIONS_FILE, []);
   const tableSession = sessions.find((s) => s.id === params.id);
   if (!tableSession) return sendJson(res, 404, { error: "Table session not found" });
+  const allowedStores = accessibleStoreIds(session);
+  if (allowedStores && tableSession.storeId != null && !allowedStores.includes(tableSession.storeId)) {
+    return sendJson(res, 403, { error: "You don't have access to that store's table" });
+  }
   if (tableSession.status !== "open") return sendJson(res, 400, { error: "Table is already closed" });
 
   const paymentMethod = PAYMENT_METHODS.includes(body.paymentMethod) ? body.paymentMethod : "Cash";
@@ -5393,12 +6008,56 @@ function serveStatic(req, res, pathname) {
 
 const server = http.createServer(async (req, res) => {
   res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "no-referrer");
+  // strict-origin-when-cross-origin (browser default): full URL as referer
+  // same-origin, bare origin cross-origin. "no-referrer" broke Leaflet's
+  // OSM tile loads - their tile servers reject requests with no referer at
+  // all, and no-referrer suppressed it even for our own page's own tile
+  // fetches. Bare origin is still no path/query leakage to Razorpay/OSM.
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  // Only advertise HSTS when this particular request actually arrived over
+  // HTTPS (checked the same way the Secure cookie flag is, via
+  // X-Forwarded-Proto behind the Cloudflare tunnel) - sending it
+  // unconditionally would tell a browser to force HTTPS for this host even
+  // while it's being reached over plain HTTP on a LAN/dev box, locking
+  // people out.
+  if (IS_HTTPS || req.headers["x-forwarded-proto"] === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+  }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
 
   if (pathname.startsWith("/api/")) {
+    // A customer's full phone number is only for manager and up - enforced
+    // HERE, once, for every route's response, rather than per-handler (a
+    // route that forgot its own redaction would otherwise leak the number
+    // in plain JSON regardless of what the UI shows - visible in the
+    // Network tab even if hidden on screen). Buffers writeHead/end so the
+    // redacted body's real byte length can replace whatever Content-Length
+    // the handler's own sendJson() already computed against the original.
+    const maskingSession = currentSession(req);
+    if (maskingSession && maskingSession.role === "employee") {
+      const originalWriteHead = res.writeHead.bind(res);
+      const originalEnd = res.end.bind(res);
+      let pending = null;
+      res.writeHead = (status, headers) => {
+        pending = { status, headers };
+        return res;
+      };
+      res.end = (body) => {
+        let finalBody = body;
+        if (typeof body === "string" && pending?.headers?.["Content-Type"]?.includes("application/json")) {
+          finalBody = redactCustomerPhones(body);
+        }
+        const headers = pending ? { ...pending.headers } : {};
+        if (typeof finalBody === "string" && headers["Content-Length"] !== undefined) {
+          headers["Content-Length"] = Buffer.byteLength(finalBody);
+        }
+        originalWriteHead(pending ? pending.status : 200, headers);
+        return originalEnd(finalBody);
+      };
+    }
+
     const match = matchRoute(req.method, pathname);
     if (!match) return sendJson(res, 404, { error: "Not found" });
     try {

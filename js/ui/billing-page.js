@@ -15,6 +15,9 @@
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
 import { KitchenSystem } from "../features/kitchen-logic.js";
 import { AdminConfig, currencySymbol } from "../features/config-logic.js";
+import { AuthSystem } from "../features/auth-logic.js";
+import { StoreSystem } from "../features/store-logic.js";
+import { PayrollSystem } from "../features/payroll-logic.js";
 
 export const PAYMENT_METHODS = [
     { key: "UPI", note: "Scan / VPA" },
@@ -33,6 +36,27 @@ function money(n) {
 
 function round2(n) {
     return Math.round(n * 100) / 100;
+}
+
+/** Same store switcher concept as the Orders/Kitchen page (see app.js's
+ *  ensureKitchenStoreSwitcher) - a multi-store account (owner, unrestricted/
+ *  Global Admin, or a Local Admin whose storeAccess spans more than one
+ *  store) narrows Billing down to one store at a time via the same shared
+ *  StoreSystem.getStaffSelectedStoreId() value, so picking a store on
+ *  either page carries over to the other. A manager/employee never sees
+ *  this - they're always pinned to their own single store server-side. */
+async function buildStoreSwitcherHtml(session) {
+    if (!StoreSystem.isMultiStoreStaff(session)) return "";
+    const allStores = await PayrollSystem.fetchStores();
+    const stores = session.role === "admin" && session.storeAccess ? allStores.filter((s) => session.storeAccess.includes(s.id)) : allStores;
+    if (stores.length <= 1) return "";
+    const currentId = StoreSystem.getStaffSelectedStoreId();
+    return `
+        <select id="billing-store-select" aria-label="Store" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:11px; margin-bottom:12px;">
+            <option value="">ALL MY STORES</option>
+            ${stores.map((s) => `<option value="${s.id}" ${currentId === s.id ? "selected" : ""}>${escapeHtml(s.name)}</option>`).join("")}
+        </select>
+    `;
 }
 
 /** Client-side mirror of server.js's computeOrderGroupBill()/
@@ -139,7 +163,8 @@ export async function renderBillingPage() {
     if (!root) return;
     root.innerHTML = `<p style="color:var(--color-text-muted); font-size:12px;">Loading open bills…</p>`;
 
-    const [openTables, allOrders] = await Promise.all([TableSessionsSystem.list("open"), KitchenSystem.fetchOrders()]);
+    const [openTables, allOrders, session] = await Promise.all([TableSessionsSystem.list("open"), KitchenSystem.fetchOrders(), AuthSystem.getSession()]);
+    const storeSwitcherHtml = await buildStoreSwitcherHtml(session);
     // Attached (non-root) orders aren't a separate bill of their own - they
     // only ever show up merged into their root's detail view (see
     // renderBillDetail()'s group handling) - listing them here too would
@@ -186,13 +211,14 @@ export async function renderBillingPage() {
         <div class="menu-pager" style="margin-top:auto;">
             <button type="button" class="admin-pg-btn" data-page="1" ${billingPage <= 1 ? "disabled" : ""} title="First page" aria-label="First page">«</button>
             <button type="button" class="admin-pg-btn" data-page="${billingPage - 1}" ${billingPage <= 1 ? "disabled" : ""} title="Previous page" aria-label="Previous page">‹</button>
-            <span class="menu-pager-label">${pageStart + 1}-${Math.min(pageStart + BILLING_PAGE_SIZE, openBills.length)} of ${openBills.length}</span>
+            <span class="menu-pager-label"><strong style="color:var(--color-accent);">${pageStart + 1}-${Math.min(pageStart + BILLING_PAGE_SIZE, openBills.length)}</strong> of ${openBills.length}</span>
             <button type="button" class="admin-pg-btn" data-page="${billingPage + 1}" ${billingPage >= totalPages ? "disabled" : ""} title="Next page" aria-label="Next page">›</button>
             <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${billingPage >= totalPages ? "disabled" : ""} title="Last page" aria-label="Last page">»</button>
         </div>`
             : "";
 
     root.innerHTML = `
+        ${storeSwitcherHtml}
         <div style="display:grid; grid-template-columns:minmax(0,1fr); gap:16px;" class="billing-layout">
             <div class="billing-left-col">
                 <!-- Acts on whichever bill is selected below - see
@@ -232,9 +258,20 @@ export async function renderBillingPage() {
         </div>
     `;
 
+    document.getElementById("billing-store-select")?.addEventListener("change", (e) => {
+        StoreSystem.setStaffSelectedStoreId(e.target.value ? Number(e.target.value) : null);
+        selectedBill = null;
+        billingPage = 1;
+        renderBillingPage();
+    });
+
     root.querySelectorAll(".billing-list-item").forEach((btn) => {
         btn.addEventListener("click", () => {
-            selectedBill = { kind: btn.dataset.kind, id: btn.dataset.kind === "table" ? btn.dataset.id : btn.dataset.id };
+            // dataset.id is always a string - a table session's own id really
+            // is a string (TBL-XXXXXX), but an order's id is a real number
+            // now, so only that branch needs coercion or every KitchenSystem
+            // lookup against selectedBill.id below silently returns undefined.
+            selectedBill = { kind: btn.dataset.kind, id: btn.dataset.kind === "order" ? Number(btn.dataset.id) : btn.dataset.id };
             selectedMethod = "Cash";
             renderBillingPage();
         });
@@ -327,6 +364,14 @@ async function renderBillDetail() {
     // from when the tab was opened. No separate save button - whatever's in
     // these fields is picked up when Settle is clicked (see below), same as
     // any other bill detail that's read fresh at settle time.
+    // An employee session gets customerPhone back pre-masked from the
+    // server (e.g. "9876XXXXXX" - see server.js's redactCustomerPhones()) -
+    // that string must never round-trip back into a save. It fails the
+    // server's own phone-shape check (contains letters), so tagInfo's
+    // auto-detect would misfile it as a NAME instead and overwrite the real
+    // one - readonly here, and skipped entirely from the settle payload
+    // below, rather than relying on the server rejecting it after the fact.
+    const phoneIsMasked = /^\d{4}X+$/.test(order?.customerPhone || "");
     const tagInfoHtml = order && !group
         ? `
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px; flex-wrap:wrap;">
@@ -335,8 +380,8 @@ async function renderBillDetail() {
                 <input id="billing-tag-table" type="text" maxlength="20" value="${escapeHtml(order.tableNumber || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
             </div>
             <div style="flex:0 1 220px;">
-                <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Phone / Username</label>
-                <input id="billing-tag-phone" type="text" maxlength="60" value="${escapeHtml(order.customerPhone || order.customerName || "")}" autocomplete="off" spellcheck="false" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px 8px; font-family:inherit; font-size:10px;" />
+                <label style="display:block; font-size:8px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:3px;">Phone / Username${phoneIsMasked ? " (manager+ only)" : ""}</label>
+                <input id="billing-tag-phone" type="text" maxlength="60" value="${escapeHtml(order.customerPhone || order.customerName || "")}" ${phoneIsMasked ? "readonly" : ""} autocomplete="off" spellcheck="false" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:${phoneIsMasked ? "var(--color-text-muted)" : "var(--color-text)"}; padding:6px 8px; font-family:inherit; font-size:10px;" />
             </div>
         </div>`
         : "";
@@ -692,7 +737,12 @@ async function renderBillDetail() {
             // order, never a table or a multi-order group - see tagInfoHtml.
             if (order && !group) {
                 await KitchenSystem.tagOrderInfo(order.id, {
-                    contact: detail.querySelector("#billing-tag-phone").value.trim(),
+                    // Omitted (not re-sent) when masked, rather than sent as-is -
+                    // server.js's tagInfo leaves customerPhone untouched when
+                    // contact is omitted; sending the masked placeholder back
+                    // would fail the phone-shape check and get misfiled as a
+                    // NAME instead, overwriting the real one. See phoneIsMasked.
+                    contact: phoneIsMasked ? undefined : detail.querySelector("#billing-tag-phone").value.trim(),
                     tableNumber: detail.querySelector("#billing-tag-table").value.trim()
                 });
             }

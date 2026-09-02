@@ -17,6 +17,7 @@ import { TableSessionsSystem } from "../features/table-sessions-logic.js";
 import { KitchenSystem } from "../features/kitchen-logic.js";
 import { SoundSystem } from "../features/sound-logic.js";
 import { NotificationSystem } from "../features/notification-logic.js";
+import { AddressSystem } from "../features/address-logic.js";
 
 // Mirrors app.js's KITCHEN_ROLES - inlined rather than imported since app.js
 // isn't set up as a module other files pull constants from (same pattern
@@ -98,6 +99,11 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
     const session = await AuthSystem.getSession();
     const breakdown = CartSystem.calculateBreakdown(cartItems, config);
     const isStaff = ["employee", "manager", "admin", "owner"].includes(session.role);
+    const isDelivery = !isStaff && window.getOrderType?.() === "delivery";
+    const savedAddresses = isDelivery ? await AddressSystem.list() : [];
+    if (isDelivery && !savedAddresses.some((a) => a.id === window.selectedDeliveryAddressId)) {
+        window.selectedDeliveryAddressId = savedAddresses.find((a) => a.isDefault)?.id ?? savedAddresses[0]?.id ?? null;
+    }
     const openTables = isStaff ? await TableSessionsSystem.list("open") : [];
     const loyalty = config.loyalty || { enabled: false, pointsPerRupeeSpent: 0, rupeeValuePerPoint: 0 };
     const canUseLoyalty = session.role === "customer" && loyalty.enabled && (session.loyaltyPoints || 0) > 0;
@@ -232,12 +238,35 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
             }
 
             ${
+                isDelivery
+                    ? `
+            <label style="display:block; font-size: 11px; color: var(--color-text-muted); margin-bottom: 12px;">
+                DELIVER TO
+                ${
+                    savedAddresses.length === 0
+                        ? `<p style="font-size:11px; color:var(--color-danger); margin:6px 0 0;">No saved addresses yet - add one below.</p>`
+                        : `
+                <select id="checkout-delivery-address" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px; font-family:inherit; margin-top:4px;">
+                    ${savedAddresses.map((a) => `<option value="${a.id}" ${a.id === window.selectedDeliveryAddressId ? "selected" : ""}>${escapeHtml(a.label)}${a.isDefault ? " (default)" : ""}</option>`).join("")}
+                </select>`
+                }
+                <button type="button" id="checkout-add-address" style="background:none; border:none; color:var(--color-accent); font-size:10px; text-decoration:underline; cursor:pointer; font-family:inherit; padding:0; margin-top:6px; display:block;">+ Add a new address</button>
+            </label>`
+                    : ""
+            }
+
+            ${
                 isStaff
                     ? `
             <div class="payment-options" style="display: grid; grid-template-columns: 1fr; gap: 10px;">
                 <button id="btn-checkout-staff" class="btn-pay" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 14px; font-weight: bold; cursor: pointer; text-transform: uppercase;">[ CHECKOUT ]</button>
             </div>`
-                    : `
+                    : isDelivery
+                      ? `
+            <div class="payment-options" style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                <button id="btn-pay-online" class="btn-pay" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 14px; font-weight: bold; cursor: pointer; text-transform: uppercase;">PAY ONLINE (UPI) - REQUIRED FOR DELIVERY</button>
+            </div>`
+                      : `
             <div class="payment-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <button id="btn-pay-cash" class="btn-pay" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 14px; font-weight: bold; cursor: pointer; text-transform: uppercase;">PAY CASH</button>
                 <button id="btn-pay-online" class="btn-pay" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: none; padding: 12px 6px; font-size: 14px; font-weight: bold; cursor: pointer; text-transform: uppercase;">PAY ONLINE (UPI)</button>
@@ -279,6 +308,16 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
     document.getElementById("btn-pay-cash")?.addEventListener("click", () => window.startCheckout("COUNTER"));
     document.getElementById("btn-pay-online")?.addEventListener("click", () => window.startCheckout("ONLINE"));
     document.getElementById("checkout-back-btn")?.addEventListener("click", () => window.closeModal());
+
+    if (isDelivery) {
+        document.getElementById("checkout-delivery-address")?.addEventListener("change", (e) => {
+            window.selectedDeliveryAddressId = Number(e.target.value);
+        });
+        document.getElementById("checkout-add-address")?.addEventListener("click", async () => {
+            const mod = await import("./address-modal.js");
+            mod.renderAddressModal();
+        });
+    }
 
     // "Attach to existing bill" - a staff-only typeahead against
     // GET /api/orders/search, mutually exclusive with the table select
@@ -335,7 +374,8 @@ export async function renderCheckoutModal(cartItems, serviceChargeActive, tipApp
                     // the dropdown doesn't close itself out from under the click.
                     btn.addEventListener("mousedown", (e) => {
                         e.preventDefault();
-                        const match = matches.find((o) => o.id === btn.dataset.id);
+                        // dataset.id is always a string - order.id is a real number.
+                        const match = matches.find((o) => o.id === Number(btn.dataset.id));
                         if (match) pickAttach(match);
                     });
                 });

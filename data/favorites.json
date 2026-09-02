@@ -1,26 +1,32 @@
 [
   {
-    "ownerKey": "guest:917230931024",
-    "itemId": 101
+    "itemId": 101,
+    "ownerType": "guest",
+    "ownerId": "917230931024"
   },
   {
-    "ownerKey": "guest:917230931024",
-    "itemId": 102
+    "itemId": 102,
+    "ownerType": "guest",
+    "ownerId": "917230931024"
   },
   {
-    "ownerKey": "guest:917230931024",
-    "itemId": 112
+    "itemId": 112,
+    "ownerType": "guest",
+    "ownerId": "917230931024"
   },
   {
-    "ownerKey": "guest:917230931024",
-    "itemId": 120
+    "itemId": 120,
+    "ownerType": "guest",
+    "ownerId": "917230931024"
   },
   {
-    "ownerKey": "guest:917230931024",
-    "itemId": 204
+    "itemId": 204,
+    "ownerType": "guest",
+    "ownerId": "917230931024"
   },
   {
-    "ownerKey": "guest:917230931024",
-    "itemId": 302
+    "itemId": 302,
+    "ownerType": "guest",
+    "ownerId": "917230931024"
   }
 ]

@@ -87,6 +87,18 @@ export const AuthSystem = {
         return data;
     },
 
+    async deleteAccount(password) {
+        const res = await fetch("/api/account/delete", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not delete account");
+        return data;
+    },
+
     async forgotPassword({ username, phone, newPassword }) {
         const res = await fetch("/api/auth/forgot-password", {
             method: "POST",

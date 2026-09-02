@@ -35,6 +35,13 @@ const fieldStyle =
 export function renderTableModal({ tableCount, table = null, onSave }) {
     document.getElementById("table-modal-overlay")?.remove();
     const isEdit = !!table;
+    // An employee session gets customerPhone back pre-masked from the
+    // server (e.g. "9876XXXXXX" - see server.js's redactCustomerPhones()).
+    // That string fails normalizePhone()'s digit-count check, so resaving
+    // it as-is would silently WIPE the real phone to blank on the very
+    // next unrelated edit (e.g. just fixing the table number) - readonly
+    // here, and omitted entirely from the save payload below.
+    const phoneIsMasked = /^\d{4}X+$/.test(table?.customerPhone || "");
 
     const overlay = document.createElement("div");
     overlay.id = "table-modal-overlay";
@@ -60,8 +67,8 @@ export function renderTableModal({ tableCount, table = null, onSave }) {
             <label for="tm-customer-name" style="font-size: 10px; color: var(--color-text-muted);">CUSTOMER NAME (OPTIONAL - for identifying repeat customers / discounts)</label>
             <input id="tm-customer-name" type="text" maxlength="60" value="${table ? escapeHtml(table.customerName || "") : ""}" style="${fieldStyle}" />
 
-            <label for="tm-customer-phone" style="font-size: 10px; color: var(--color-text-muted);">CUSTOMER PHONE (OPTIONAL)</label>
-            <input id="tm-customer-phone" type="tel" maxlength="15" value="${table ? escapeHtml(table.customerPhone || "") : ""}" style="${fieldStyle}" />
+            <label for="tm-customer-phone" style="font-size: 10px; color: var(--color-text-muted);">CUSTOMER PHONE (OPTIONAL)${phoneIsMasked ? " - MANAGER+ ONLY" : ""}</label>
+            <input id="tm-customer-phone" type="tel" maxlength="15" value="${table ? escapeHtml(table.customerPhone || "") : ""}" ${phoneIsMasked ? "readonly" : ""} style="${fieldStyle}${phoneIsMasked ? " color:var(--color-text-muted);" : ""}" />
 
             ${
                 !isEdit
@@ -86,9 +93,12 @@ export function renderTableModal({ tableCount, table = null, onSave }) {
         const tableNumberEl = document.getElementById("tm-table-number");
         const payload = {
             tableNumber: tableNumberEl ? Number(tableNumberEl.value) : null,
-            customerName: document.getElementById("tm-customer-name").value.trim(),
-            customerPhone: document.getElementById("tm-customer-phone").value.trim()
+            customerName: document.getElementById("tm-customer-name").value.trim()
         };
+        // Omitted (not resent) when masked - server.js's PATCH only touches
+        // customerPhone when the key is present at all, so leaving it out
+        // keeps the real number intact instead of wiping it to blank.
+        if (!phoneIsMasked) payload.customerPhone = document.getElementById("tm-customer-phone").value.trim();
         if (!isEdit) payload.note = document.getElementById("tm-note").value.trim();
 
         try {
@@ -261,17 +271,21 @@ export function renderTableBillModal({ table, onClose, onDismiss }) {
             const quantity = Math.max(1, parseInt(qtyInput?.value, 10) || 1);
             if (!id) return;
             try {
+                // A brand new order normally needs a phone (or an explicit
+                // staff guest-order bypass) - reuse the table's own phone if
+                // it was opened with one, so every order on the same tab
+                // stays attributed the same way, otherwise fall back to the
+                // same walk-in bypass staff already have for a fresh counter
+                // order. An employee session's table.customerPhone may be
+                // pre-masked (e.g. "9876XXXXXX") - that fails normalizePhone
+                // server-side, so it's treated the same as "no phone at all"
+                // here rather than sent through as if it were real.
+                const tablePhoneUsable = table.customerPhone && !/^\d{4}X+$/.test(table.customerPhone);
                 await KitchenSystem.pushOrder([{ id, quantity, size: "regular", milk: "regular", extras: [], notes: "" }], "COUNTER", {
                     tableSessionId: table.id,
                     orderType: "dine-in",
-                    // A brand new order normally needs a phone (or an
-                    // explicit staff guest-order bypass) - reuse the table's
-                    // own phone if it was opened with one, so every order on
-                    // the same tab stays attributed the same way, otherwise
-                    // fall back to the same walk-in bypass staff already have
-                    // for a fresh counter order.
-                    phone: table.customerPhone || null,
-                    guestOrder: !table.customerPhone
+                    phone: tablePhoneUsable ? table.customerPhone : null,
+                    guestOrder: !tablePhoneUsable
                 });
                 await refresh();
             } catch (e) {
