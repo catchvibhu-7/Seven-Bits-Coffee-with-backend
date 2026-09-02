@@ -7,6 +7,7 @@
  * save - this only builds the payload.
  */
 import { currencySymbol } from "../features/config-logic.js";
+import { renderImagePickerModal } from "./image-picker-modal.js";
 
 const fieldStyle =
     "width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 12px;";
@@ -67,6 +68,13 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
             <label style="font-size: 10px; color: var(--color-text-muted);">DESCRIPTION (OPTIONAL)</label>
             <input id="cb-description" type="text" maxlength="160" value="${combo ? escapeHtml(combo.description || "") : ""}" style="${fieldStyle}" />
 
+            <label style="font-size: 10px; color: var(--color-text-muted);">PHOTO (OPTIONAL)</label>
+            <div style="display:flex; gap:8px; margin: 4px 0 8px;">
+                <input id="cb-image-url" type="text" maxlength="500" placeholder="https://... or pick from the bucket" value="${combo?.imageUrl || ""}" style="${fieldStyle} margin:0; flex:1;" />
+                <button type="button" id="cb-image-pick" class="admin-btn-secondary" style="white-space:nowrap;">BROWSE</button>
+            </div>
+            <div id="cb-image-preview" style="margin: -2px 0 12px;"></div>
+
             <label style="font-size: 10px; color: var(--color-text-muted);">ITEMS IN THIS COMBO</label>
             <div id="cb-rows">${rowsHtml()}</div>
             <button id="cb-add-row" type="button" style="background:none; border:1px dashed var(--color-border); color: var(--color-text-muted); padding:6px 10px; font-size:10px; cursor:pointer; margin-bottom:12px; font-family:inherit;">+ ADD ITEM</button>
@@ -113,6 +121,28 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
     }
     wireRowEvents();
 
+    function updateImagePreview() {
+        const url = document.getElementById("cb-image-url").value.trim();
+        const preview = document.getElementById("cb-image-preview");
+        preview.innerHTML = url ? `<img style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--color-border);" />` : "";
+        const img = preview.querySelector("img");
+        if (img) {
+            img.addEventListener("error", () => (img.style.display = "none"));
+            img.src = url;
+        }
+    }
+    document.getElementById("cb-image-url").addEventListener("input", updateImagePreview);
+    updateImagePreview();
+
+    document.getElementById("cb-image-pick").addEventListener("click", () => {
+        renderImagePickerModal({
+            onSelect: (url) => {
+                document.getElementById("cb-image-url").value = url;
+                updateImagePreview();
+            }
+        });
+    });
+
     document.getElementById("cb-add-row").addEventListener("click", () => {
         rows.push({ id: menuItems[0]?.id ?? "", quantity: 1 });
         rerenderRows();
@@ -124,6 +154,7 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
         errorEl.textContent = "";
         const name = document.getElementById("cb-name").value.trim();
         const description = document.getElementById("cb-description").value.trim();
+        const imageUrl = document.getElementById("cb-image-url").value.trim();
         const price = Number(document.getElementById("cb-price").value);
 
         if (!name) return (errorEl.textContent = "Name is required");
@@ -131,7 +162,7 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
         if (rows.length < 2) return (errorEl.textContent = "A combo needs at least 2 items");
 
         try {
-            await onSave({ name, description, price, items: rows.map((r) => ({ id: Number(r.id), quantity: r.quantity })) });
+            await onSave({ name, description, price, imageUrl: imageUrl || null, items: rows.map((r) => ({ id: Number(r.id), quantity: r.quantity })) });
             overlay.remove();
         } catch (e) {
             errorEl.textContent = e.message || "Could not save combo";

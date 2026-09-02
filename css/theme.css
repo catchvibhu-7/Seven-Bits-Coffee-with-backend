@@ -2416,9 +2416,12 @@ input[type="checkbox"]:disabled {
     background-position: center;
     filter: grayscale(.5) contrast(1.12) brightness(.8);
     /* Placeholder pattern until Branding sets a real hero photo (see
-       applyBranding() in app.js) - same hatch language as an empty menu
+       renderHeroCarousel() in app.js) - same hatch language as an empty menu
        item's image slot, not a stock photo standing in for real content. */
     background-image: repeating-linear-gradient(135deg, rgba(249, 250, 251, .06) 0 6px, rgba(0, 0, 0, 0) 6px 14px);
+    /* Two of these divs are stacked (#home-hero-image-bg / -bg-b) and cross-
+       fade between hero photos by toggling opacity - see renderHeroCarousel(). */
+    transition: opacity 1.2s ease;
 }
 .home-hero-image-gradient {
     position: absolute;
@@ -2433,6 +2436,12 @@ input[type="checkbox"]:disabled {
     letter-spacing: 0.18em;
     color: var(--color-text-muted);
     text-transform: uppercase;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.home-hero-image-caption span:empty {
+    display: none;
 }
 
 .home-store-facts {

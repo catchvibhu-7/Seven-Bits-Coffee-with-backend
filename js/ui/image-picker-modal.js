@@ -16,6 +16,33 @@ function escapeHtml(str) {
     return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/** Themed stand-in for the native confirm() - this app never uses browser
+ *  prompt()/confirm() dialogs for staff-facing actions (they break the
+ *  terminal/monospace look). Sits above the image picker's own overlay. */
+function renderDeleteImageConfirm(onConfirm) {
+    document.getElementById("delete-image-confirm-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "delete-image-confirm-overlay";
+    overlay.className = "modal-overlay";
+    overlay.style.zIndex = "9100";
+    overlay.innerHTML = `
+        <div class="modal-content" style="border: 2px solid var(--color-danger); background: var(--color-surface); color: var(--color-text); padding: 26px; width: min(340px, 92vw); box-sizing: border-box; font-family: 'Courier New', monospace;">
+            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-danger); padding-bottom: 10px; margin-top:0; font-size: 1rem;">DELETE IMAGE</h2>
+            <p style="font-size:12px; margin: 0 0 18px;">Delete this image? This can't be undone.</p>
+            <div style="display: grid; gap: 10px;">
+                <button id="delete-image-confirm-yes" style="background: var(--color-danger); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">DELETE</button>
+                <button id="delete-image-confirm-no" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CANCEL</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById("delete-image-confirm-no").addEventListener("click", () => overlay.remove());
+    document.getElementById("delete-image-confirm-yes").addEventListener("click", () => {
+        overlay.remove();
+        onConfirm();
+    });
+}
+
 /**
  * @param {object} options
  * @param {(url: string) => void} options.onSelect - called with the chosen/uploaded image's URL
@@ -83,15 +110,16 @@ export function renderImagePickerModal({ onSelect }) {
             });
         });
         gridEl.querySelectorAll(".ip-delete").forEach((btn) => {
-            btn.addEventListener("click", async (e) => {
+            btn.addEventListener("click", (e) => {
                 e.stopPropagation();
-                if (!confirm("Delete this image?")) return;
-                try {
-                    await UploadsSystem.remove(btn.dataset.id);
-                    await refreshGrid();
-                } catch (err) {
-                    errorEl.textContent = err.message;
-                }
+                renderDeleteImageConfirm(async () => {
+                    try {
+                        await UploadsSystem.remove(btn.dataset.id);
+                        await refreshGrid();
+                    } catch (err) {
+                        errorEl.textContent = err.message;
+                    }
+                });
             });
         });
     }

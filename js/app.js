@@ -204,6 +204,48 @@ async function afterLoginSuccess(loginResult, proceed) {
     await proceed();
 }
 
+let heroCarouselTimer = null;
+
+/**
+ * Cross-fades between up to 5 admin-set hero photos (config.heroImages),
+ * each with its own title/subtitle caption. Two stacked bg layers
+ * (#home-hero-image-bg / -bg-b) alternate opacity on a timer - avoids
+ * building N slide elements for a max of 5 images. A single image (or
+ * none) just renders once with no timer running.
+ */
+function renderHeroCarousel(images) {
+    clearInterval(heroCarouselTimer);
+    heroCarouselTimer = null;
+    const bgA = document.getElementById("home-hero-image-bg");
+    const bgB = document.getElementById("home-hero-image-bg-b");
+    const titleEl = document.getElementById("home-hero-caption-title");
+    const subtitleEl = document.getElementById("home-hero-caption-subtitle");
+    if (!bgA || !bgB) return;
+
+    const showSlide = (el, img) => {
+        el.style.backgroundImage = img?.url ? `url(${JSON.stringify(img.url).slice(1, -1)})` : "";
+        if (titleEl) titleEl.textContent = img?.title || (images.length ? "" : "The counter");
+        if (subtitleEl) subtitleEl.textContent = img?.subtitle || "";
+    };
+
+    showSlide(bgA, images[0] || null);
+    bgA.style.opacity = "1";
+    bgB.style.opacity = "0";
+    if (images.length < 2) return;
+
+    let index = 0;
+    let showingA = true;
+    heroCarouselTimer = setInterval(() => {
+        index = (index + 1) % images.length;
+        const incoming = showingA ? bgB : bgA;
+        const outgoing = showingA ? bgA : bgB;
+        showSlide(incoming, images[index]);
+        incoming.style.opacity = "1";
+        outgoing.style.opacity = "0";
+        showingA = !showingA;
+    }, 6000);
+}
+
 /**
  * Applies the admin's Branding settings (colors/theme/hero/logo) as CSS
  * custom properties + element updates - called on boot and immediately
@@ -239,15 +281,7 @@ window.applyBranding = (config) => {
 
     document.body.classList.toggle("theme-light", config.theme === "light");
 
-    const heroEl = document.getElementById("home-hero-image-bg");
-    if (heroEl) {
-        // Leaving this empty (no heroImageUrl set) keeps the hatch-pattern
-        // placeholder from theme.css's .home-hero-image-bg rule rather than
-        // forcing a stock photo in as a stand-in for a real storefront shot.
-        heroEl.style.backgroundImage = config.heroImageUrl ? `url(${JSON.stringify(config.heroImageUrl).slice(1, -1)})` : "";
-    }
-    const captionEl = document.getElementById("home-hero-caption");
-    if (captionEl) captionEl.textContent = (config.heroCaptionLabel || "The counter") + (config.footer?.address ? ` · ${config.footer.address}` : "");
+    renderHeroCarousel(config.heroImages || []);
 
     const logoEl = document.getElementById("site-logo");
     if (logoEl) {
@@ -1624,7 +1658,7 @@ function renderMenu(filterQuery = "") {
             const comboEl = document.createElement("div");
             comboEl.className = "menu-item";
             comboEl.innerHTML = `
-                <div class="menu-item-banner"><span class="icon icon-cake"></span></div>
+                <div class="menu-item-banner">${combo.imageUrl ? `<img src="${combo.imageUrl}" alt="" class="menu-item-photo" />` : `<span class="icon icon-cake"></span>`}</div>
                 <div class="info">
                     <div class="name">${escapeHtml(combo.name)}</div>
                     <div class="story">${itemList}${combo.description ? ` &middot; ${escapeHtml(combo.description)}` : ""}</div>

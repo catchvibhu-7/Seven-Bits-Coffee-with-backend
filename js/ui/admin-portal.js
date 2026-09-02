@@ -122,6 +122,118 @@ function escapeHtmlAttr(str) {
     return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+const MAX_HERO_IMAGES = 5;
+
+/** Manage the home page's cycling hero photos (up to 5, each with its own
+ *  title/subtitle - see renderHeroCarousel() in app.js). A dedicated modal
+ *  rather than renderSectionEditModal's generic field list, since this
+ *  needs repeatable add/remove rows, which that framework doesn't support. */
+function renderHeroImagesEditModal(heroImages, onSaved) {
+    document.getElementById("hero-images-overlay")?.remove();
+    // Deep-copied working set - only written back to config on SAVE.
+    let rows = heroImages.map((h) => ({ ...h }));
+
+    const overlay = document.createElement("div");
+    overlay.id = "hero-images-overlay";
+    overlay.className = "modal-overlay";
+    overlay.style.zIndex = "5500";
+    document.body.appendChild(overlay);
+
+    function rowHtml(row, idx) {
+        return `
+            <div class="hero-image-row" data-idx="${idx}" data-url="${escapeHtmlAttr(row.url || "")}" style="display:flex; gap:10px; align-items:flex-start; border:1px solid var(--color-border); padding:10px; margin-bottom:10px;">
+                <img src="${escapeHtmlAttr(row.url || "")}" alt="" style="width:70px; height:52px; object-fit:cover; background:var(--color-bg); border:1px solid var(--color-border); flex-shrink:0;" />
+                <div style="flex:1; min-width:0;">
+                    <button type="button" class="admin-btn-secondary hero-browse-btn" style="margin-bottom:6px;">${row.url ? "CHANGE IMAGE" : "CHOOSE IMAGE"}</button>
+                    <input type="text" class="hero-title-input" placeholder="Title (e.g. The counter)" maxlength="60" value="${escapeHtmlAttr(row.title || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:12px; margin-bottom:6px;" />
+                    <input type="text" class="hero-subtitle-input" placeholder="Secondary text (e.g. address, a promo line)" maxlength="100" value="${escapeHtmlAttr(row.subtitle || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:12px;" />
+                </div>
+                <button type="button" class="admin-btn-danger hero-remove-btn">REMOVE</button>
+            </div>`;
+    }
+
+    function render() {
+        overlay.innerHTML = `
+            <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 26px; width: min(560px, 92vw); max-height: 85vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
+                <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">HERO IMAGES</h2>
+                <p class="admin-help-text" style="margin-top:0;">Cycles through these on the home page, one at a time. Each can have its own title and secondary text (e.g. an address, or a promo line) - up to ${MAX_HERO_IMAGES}.</p>
+                <p id="hero-images-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 11px; min-height: 12px;"></p>
+                <div id="hero-images-list">${rows.map(rowHtml).join("") || `<p class="admin-help-text">No hero images yet - the home page shows a placeholder pattern.</p>`}</div>
+                ${rows.length < MAX_HERO_IMAGES ? `<button type="button" class="admin-btn-secondary" id="hero-image-add">+ ADD HERO IMAGE</button>` : ""}
+                <div style="display: grid; gap: 10px; margin-top: 18px;">
+                    <button id="hero-images-save" class="admin-btn-primary">SAVE</button>
+                    <button id="hero-images-cancel" class="admin-btn-secondary">CANCEL</button>
+                </div>
+            </div>
+        `;
+
+        // Title/subtitle only live in the DOM as the admin types (re-rendering
+        // on every keystroke would fight the caret) - any mutation that calls
+        // render() again must pull the current input values back into `rows`
+        // first, or a since-typed title/subtitle on another row silently
+        // reverts when a row is added/removed/re-imaged.
+        function syncRowsFromDom() {
+            overlay.querySelectorAll(".hero-image-row").forEach((rowEl) => {
+                const idx = Number(rowEl.dataset.idx);
+                rows[idx].title = rowEl.querySelector(".hero-title-input").value;
+                rows[idx].subtitle = rowEl.querySelector(".hero-subtitle-input").value;
+            });
+        }
+
+        overlay.querySelectorAll(".hero-image-row").forEach((rowEl) => {
+            const idx = Number(rowEl.dataset.idx);
+            rowEl.querySelector(".hero-browse-btn").addEventListener("click", () => {
+                renderImagePickerModal({
+                    onSelect: (url) => {
+                        syncRowsFromDom();
+                        rows[idx].url = url;
+                        render();
+                    }
+                });
+            });
+            rowEl.querySelector(".hero-remove-btn").addEventListener("click", () => {
+                syncRowsFromDom();
+                rows.splice(idx, 1);
+                render();
+            });
+        });
+        document.getElementById("hero-image-add")?.addEventListener("click", () => {
+            syncRowsFromDom();
+            rows.push({ url: "", title: "", subtitle: "" });
+            render();
+        });
+        document.getElementById("hero-images-cancel").addEventListener("click", () => overlay.remove());
+        document.getElementById("hero-images-save").addEventListener("click", async () => {
+            const errorEl = document.getElementById("hero-images-error");
+            errorEl.textContent = "";
+            // Title/subtitle are read live from their inputs (not re-rendered
+            // on every keystroke, so `rows` only has url/remove/add changes
+            // until now) - url comes from the row's data-url, kept in sync by
+            // the browse picker's render() call above.
+            const payload = [...overlay.querySelectorAll(".hero-image-row")].map((rowEl) => ({
+                url: rowEl.dataset.url,
+                title: rowEl.querySelector(".hero-title-input").value.trim(),
+                subtitle: rowEl.querySelector(".hero-subtitle-input").value.trim()
+            }));
+            if (payload.some((h) => !h.url)) {
+                errorEl.textContent = "Choose an image for every row, or remove the empty one.";
+                return;
+            }
+            try {
+                const updated = await AdminConfig.saveSettings({ heroImages: payload });
+                if (window.applyBranding) window.applyBranding(updated);
+                overlay.remove();
+                ok("Hero images saved");
+                onSaved?.();
+            } catch (e) {
+                errorEl.textContent = e.message;
+            }
+        });
+    }
+
+    render();
+}
+
 export const AdminPortal = {
     menu: { sections: [], items: [] },
     combos: [],
@@ -2066,6 +2178,10 @@ export const AdminPortal = {
                 <input type="text" id="customer-search" maxlength="60" value="${escapeHtmlAttr(this.customerSearchQuery)}" placeholder="Start typing…" />
             </div>
             <div id="customers-results"></div>
+            <div style="margin-top:24px; border-top:1px solid var(--color-border); padding-top:14px;">
+                <button type="button" class="admin-btn-secondary" id="deleted-customers-toggle">SHOW DELETED ACCOUNTS</button>
+                <div id="deleted-customers-results" style="display:none; margin-top:12px;"></div>
+            </div>
         `;
 
         const searchInput = document.getElementById("customer-search");
@@ -2079,6 +2195,53 @@ export const AdminPortal = {
         });
         searchInput.focus();
         searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+
+        const deletedToggle = document.getElementById("deleted-customers-toggle");
+        const deletedResults = document.getElementById("deleted-customers-results");
+        let deletedLoaded = false;
+        deletedToggle.addEventListener("click", async () => {
+            const showing = deletedResults.style.display !== "none";
+            if (showing) {
+                deletedResults.style.display = "none";
+                deletedToggle.textContent = "SHOW DELETED ACCOUNTS";
+                return;
+            }
+            deletedResults.style.display = "block";
+            deletedToggle.textContent = "HIDE DELETED ACCOUNTS";
+            if (deletedLoaded) return;
+            deletedLoaded = true;
+            deletedResults.innerHTML = `<p class="admin-help-text">Loading&hellip;</p>`;
+            const res = await fetch("/api/admin/customers?deleted=true", { credentials: "include" });
+            const deleted = res.ok ? await res.json() : [];
+            deletedResults.innerHTML =
+                deleted.length === 0
+                    ? `<p class="admin-help-text">No deleted accounts.</p>`
+                    : `
+                    <p class="admin-help-text">Self-deleted accounts - name/phone are scrubbed, but past orders are kept for reconciliation.</p>
+                    <table class="admin-table">
+                        <thead><tr><th>USERNAME</th><th>ORDERS</th><th></th></tr></thead>
+                        <tbody>
+                            ${deleted
+                                .map(
+                                    (c) => `
+                                <tr>
+                                    <td style="color:var(--color-text-muted); font-size:11px;">${escapeHtmlAttr(c.username || "—")}</td>
+                                    <td>${c.orderCount}</td>
+                                    <td style="text-align:right;"><button class="admin-btn" data-view-customer="${c.id}" style="padding:4px 8px; font-size:10px;">VIEW</button></td>
+                                </tr>
+                            `
+                                )
+                                .join("")}
+                        </tbody>
+                    </table>
+                `;
+            deletedResults.querySelectorAll("[data-view-customer]").forEach((btn) =>
+                btn.addEventListener("click", () => {
+                    this.viewingCustomerId = Number(btn.dataset.viewCustomer);
+                    this.renderCustomerDetail(root);
+                })
+            );
+        });
 
         await this.renderCustomerResults(root);
     },
@@ -3192,6 +3355,7 @@ export const AdminPortal = {
 
                 <div id="brand-admin-text-section"></div>
                 <div id="brand-images-section"></div>
+                <div id="brand-hero-images-section"></div>
 
                 <div class="readonly-section">
                     <div class="readonly-section-header"><h3 style="margin:0;">CUSTOM ICONS</h3></div>
@@ -3324,7 +3488,6 @@ export const AdminPortal = {
             title: "IMAGES",
             canEdit,
             fields: [
-                { label: "Hero / storefront image", value: c.heroImageUrl || "" },
                 { label: "Logo image", value: c.logoUrl || "" },
                 { label: "Horizontal logo", value: c.logoWideUrl || "" }
             ],
@@ -3334,12 +3497,11 @@ export const AdminPortal = {
                     title: "EDIT IMAGES",
                     width: "480px",
                     fields: [
-                        { id: "bf-hero", label: "Hero / storefront image (home page - blank keeps the default icon)", value: c.heroImageUrl || "", maxlength: 500, placeholder: "https://... or pick from the bucket" },
                         { id: "bf-logo", label: "Logo image (top nav - blank hides it)", value: c.logoUrl || "", maxlength: 500, placeholder: "https://... or pick from the bucket" },
                         { id: "bf-logo-wide", label: "Horizontal logo (optional - one wide image instead of icon + name)", value: c.logoWideUrl || "", maxlength: 500, placeholder: "https://... or pick from the bucket" }
                     ],
                     onSave: async (v) => {
-                        await AdminConfig.saveSettings({ heroImageUrl: v["bf-hero"].trim(), logoUrl: v["bf-logo"].trim(), logoWideUrl: v["bf-logo-wide"].trim() });
+                        await AdminConfig.saveSettings({ logoUrl: v["bf-logo"].trim(), logoWideUrl: v["bf-logo-wide"].trim() });
                         if (window.applyBranding) window.applyBranding(AdminConfig.settings);
                         ok("Images saved");
                         this.renderBranding(root);
@@ -3356,10 +3518,16 @@ export const AdminPortal = {
                     btn.addEventListener("click", () => renderImagePickerModal({ onSelect: (url) => (input.value = url) }));
                     input.insertAdjacentElement("afterend", btn);
                 };
-                addBrowseButton("bf-hero");
                 addBrowseButton("bf-logo");
                 addBrowseButton("bf-logo-wide");
             }
+        });
+
+        renderReadOnlySection(document.getElementById("brand-hero-images-section"), {
+            title: "HOME PAGE HERO",
+            canEdit,
+            fields: [{ label: "Hero images", value: `${(c.heroImages || []).length} / 5 set - cycles on the home page` }],
+            onEdit: () => renderHeroImagesEditModal(c.heroImages || [], () => this.renderBranding(root))
         });
 
         if (canEdit) {
@@ -3370,7 +3538,7 @@ export const AdminPortal = {
             document.getElementById("branding-reset").addEventListener("click", () => {
                 renderInfoModal({
                     title: "RESET BRANDING",
-                    message: "Reset theme, colors, hero image, logo, and admin panel text size/color back to the original defaults? Shop identity, home page content, and store details are not affected.",
+                    message: "Reset theme, colors, hero images, logo, and admin panel text size/color back to the original defaults? Shop identity, home page content, and store details are not affected.",
                     confirmText: "RESET",
                     cancelText: "CANCEL",
                     onConfirm: async () => {
@@ -3553,8 +3721,7 @@ export const AdminPortal = {
                 { label: "Shop name", value: c.shopName || "" },
                 { label: "Home page badge", value: c.heroBadgeText || "" },
                 { label: "Home page about text", value: c.heroTagline || "" },
-                { label: "Receipt footer message", value: c.receiptFooterText || "" },
-                { label: "Hero image caption", value: c.heroCaptionLabel || "" }
+                { label: "Receipt footer message", value: c.receiptFooterText || "" }
             ],
             onEdit: () =>
                 renderSectionEditModal({
@@ -3564,8 +3731,7 @@ export const AdminPortal = {
                         { id: "cfg-shop-name", label: "Shop name", value: c.shopName || "", maxlength: 60 },
                         { id: "cfg-hero-badge", label: 'Home page badge (e.g. "Est. 2019 · 8-bit roastery")', value: c.heroBadgeText || "", maxlength: 80 },
                         { id: "cfg-hero-tagline", label: "Home page about text", value: c.heroTagline || "", type: "textarea", maxlength: 400, rows: 3 },
-                        { id: "cfg-receipt-footer", label: "Receipt footer message (printed under the logo on the bill)", value: c.receiptFooterText || "", maxlength: 120 },
-                        { id: "cfg-hero-caption-label", label: "Hero image caption (label before the address)", value: c.heroCaptionLabel || "", maxlength: 40, placeholder: "The counter" }
+                        { id: "cfg-receipt-footer", label: "Receipt footer message (printed under the logo on the bill)", value: c.receiptFooterText || "", maxlength: 120 }
                     ],
                     onSave: async (v) => {
                         const shopName = v["cfg-shop-name"].trim();
@@ -3574,8 +3740,7 @@ export const AdminPortal = {
                             shopName,
                             heroBadgeText: v["cfg-hero-badge"],
                             heroTagline: v["cfg-hero-tagline"],
-                            receiptFooterText: v["cfg-receipt-footer"],
-                            heroCaptionLabel: v["cfg-hero-caption-label"]
+                            receiptFooterText: v["cfg-receipt-footer"]
                         });
                         if (window.applyBranding) window.applyBranding(updated);
                         ok("Shop identity saved");
