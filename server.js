@@ -195,7 +195,11 @@ if (!fs.existsSync(CONFIG_FILE)) {
       textMuted: "#888888",
       secondary: "#22d3ee"
     },
-    heroImageUrl: "",
+    // Home page hero photo(s) - a shop can set up to 5, each with its own
+    // title/subtitle, and the home page cycles through them (see
+    // renderHeroCarousel() in app.js). An empty array keeps the default
+    // hatch-pattern placeholder.
+    heroImages: [],
     logoUrl: "",
     // A single wide image combining wordmark + mark, shown instead of the
     // separate logo icon + shop-name text in the nav rail/top bar when set -
@@ -219,9 +223,6 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // Printed at the bottom of the customer bill (window.printBill, app.js) -
     // was a hardcoded "- G=7 | Processed with precision -" signature.
     receiptFooterText: "Thank you for visiting!",
-    // Label under the home page's storefront photo, before the address
-    // (e.g. "The counter · 123 Main St") - was hardcoded as "The counter".
-    heroCaptionLabel: "The counter",
     // Admin-added icon options beyond the built-in set (see Branding tab).
     // Key -> image URL; menu items reference these by key just like the
     // built-in CSS icon names.
@@ -312,6 +313,25 @@ if (fs.existsSync(COUPONS_FILE)) {
   }
 })();
 
+// One-time boot migration: the single heroImageUrl/heroCaptionLabel fields
+// became a heroImages array (up to 5, each with its own title/subtitle) so
+// a shop can cycle through several storefront photos. Carries forward
+// whatever single image/caption a shop already had as the array's first
+// (only) entry, rather than silently dropping it.
+(function migrateHeroImages() {
+  const config = readJson(CONFIG_FILE, {});
+  if (config.heroImageUrl !== undefined) {
+    if (config.heroImages === undefined) {
+      config.heroImages = config.heroImageUrl
+        ? [{ url: config.heroImageUrl, title: config.heroCaptionLabel || "", subtitle: "" }]
+        : [];
+    }
+    delete config.heroImageUrl;
+    delete config.heroCaptionLabel;
+    writeJson(CONFIG_FILE, config);
+  }
+})();
+
 const DEFAULT_BRANDING = {
   theme: "dark",
   colors: {
@@ -322,7 +342,7 @@ const DEFAULT_BRANDING = {
     textMuted: "#888888",
     secondary: "#22d3ee"
   },
-  heroImageUrl: "",
+  heroImages: [],
   logoUrl: "",
   logoWideUrl: "",
   // Font size (pt) + color for two specific text categories in the admin
@@ -1641,8 +1661,14 @@ route("GET", /^\/api\/admin\/customers\/?$/, async (req, res, params, url) => {
   const session = requireRole(req, res, MANAGER_UP_ROLES);
   if (!session) return;
   const search = (url.searchParams.get("search") || "").trim().toLowerCase();
+  const wantDeleted = url.searchParams.get("deleted") === "true";
   const orders = readJson(ORDERS_FILE, []);
-  let customers = readJson(USERS_FILE, []).filter((u) => u.role === "customer");
+  // Deleted accounts (self-service account deletion) stay out of the main
+  // customer list by default - their name/phone are already scrubbed, so
+  // they're not useful to search/browse alongside real customers. Fetch
+  // them separately with ?deleted=true (see admin-portal.js's collapsed
+  // "Deleted accounts" section) rather than filtering client-side.
+  let customers = readJson(USERS_FILE, []).filter((u) => u.role === "customer" && Boolean(u.accountDeleted) === wantDeleted);
   if (search) {
     const searchDigits = search.replace(/\D/g, "");
     customers = customers.filter((u) => {
@@ -2931,9 +2957,12 @@ route("POST", /^\/api\/combos\/?$/, async (req, res) => {
   if (items.length < 2) {
     return sendJson(res, 400, { error: "A combo needs at least 2 valid menu items" });
   }
+  if (body.imageUrl && String(body.imageUrl).length > 8000) {
+    return sendJson(res, 400, { error: "Image URL is too long" });
+  }
 
   const nextId = combos.length ? Math.max(...combos.map((c) => c.id)) + 1 : 1;
-  const combo = { id: nextId, name, description: String(body.description || ""), items, price, active: true };
+  const combo = { id: nextId, name, description: String(body.description || ""), items, price, imageUrl: body.imageUrl ? String(body.imageUrl).trim() : null, active: true };
   combos.push(combo);
   writeJson(COMBOS_FILE, combos);
   sendJson(res, 201, combo);
@@ -2950,6 +2979,12 @@ route("PATCH", /^\/api\/combos\/(?<id>\d+)\/?$/, async (req, res, params) => {
   if (body.name !== undefined) combo.name = String(body.name).trim();
   if (body.description !== undefined) combo.description = String(body.description);
   if (body.active !== undefined) combo.active = Boolean(body.active);
+  if (body.imageUrl !== undefined) {
+    if (body.imageUrl && String(body.imageUrl).length > 8000) {
+      return sendJson(res, 400, { error: "Image URL is too long" });
+    }
+    combo.imageUrl = body.imageUrl ? String(body.imageUrl).trim() : null;
+  }
   if (body.price !== undefined) {
     const price = Number(body.price);
     if (!Number.isFinite(price) || price <= 0) return sendJson(res, 400, { error: "Invalid price" });
@@ -3242,13 +3277,11 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "sgstRate",
     "serviceChargeRate",
     "theme",
-    "heroImageUrl",
     "logoUrl",
     "logoWideUrl",
     "upiVpa",
     "upiPayeeName",
     "defaultNavLayout",
-    "heroCaptionLabel",
     "razorpayEnabled",
     "razorpayKeyId"
   ];
@@ -3288,14 +3321,18 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   }
   if (typeof config.gstNumber === "string") config.gstNumber = Array.from(config.gstNumber).filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; }).join("").trim().toUpperCase().slice(0, 20);
   if (typeof config.receiptFooterText === "string") config.receiptFooterText = config.receiptFooterText.trim().slice(0, 120);
-  if (typeof config.heroCaptionLabel === "string") {
-    config.heroCaptionLabel = Array.from(config.heroCaptionLabel)
-      .filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; })
-      .join("")
-      .trim()
-      .slice(0, 40);
-  }
   if (typeof config.heroTagline === "string") config.heroTagline = config.heroTagline.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400);
+  if (body.heroImages !== undefined) {
+    if (!Array.isArray(body.heroImages)) return sendJson(res, 400, { error: "heroImages must be a list" });
+    if (body.heroImages.length > 5) return sendJson(res, 400, { error: "You can set up to 5 hero images" });
+    config.heroImages = body.heroImages
+      .map((h) => ({
+        url: String(h?.url || "").trim().slice(0, 8000),
+        title: String(h?.title || "").trim().slice(0, 60),
+        subtitle: String(h?.subtitle || "").trim().slice(0, 100)
+      }))
+      .filter((h) => h.url);
+  }
   if (typeof config.heroBadgeText === "string") {
     config.heroBadgeText = Array.from(config.heroBadgeText)
       .filter(function (ch) { return ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127; })
@@ -3496,8 +3533,14 @@ function findUploadUsage(url) {
   menu.items.forEach((i) => {
     if (i.imageUrl === url) usedIn.push(`menu item "${i.name}"`);
   });
+  const combos = readJson(COMBOS_FILE, []);
+  combos.forEach((c) => {
+    if (c.imageUrl === url) usedIn.push(`combo "${c.name}"`);
+  });
   const config = readJson(CONFIG_FILE, {});
-  if (config.heroImageUrl === url) usedIn.push("home page hero image");
+  (config.heroImages || []).forEach((h) => {
+    if (h.url === url) usedIn.push(`home page hero image${h.title ? ` ("${h.title}")` : ""}`);
+  });
   if (config.logoUrl === url) usedIn.push("logo");
   if (config.logoWideUrl === url) usedIn.push("wide logo");
   Object.entries(config.customIcons || {}).forEach(([key, iconUrl]) => {
@@ -3834,7 +3877,7 @@ route("POST", /^\/api\/config\/reset-branding\/?$/, async (req, res) => {
   const config = readJson(CONFIG_FILE, {});
   config.theme = DEFAULT_BRANDING.theme;
   config.colors = { ...DEFAULT_BRANDING.colors };
-  config.heroImageUrl = DEFAULT_BRANDING.heroImageUrl;
+  config.heroImages = [...DEFAULT_BRANDING.heroImages];
   config.logoUrl = DEFAULT_BRANDING.logoUrl;
   config.logoWideUrl = DEFAULT_BRANDING.logoWideUrl;
   config.textStyles = {
@@ -3869,7 +3912,7 @@ route("POST", /^\/api\/branding-profiles\/?$/, async (req, res) => {
   profiles[name] = {
     theme: config.theme,
     colors: config.colors,
-    heroImageUrl: config.heroImageUrl,
+    heroImages: config.heroImages,
     logoUrl: config.logoUrl,
     logoWideUrl: config.logoWideUrl
   };
@@ -3887,7 +3930,7 @@ route("POST", /^\/api\/branding-profiles\/(?<name>[^/]+)\/activate\/?$/, async (
   const config = readJson(CONFIG_FILE, {});
   config.theme = profile.theme;
   config.colors = profile.colors;
-  config.heroImageUrl = profile.heroImageUrl;
+  config.heroImages = profile.heroImages || [];
   config.logoUrl = profile.logoUrl;
   config.logoWideUrl = profile.logoWideUrl;
   writeJson(CONFIG_FILE, config);

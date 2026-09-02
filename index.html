@@ -121,10 +121,17 @@
                             <button id="home-hero-arcade-btn" class="home-hero-secondary" style="display:none;">Arcade</button>
                         </div>
                     </div>
+                    <!-- Up to 5 admin-set photos cycle here (see renderHeroCarousel()
+                         in app.js) - two stacked bg layers crossfade between them,
+                         each with its own title/subtitle caption. -->
                     <div class="home-hero-image">
-                        <div class="home-hero-image-bg" id="home-hero-image-bg"></div>
+                        <div class="home-hero-image-bg" id="home-hero-image-bg" style="opacity:1;"></div>
+                        <div class="home-hero-image-bg" id="home-hero-image-bg-b" style="opacity:0;"></div>
                         <div class="home-hero-image-gradient"></div>
-                        <span class="home-hero-image-caption" id="home-hero-caption">The counter</span>
+                        <span class="home-hero-image-caption">
+                            <span id="home-hero-caption-title">The counter</span>
+                            <span id="home-hero-caption-subtitle"></span>
+                        </span>
                     </div>
                 </div>
 
