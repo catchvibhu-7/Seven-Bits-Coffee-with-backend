@@ -11,6 +11,7 @@
 import { AddressSystem } from "../features/address-logic.js";
 import { StoreSystem } from "../features/store-logic.js";
 import { escapeHtml, TRASH_ICON } from "../features/html-utils.js";
+import { t } from "../features/i18n-logic.js";
 
 // Central-India fallback when nothing better is known (no store selected, or
 // the selected store has no lat/lng of its own yet) - just needs to open
@@ -34,7 +35,7 @@ function ensureLeaflet() {
         const script = document.createElement("script");
         script.src = "/js/vendor/leaflet.js";
         script.onload = () => resolve();
-        script.onerror = () => reject(new Error("Could not load the map"));
+        script.onerror = () => reject(new Error(t("address.mapLoadFailed")));
         document.body.appendChild(script);
     });
     return leafletLoadPromise;
@@ -58,10 +59,10 @@ export function renderAddressModal() {
         addresses = await AddressSystem.list();
         overlay.innerHTML = `
             <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(420px, 92vw); max-height: 85vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
-                <h2 class="modal-title-header">MY ADDRESSES</h2>
+                <h2 class="modal-title-header">${t("address.myAddresses")}</h2>
                 ${
                     addresses.length === 0
-                        ? `<p style="font-size:12px; color:var(--color-text-muted);">No saved addresses yet.</p>`
+                        ? `<p style="font-size:12px; color:var(--color-text-muted);">${t("address.noSavedAddresses")}</p>`
                         : addresses
                               .map(
                                   (a) => `
@@ -69,23 +70,23 @@ export function renderAddressModal() {
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
                             <div>
                                 <strong style="font-size:12px;">${escapeHtml(a.label)}</strong>
-                                ${a.isDefault ? `<span style="font-size:9px; color:var(--color-accent); margin-left:6px; text-transform:uppercase;">Default</span>` : ""}
+                                ${a.isDefault ? `<span style="font-size:9px; color:var(--color-accent); margin-left:6px; text-transform:uppercase;">${t("address.defaultTag")}</span>` : ""}
                                 ${a.addressText ? `<div style="font-size:11px; color:var(--color-text-muted); margin-top:4px;">${escapeHtml(a.addressText)}</div>` : ""}
                                 ${a.landmark || a.city || a.state || a.pincode ? `<div style="font-size:11px; color:var(--color-text-muted); margin-top:2px;">${[a.landmark, a.city, a.state, a.pincode].filter(Boolean).map(escapeHtml).join(" &middot; ")}</div>` : ""}
                             </div>
                         </div>
                         <div style="display:flex; gap:6px; margin-top:8px;">
-                            <button class="admin-btn-secondary" data-edit-address="${a.id}" style="font-size:10px; padding:5px 8px;">EDIT</button>
-                            <button class="icon-btn icon-btn-danger" data-delete-address="${a.id}" title="Delete address ${escapeHtml(a.label)}" aria-label="Delete address ${escapeHtml(a.label)}">${TRASH_ICON}</button>
-                            ${!a.isDefault ? `<button class="admin-btn-secondary" data-default-address="${a.id}" style="font-size:10px; padding:5px 8px;">SET DEFAULT</button>` : ""}
+                            <button class="admin-btn-secondary" data-edit-address="${a.id}" style="font-size:10px; padding:5px 8px;">${t("common.edit")}</button>
+                            <button class="icon-btn icon-btn-danger" data-delete-address="${a.id}" title="${t("address.deleteAddressAria", { label: escapeHtml(a.label) })}" aria-label="${t("address.deleteAddressAria", { label: escapeHtml(a.label) })}">${TRASH_ICON}</button>
+                            ${!a.isDefault ? `<button class="admin-btn-secondary" data-default-address="${a.id}" style="font-size:10px; padding:5px 8px;">${t("address.setDefault")}</button>` : ""}
                         </div>
                     </div>
                 `
                               )
                               .join("")
                 }
-                <button type="button" class="admin-btn-primary" id="addr-add-new" style="width:100%; margin-top:10px;">+ ADD ADDRESS</button>
-                <button id="addr-close" class="btn-close" style="margin-top: 15px; width: 100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CLOSE</button>
+                <button type="button" class="admin-btn-primary" id="addr-add-new" style="width:100%; margin-top:10px;">${t("address.addAddress")}</button>
+                <button id="addr-close" class="btn-close" style="margin-top: 15px; width: 100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">${t("common.close")}</button>
             </div>
         `;
 
@@ -119,42 +120,42 @@ export function renderAddressModal() {
     async function renderForm(existing) {
         overlay.innerHTML = `
             <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(460px, 92vw); max-height: 90vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
-                <h2 class="modal-title-header">${existing ? "EDIT ADDRESS" : "ADD ADDRESS"}</h2>
+                <h2 class="modal-title-header">${existing ? t("address.editAddressTitle") : t("address.addAddressTitle")}</h2>
                 <p id="addr-form-error" style="color:var(--color-danger); font-size: 11px; margin: 0 0 8px;"></p>
-                <label for="addr-label" class="field-hint">LABEL (e.g. Home, Office)</label>
+                <label for="addr-label" class="field-hint">${t("address.labelFieldHint")}</label>
                 <input id="addr-label" type="text" maxlength="40" value="${escapeHtml(existing?.label || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
-                <label for="addr-text" class="field-hint">ADDRESS (house/street, shown to staff - not used to place the pin)</label>
+                <label for="addr-text" class="field-hint">${t("address.addressFieldHint")}</label>
                 <textarea id="addr-text" maxlength="200" rows="2" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px; resize:vertical;">${escapeHtml(existing?.addressText || "")}</textarea>
-                <label for="addr-landmark" class="field-hint">LANDMARK (optional)</label>
+                <label for="addr-landmark" class="field-hint">${t("address.landmarkFieldHint")}</label>
                 <input id="addr-landmark" type="text" maxlength="100" value="${escapeHtml(existing?.landmark || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                 <div style="display:flex; gap:10px;">
                     <div style="flex:2;">
-                        <label for="addr-city" class="field-hint">CITY</label>
+                        <label for="addr-city" class="field-hint">${t("address.cityFieldHint")}</label>
                         <input id="addr-city" type="text" maxlength="60" value="${escapeHtml(existing?.city || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     </div>
                     <div style="flex:2;">
-                        <label for="addr-state" class="field-hint">STATE</label>
+                        <label for="addr-state" class="field-hint">${t("address.stateFieldHint")}</label>
                         <input id="addr-state" type="text" maxlength="60" value="${escapeHtml(existing?.state || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     </div>
                     <div style="flex:1;">
-                        <label for="addr-pincode" class="field-hint">PIN CODE</label>
+                        <label for="addr-pincode" class="field-hint">${t("address.pincodeFieldHint")}</label>
                         <input id="addr-pincode" type="text" inputmode="numeric" maxlength="12" value="${escapeHtml(existing?.pincode || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     </div>
                 </div>
-                <label for="addr-search" class="field-hint">SEARCH FOR YOUR ADDRESS</label>
+                <label for="addr-search" class="field-hint">${t("address.searchFieldHint")}</label>
                 <div style="position:relative;">
-                    <input id="addr-search" type="text" placeholder="Search for area, street, city..." autocomplete="off" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
+                    <input id="addr-search" type="text" placeholder="${t("address.searchPlaceholder")}" autocomplete="off" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     <div id="addr-search-results" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:10; background:var(--color-surface); border:1px solid var(--color-accent); max-height:180px; overflow-y:auto;"></div>
                 </div>
-                <label class="field-hint">OR DROP A PIN ON THE MAP TO SET YOUR LOCATION</label>
+                <label class="field-hint">${t("address.dropPinHint")}</label>
                 <div style="display:flex; justify-content:flex-end; margin:4px 0;">
-                    <button type="button" id="addr-use-location" style="background:none; border:none; color:var(--color-accent); font-size:10px; text-decoration:underline; cursor:pointer; font-family:inherit; padding:0;">&gt; Use my current location</button>
+                    <button type="button" id="addr-use-location" style="background:none; border:none; color:var(--color-accent); font-size:10px; text-decoration:underline; cursor:pointer; font-family:inherit; padding:0;">${t("address.useMyLocation")}</button>
                 </div>
                 <div id="addr-map" style="height:260px; margin:6px 0 10px; border:1px solid var(--color-border);"></div>
                 <p id="addr-coords" style="font-size:10px; color:var(--color-text-muted); margin:-6px 0 10px;"></p>
                 <div style="display:flex; gap:10px;">
-                    <button type="button" class="admin-btn-secondary" id="addr-form-back" style="flex:1;">BACK</button>
-                    <button type="button" class="admin-btn-primary" id="addr-form-save" style="flex:2;">SAVE</button>
+                    <button type="button" class="admin-btn-secondary" id="addr-form-back" style="flex:1;">${t("checkout.back")}</button>
+                    <button type="button" class="admin-btn-primary" id="addr-form-save" style="flex:2;">${t("common.save")}</button>
                 </div>
             </div>
         `;
@@ -201,7 +202,7 @@ export function renderAddressModal() {
         function updateCoordsLabel() {
             const el = document.getElementById("addr-coords");
             if (!el) return;
-            el.textContent = pickedLatLng ? `Pin set: ${pickedLatLng.lat.toFixed(5)}, ${pickedLatLng.lng.toFixed(5)}` : "No pin set yet - click the map.";
+            el.textContent = pickedLatLng ? t("address.pinSet", { lat: pickedLatLng.lat.toFixed(5), lng: pickedLatLng.lng.toFixed(5) }) : t("address.noPinSet");
         }
 
         function movePin(lat, lng, zoom) {
@@ -235,7 +236,7 @@ export function renderAddressModal() {
                     return;
                 }
                 if (!results.length) {
-                    resultsBox.innerHTML = `<div style="padding:8px; font-size:11px; color:var(--color-text-muted);">No matches</div>`;
+                    resultsBox.innerHTML = `<div style="padding:8px; font-size:11px; color:var(--color-text-muted);">${t("address.noMatches")}</div>`;
                     resultsBox.style.display = "block";
                     return;
                 }
@@ -273,7 +274,7 @@ export function renderAddressModal() {
             const errorEl = document.getElementById("addr-form-error");
             errorEl.textContent = "";
             if (!navigator.geolocation) {
-                errorEl.textContent = "Your browser doesn't support location - drop the pin manually.";
+                errorEl.textContent = t("address.geoNotSupported");
                 return;
             }
             navigator.geolocation.getCurrentPosition(
@@ -286,7 +287,7 @@ export function renderAddressModal() {
                     updateCoordsLabel();
                 },
                 () => {
-                    errorEl.textContent = "Couldn't get your location - drop the pin manually.";
+                    errorEl.textContent = t("address.geoFailed");
                 }
             );
         });
@@ -301,11 +302,11 @@ export function renderAddressModal() {
             const state = document.getElementById("addr-state").value.trim();
             const pincode = document.getElementById("addr-pincode").value.trim();
             if (!label) {
-                errorEl.textContent = "Give this address a short label.";
+                errorEl.textContent = t("address.giveLabel");
                 return;
             }
             if (!pickedLatLng) {
-                errorEl.textContent = "Drop a pin on the map to set a location.";
+                errorEl.textContent = t("address.dropPinRequired");
                 return;
             }
             try {
