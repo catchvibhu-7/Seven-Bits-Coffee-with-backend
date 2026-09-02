@@ -11,6 +11,7 @@
  */
 import { currencySymbol } from "../features/config-logic.js";
 import { escapeHtml } from "../features/html-utils.js";
+import { t } from "../features/i18n-logic.js";
 
 const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
 
@@ -34,26 +35,26 @@ function mergeOrderGroup(orders) {
  *  rather than showing both. */
 function statusPillHtml(order) {
     const color = STATUS_COLORS[order.status] || "var(--color-accent)";
-    return `<div style="margin-top:8px; font-size:11px; font-weight:bold; letter-spacing:0.05em; color:${color};">${escapeHtml(order.status)}</div>`;
+    return `<div style="margin-top:8px; font-size:11px; font-weight:bold; letter-spacing:0.05em; color:${color};">${escapeHtml(t(`myOrders.status.${order.status}`))}</div>`;
 }
 
 function starsHtml(order) {
     if (order.rating) {
         return `
             <div style="margin-top:8px; font-size:12px; color:var(--color-accent);">
-                YOUR RATING: ${"\u2605".repeat(order.rating)}${"\u2606".repeat(5 - order.rating)}
+                ${t("myOrders.yourRating")} ${"\u2605".repeat(order.rating)}${"\u2606".repeat(5 - order.rating)}
                 ${order.feedbackComment ? `<div style="font-size:11px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(order.feedbackComment)}"</div>` : ""}
             </div>
         `;
     }
     return `
         <div class="mo-feedback" data-order-id="${order.id}" style="margin-top:8px;">
-            <div class="mo-stars" role="group" aria-label="Rate this order" style="font-size:19px; letter-spacing:2px;">
-                ${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="mo-star" data-value="${n}" aria-label="${n} star${n === 1 ? "" : "s"}" aria-pressed="false" style="background:none; border:none; padding:0; cursor:pointer; font-size:inherit; color:var(--color-text-muted);">\u2606</button>`).join("")}
+            <div class="mo-stars" role="group" aria-label="${t("myOrders.rateThisOrder")}" style="font-size:19px; letter-spacing:2px;">
+                ${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="mo-star" data-value="${n}" aria-label="${t("myOrders.starAria", { n })}" aria-pressed="false" style="background:none; border:none; padding:0; cursor:pointer; font-size:inherit; color:var(--color-text-muted);">\u2606</button>`).join("")}
             </div>
             <div style="display:none;" class="mo-comment-row">
-                <input type="text" class="mo-comment-input" placeholder="Add a comment (optional)" maxlength="500" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px; font-family:inherit; font-size:11px; margin:6px 0;" />
-                <button class="mo-feedback-submit admin-btn" style="font-size:10px; width:100%; box-sizing:border-box; margin:0; text-align:center;">SUBMIT RATING</button>
+                <input type="text" class="mo-comment-input" placeholder="${t("myOrders.commentPlaceholder")}" maxlength="500" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:6px; font-family:inherit; font-size:11px; margin:6px 0;" />
+                <button class="mo-feedback-submit admin-btn" style="font-size:10px; width:100%; box-sizing:border-box; margin:0; text-align:center;">${t("myOrders.submitRating")}</button>
             </div>
         </div>
     `;
@@ -82,20 +83,20 @@ export function renderMyOrdersModal(orders, { onReorder }) {
                     <span style="font-weight:bold;">${currencySymbol()}${order.total.toFixed(2)}</span>
                 </div>
                 <div style="font-size:11px; color:var(--color-text-muted); margin:4px 0;">${order.items.map((i) => `${i.quantity}x ${escapeHtml(i.name)}`).join(", ")}</div>
-                ${linkedCount > 0 ? `<div style="font-size:10px; color:var(--color-accent); margin-bottom:4px;">+ ${linkedCount} order${linkedCount === 1 ? "" : "s"} added to this bill</div>` : ""}
-                <button class="mo-reorder-btn" data-order-id="${order.id}" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 6px 12px; font-size: 10px; cursor: pointer; text-transform: uppercase; font-family: inherit;">REORDER</button>
+                ${linkedCount > 0 ? `<div style="font-size:10px; color:var(--color-accent); margin-bottom:4px;">${t("myOrders.linkedOrders", { count: linkedCount })}</div>` : ""}
+                <button class="mo-reorder-btn" data-order-id="${order.id}" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 6px 12px; font-size: 10px; cursor: pointer; text-transform: uppercase; font-family: inherit;">${t("myOrders.reorder")}</button>
                 ${order.status && order.status !== "SERVED" ? statusPillHtml(order) : starsHtml(order)}
             </div>
         `;
               })
               .join("")
-        : `<p style="font-size: 12px; color: var(--color-text-muted); text-align:center; padding: 20px 0;">No past orders yet.</p>`;
+        : `<p style="font-size: 12px; color: var(--color-text-muted); text-align:center; padding: 20px 0;">${t("myOrders.noOrders")}</p>`;
 
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(400px, 92vw); font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
-            <h2 class="modal-title-header">MY ORDERS</h2>
+            <h2 class="modal-title-header">${t("myOrders.title")}</h2>
             <div>${rows}</div>
-            <button id="mo-close" style="margin-top: 15px; width: 100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase; font-family: inherit;">CLOSE</button>
+            <button id="mo-close" style="margin-top: 15px; width: 100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase; font-family: inherit;">${t("common.close")}</button>
         </div>
     `;
 
@@ -152,7 +153,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
                 const data = await res.json();
                 block.outerHTML = `
                     <div style="margin-top:8px; font-size:12px; color:var(--color-accent);">
-                        YOUR RATING: ${"\u2605".repeat(data.rating)}${"\u2606".repeat(5 - data.rating)}
+                        ${t("myOrders.yourRating")} ${"\u2605".repeat(data.rating)}${"\u2606".repeat(5 - data.rating)}
                         ${data.comment ? `<div style="font-size:11px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(data.comment)}"</div>` : ""}
                     </div>
                 `;

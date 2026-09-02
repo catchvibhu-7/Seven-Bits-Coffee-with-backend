@@ -7,7 +7,8 @@
         "delete": "हटाएं",
         "backToLogin": "लॉगिन पर वापस जाएं",
         "switchLanguage": "भाषा बदलें",
-        "genericError": "कुछ गलत हो गया। कृपया पुनः प्रयास करें।"
+        "genericError": "कुछ गलत हो गया। कृपया पुनः प्रयास करें।",
+        "loading": "लोड हो रहा है..."
     },
     "checkout": {
         "title": "चेकआउट",
@@ -112,7 +113,21 @@
         }
     },
     "myOrders": {
-        "title": "मेरे ऑर्डर"
+        "title": "मेरे ऑर्डर",
+        "noOrders": "अभी तक कोई पिछला ऑर्डर नहीं है।",
+        "linkedOrders": "+ {{count}} ऑर्डर इस बिल में जोड़े गए",
+        "reorder": "दोबारा ऑर्डर करें",
+        "status": {
+            "RECEIVED": "प्राप्त हुआ",
+            "PREPARING": "तैयार हो रहा है",
+            "READY": "तैयार है",
+            "SERVED": "परोसा गया"
+        },
+        "yourRating": "आपकी रेटिंग:",
+        "rateThisOrder": "इस ऑर्डर को रेट करें",
+        "starAria": "{{n}} स्टार",
+        "commentPlaceholder": "टिप्पणी जोड़ें (वैकल्पिक)",
+        "submitRating": "रेटिंग सबमिट करें"
     },
     "account": {
         "title": "खाता सेटिंग्स"
@@ -121,6 +136,17 @@
         "myAddresses": "मेरे पते"
     },
     "tracking": {
-        "title": "अपना ऑर्डर ट्रैक करें"
+        "title": "अपना ऑर्डर ट्रैक करें",
+        "trackingOrderLabel": "ऑर्डर ट्रैक हो रहा है",
+        "table": "टेबल {{number}}",
+        "dineIn": "डाइन-इन",
+        "takeaway": "टेकअवे",
+        "paid": "भुगतान हो गया",
+        "paymentDue": "भुगतान बाकी है",
+        "autoUpdateNote": "यह पेज अपने आप अपडेट होता है - रीफ्रेश करने की आवश्यकता नहीं है।",
+        "linkInvalidTitle": "ट्रैकिंग लिंक मान्य नहीं है",
+        "goToMenu": "मेन्यू पर जाएं",
+        "linkInvalidFallback": "यह ट्रैकिंग लिंक अब मान्य नहीं है।",
+        "noCodeGiven": "कोई ट्रैकिंग कोड नहीं दिया गया।"
     }
 }

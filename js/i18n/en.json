@@ -7,7 +7,8 @@
         "delete": "DELETE",
         "backToLogin": "BACK TO LOGIN",
         "switchLanguage": "Switch language",
-        "genericError": "Something went wrong. Please try again."
+        "genericError": "Something went wrong. Please try again.",
+        "loading": "Loading..."
     },
     "checkout": {
         "title": "CHECKOUT",
@@ -112,7 +113,21 @@
         }
     },
     "myOrders": {
-        "title": "MY ORDERS"
+        "title": "MY ORDERS",
+        "noOrders": "No past orders yet.",
+        "linkedOrders": "+ {{count}} order(s) added to this bill",
+        "reorder": "REORDER",
+        "status": {
+            "RECEIVED": "RECEIVED",
+            "PREPARING": "PREPARING",
+            "READY": "READY",
+            "SERVED": "SERVED"
+        },
+        "yourRating": "YOUR RATING:",
+        "rateThisOrder": "Rate this order",
+        "starAria": "{{n}} star(s)",
+        "commentPlaceholder": "Add a comment (optional)",
+        "submitRating": "SUBMIT RATING"
     },
     "account": {
         "title": "ACCOUNT SETTINGS"
@@ -121,6 +136,17 @@
         "myAddresses": "MY ADDRESSES"
     },
     "tracking": {
-        "title": "TRACK YOUR ORDER"
+        "title": "TRACK YOUR ORDER",
+        "trackingOrderLabel": "Tracking order",
+        "table": "Table {{number}}",
+        "dineIn": "Dine-in",
+        "takeaway": "Takeaway",
+        "paid": "PAID",
+        "paymentDue": "PAYMENT DUE",
+        "autoUpdateNote": "This page updates automatically - no need to refresh.",
+        "linkInvalidTitle": "TRACKING LINK NOT VALID",
+        "goToMenu": "GO TO MENU",
+        "linkInvalidFallback": "This tracking link is no longer valid.",
+        "noCodeGiven": "No tracking code was given."
     }
 }
