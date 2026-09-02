@@ -117,5 +117,21 @@
     "name": "Abhinav",
     "score": 380,
     "achievedAt": "2026-08-29T17:27:46.844Z"
+  },
+  {
+    "id": 18,
+    "game": "tetris",
+    "name": "Abhinav",
+    "customerId": 6,
+    "score": 2674,
+    "achievedAt": "2026-09-02T08:34:47.724Z"
+  },
+  {
+    "id": 19,
+    "game": "snake",
+    "name": "Abhinav",
+    "customerId": 6,
+    "score": 40,
+    "achievedAt": "2026-09-02T08:37:51.122Z"
   }
 ]

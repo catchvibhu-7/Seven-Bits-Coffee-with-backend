@@ -30,10 +30,16 @@
             script from and opens an iframe/XHR to those origins (cdn.razorpay.com
             specifically for its own bundled risk-detection script) only when an
             admin has actually turned Razorpay on.
+            nominatim.openstreetmap.org is the free OSM address-search endpoint
+            used by the delivery address form (js/ui/address-modal.js) to let a
+            customer search for and pick their address instead of only manual
+            pin-drop - no API key, but their usage policy caps light/non-
+            commercial use around 1 request/sec; fine at this app's scale, would
+            need self-hosting or a paid provider if that volume is ever exceeded.
         -->
         <meta
             http-equiv="Content-Security-Policy"
-            content="default-src 'self'; script-src 'self' https://checkout.razorpay.com https://cdn.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src https://api.razorpay.com https://checkout.razorpay.com; connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com;" />
+            content="default-src 'self'; script-src 'self' https://checkout.razorpay.com https://cdn.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src https://api.razorpay.com https://checkout.razorpay.com; connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://nominatim.openstreetmap.org;" />
         <link rel="stylesheet" href="css/theme.css" />
         <link rel="stylesheet" href="css/iconsvg.css" />
         <link rel="stylesheet" href="css/cat.css" />
@@ -169,6 +175,11 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Delivery-paused notice - populated/shown only when the
+                 currently selected store has delivery disabled, see
+                 renderHomeDeliveryTicker() in app.js. Empty/hidden otherwise. -->
+            <div id="home-delivery-ticker" style="display:none;"></div>
 
             <!-- Store details footer - content populated from admin Branding settings -->
             <footer id="site-footer" class="site-footer"></footer>

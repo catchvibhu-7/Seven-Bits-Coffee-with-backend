@@ -30,7 +30,13 @@ import { renderStorePickerModal } from "./ui/store-picker-modal.js";
 let cart = [];
 let serviceChargeActive = true;
 let tipApplied = false;
-let orderType = "takeaway"; // "takeaway" | "dine-in" - picked in the cart panel, sent with the order
+let orderType = "takeaway"; // "takeaway" | "dine-in" | "delivery" - picked in the cart panel, sent with the order
+// checkout-modal.js needs to know this to force ONLINE-only + show an
+// address picker for delivery - exposed via window rather than threading a
+// new parameter through every renderCheckoutModal() call site (there are
+// several), matching how other cross-module bits already work (window.showToast etc).
+window.getOrderType = () => orderType;
+window.selectedDeliveryAddressId = null; // set by checkout-modal.js's address picker, read by window.startCheckout
 let currentKitchenStation = "MASTER"; // matches the "ALL" tab that's marked active by default in index.html
 let viewMode = "grid";
 let menuData = { sections: [], items: [] };
@@ -566,6 +572,8 @@ window.showPage = async (pageId) => {
     }
     if (pageId === "menu") renderMenu();
     if (pageId === "kitchen" || pageId === "orders") {
+        await ensureKitchenStoreSwitcher();
+        ensureKitchenDateFilter();
         await KitchenSystem.fetchOrders();
         if (currentKitchenStation === "TABLES") {
             await renderTablesPanel(); // refresh tab totals if the Tables view was left open
@@ -579,6 +587,7 @@ window.showPage = async (pageId) => {
         renderHomeStoreFacts();
         renderHomeRoastSteps();
         renderHomeVisitRows();
+        renderHomeDeliveryTicker();
         await refreshOrderStatusWidget();
         refreshHomeArcadeButton();
         if (TRACKING_ROLES.includes(session.role)) ensureOrdersStream();
@@ -616,6 +625,7 @@ window.openStorePicker = () => {
         } else if (activePageId === "home") {
             renderHomeStoreFacts();
             renderHomeVisitRows();
+            renderHomeDeliveryTicker();
         }
         StaffShell.render(); // refreshes the anonymous store pill / dropdown label either way
         window.showToast?.(`Now showing ${StoreSystem.getSelectedStore()?.name || "your store"}`);
@@ -1185,6 +1195,21 @@ window.startCheckout = async (method) => {
         if (errorBox) errorBox.textContent = "Enter a phone number, or check GUEST.";
         return;
     }
+    // A customer/guest order with no store picked ends up with storeId:null,
+    // which the server's "unscoped orders stay visible everywhere" fallback
+    // (see GET /api/orders) then shows - and counts toward the active-orders
+    // badge - at EVERY store's kitchen board, not just the one the customer
+    // actually meant. Only matters once there's more than one store to
+    // choose between; a single-store shop never shows this prompt at all.
+    if (!isStaffCheckout && StoreSystem.hasMultipleStores() && !StoreSystem.getSelectedStoreId()) {
+        if (errorBox) errorBox.textContent = "Pick a store before checking out.";
+        window.openStorePicker();
+        return;
+    }
+    if (!isStaffCheckout && orderType === "delivery" && !window.selectedDeliveryAddressId) {
+        if (errorBox) errorBox.textContent = "Select (or add) a delivery address first.";
+        return;
+    }
 
     if (btn) {
         btn.disabled = true;
@@ -1193,6 +1218,7 @@ window.startCheckout = async (method) => {
 
     try {
         const tableSessionId = document.getElementById("checkout-table-session")?.value || null;
+        const attachToOrderId = document.getElementById("checkout-attach-search")?.dataset.orderId || null;
         const discount = window.__checkoutDiscount || {};
         const order = await KitchenSystem.pushOrder(cart, method, {
             serviceChargeActive,
@@ -1200,6 +1226,7 @@ window.startCheckout = async (method) => {
             phone,
             markPaidNow: false,
             tableSessionId,
+            attachToOrderId,
             couponCode: discount.couponCode || null,
             redeemPoints: discount.redeemPoints || 0,
             guestOrder,
@@ -1207,7 +1234,8 @@ window.startCheckout = async (method) => {
             // Ignored server-side for a staff session (already tied to its
             // own store) - only matters for a customer/guest who's picked
             // one from the store bar.
-            storeId: isStaffCheckout ? null : StoreSystem.getSelectedStoreId()
+            storeId: isStaffCheckout ? null : StoreSystem.getSelectedStoreId(),
+            addressId: orderType === "delivery" ? window.selectedDeliveryAddressId : null
         });
         pendingOrder = order;
 
@@ -1215,6 +1243,7 @@ window.startCheckout = async (method) => {
         serviceChargeActive = true;
         tipApplied = false;
         orderType = "takeaway";
+        window.selectedDeliveryAddressId = null;
         updateCartUI();
         window.closeModal();
 
@@ -1537,7 +1566,7 @@ function renderSectionPager(container, sectionId, currentPage, totalItems, total
     if (totalPages <= 1) return;
 
     const pageStart = (currentPage - 1) * MENU_PAGE_SIZE;
-    const label = `${pageStart + 1}-${Math.min(pageStart + MENU_PAGE_SIZE, totalItems)} of ${totalItems}`;
+    const label = `<strong style="color:var(--color-accent);">${pageStart + 1}-${Math.min(pageStart + MENU_PAGE_SIZE, totalItems)}</strong> of ${totalItems}`;
 
     const pagerEl = document.createElement("div");
     pagerEl.className = "menu-pager";
@@ -1805,6 +1834,14 @@ function renderMenuCartPanel() {
     const breakdown = CartSystem.calculateBreakdown(cart, siteConfig);
     const totalItems = cart.reduce((sum, c) => sum + c.quantity, 0);
 
+    // Delivery is a "customer" (never guest, never staff) option, and only
+    // when the currently selected store's own operations.delivery is
+    // enabled (see mergeStoreOverrides in server.js) - hidden entirely
+    // rather than shown-disabled, since a guest/staff session should never
+    // even suspect it exists as a choice.
+    const deliveryAvailable = session.role === "customer" && !!siteConfig?.delivery && siteConfig.delivery.enabled !== false;
+    if (orderType === "delivery" && !deliveryAvailable) orderType = "takeaway";
+
     // Group each item's default line together with its own customized
     // variants (rather than raw insertion order) so a size/milk/extras
     // version of something already in the cart lands next to it instead of
@@ -1881,9 +1918,14 @@ function renderMenuCartPanel() {
         <div style="padding:14px 18px 18px; border-top:1px solid var(--color-border); flex:none;">
             <div style="margin-bottom:12px;">
                 <div id="cart-order-type-label" style="font-size:10px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); margin-bottom:6px;">ORDER TYPE</div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;" role="group" aria-labelledby="cart-order-type-label">
+                <div style="display:grid; grid-template-columns:${deliveryAvailable ? "1fr 1fr 1fr" : "1fr 1fr"}; gap:8px;" role="group" aria-labelledby="cart-order-type-label">
                     <button type="button" class="cart-order-type-btn" data-order-type="takeaway" aria-pressed="${orderType === "takeaway"}" style="padding:9px 6px; background:${orderType === "takeaway" ? "var(--color-accent)" : "transparent"}; color:${orderType === "takeaway" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Takeaway</button>
                     <button type="button" class="cart-order-type-btn" data-order-type="dine-in" aria-pressed="${orderType === "dine-in"}" style="padding:9px 6px; background:${orderType === "dine-in" ? "var(--color-accent)" : "transparent"}; color:${orderType === "dine-in" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Dine-in</button>
+                    ${
+                        deliveryAvailable
+                            ? `<button type="button" class="cart-order-type-btn" data-order-type="delivery" aria-pressed="${orderType === "delivery"}" style="padding:9px 6px; background:${orderType === "delivery" ? "var(--color-accent)" : "transparent"}; color:${orderType === "delivery" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Delivery</button>`
+                            : ""
+                    }
                 </div>
             </div>
             <!-- Deliberately no tax/service-charge breakdown here - just the
@@ -2034,6 +2076,93 @@ window.handleCartStatusClick = async () => {
 let kitchenStatusFilter = "active"; // "active" | "history" | "all"
 let kitchenSortOrder = "newest"; // "newest" | "oldest"
 let kitchenPage = 1; // 1-based; reset to 1 whenever the filtered ticket set changes
+let kitchenFromDate = ""; // "" | "YYYY-MM-DD" - only meaningful for history/all, not active
+let kitchenToDate = "";
+
+/** Injects (once) the From/To date inputs used by HISTORY/SHOW ALL into the
+ *  toolbar, and shows/hides them for the current status filter - ACTIVE
+ *  orders are "right now" by definition, a date range doesn't apply there. */
+function ensureKitchenDateFilter() {
+    const toolbar = document.getElementById("kitchen-status-toolbar");
+    if (!toolbar) return;
+    let wrap = document.getElementById("kitchen-date-filter");
+    if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.id = "kitchen-date-filter";
+        wrap.style.cssText = "display:flex; align-items:center; gap:6px;";
+        wrap.innerHTML = `
+            <label for="kitchen-date-from" style="font-size:10px; color:var(--color-text-muted); text-transform:uppercase;">From</label>
+            <input type="date" id="kitchen-date-from" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
+            <label for="kitchen-date-to" style="font-size:10px; color:var(--color-text-muted); text-transform:uppercase;">To</label>
+            <input type="date" id="kitchen-date-to" style="background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:11px;" />
+            <button type="button" class="admin-btn-secondary" id="kitchen-date-clear" style="padding:7px 10px; font-size:10px;">CLEAR</button>
+        `;
+        const sortSelect = document.getElementById("kitchen-sort");
+        toolbar.insertBefore(wrap, sortSelect);
+        document.getElementById("kitchen-date-from").addEventListener("change", (e) => {
+            kitchenFromDate = e.target.value;
+            kitchenPage = 1;
+            renderKitchen();
+        });
+        document.getElementById("kitchen-date-to").addEventListener("change", (e) => {
+            kitchenToDate = e.target.value;
+            kitchenPage = 1;
+            renderKitchen();
+        });
+        document.getElementById("kitchen-date-clear").addEventListener("click", () => {
+            kitchenFromDate = "";
+            kitchenToDate = "";
+            document.getElementById("kitchen-date-from").value = "";
+            document.getElementById("kitchen-date-to").value = "";
+            kitchenPage = 1;
+            renderKitchen();
+        });
+    }
+    wrap.style.display = kitchenStatusFilter === "active" ? "none" : "flex";
+}
+
+/** Injects a store picker into the Orders/Kitchen toolbar for a multi-store
+ *  staff account (owner, unrestricted/Global Admin, or a Local Admin whose
+ *  storeAccess spans more than one store) - a manager/employee never sees
+ *  this, they're always pinned to their own single store server-side
+ *  regardless. Idempotent (checks for its own element first) since this is
+ *  called every time the page shows, not just once at boot - always removes
+ *  any stale switcher first rather than just checking "does one already
+ *  exist", since a stale one from a PREVIOUS session (e.g. staff signing
+ *  out and a single-store manager signing in on the same tab, no reload)
+ *  would otherwise linger and wrongly stay usable for a role that should
+ *  never see it. */
+async function ensureKitchenStoreSwitcher() {
+    const toolbar = document.getElementById("kitchen-status-toolbar");
+    if (!toolbar) return;
+    document.getElementById("kitchen-store-select")?.remove();
+    if (!StoreSystem.isMultiStoreStaff(session)) return;
+
+    const allStores = await PayrollSystem.fetchStores();
+    const stores = session.role === "admin" && session.storeAccess ? allStores.filter((s) => session.storeAccess.includes(s.id)) : allStores;
+    if (stores.length <= 1) return;
+
+    const currentId = StoreSystem.getStaffSelectedStoreId();
+    const select = document.createElement("select");
+    select.id = "kitchen-store-select";
+    select.setAttribute("aria-label", "Store");
+    select.style.cssText =
+        "background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:8px 10px; font-family:inherit; font-size:11px;";
+    select.innerHTML =
+        `<option value="">ALL MY STORES</option>` +
+        stores.map((s) => `<option value="${s.id}" ${currentId === s.id ? "selected" : ""}>${escapeHtml(s.name)}</option>`).join("");
+    select.addEventListener("change", async () => {
+        StoreSystem.setStaffSelectedStoreId(select.value ? Number(select.value) : null);
+        kitchenPage = 1;
+        await KitchenSystem.fetchOrders();
+        if (currentKitchenStation === "TABLES") {
+            await renderTablesPanel();
+        } else {
+            renderKitchen();
+        }
+    });
+    toolbar.insertBefore(select, toolbar.firstChild);
+}
 const KITCHEN_PAGE_SIZE = 10;
 
 window.filterKitchen = async (station) => {
@@ -2049,8 +2178,13 @@ window.filterKitchen = async (station) => {
 
     const isTablesView = station === "TABLES";
     document.getElementById("kitchen-status-toolbar").style.display = isTablesView ? "none" : "flex";
-    document.getElementById("kitchen-orders-root").style.display = isTablesView ? "none" : "flex";
+    // "" (not "flex") when visible - #kitchen-orders-root's real layout is
+    // the CSS grid in theme.css (wraps tickets into rows); an inline "flex"
+    // here previously clobbered that with a non-wrapping row, which is why
+    // ticket cards overflowed horizontally instead of wrapping.
+    document.getElementById("kitchen-orders-root").style.display = isTablesView ? "none" : "";
     document.getElementById("tables-panel-root").style.display = isTablesView ? "block" : "none";
+    if (!isTablesView) ensureKitchenDateFilter();
 
     if (isTablesView) {
         await renderTablesPanel();
@@ -2156,6 +2290,7 @@ window.setKitchenStatusFilter = (filter) => {
     document.querySelectorAll("[data-status-filter]").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.statusFilter === filter);
     });
+    ensureKitchenDateFilter();
     renderKitchen();
 };
 
@@ -2179,6 +2314,12 @@ function renderKitchen() {
     // old version filtered and rendered in the same pass, which had no
     // natural place to slice for pagination.
     const isMaster = currentKitchenStation === "MASTER";
+    // Only meaningful for HISTORY/SHOW ALL (ensureKitchenDateFilter hides the
+    // inputs entirely for ACTIVE) - same inclusive from/to-day semantics as
+    // Admin Order History's date filter: either bound alone is an open-ended
+    // range, both sides set (even to the same day) filters just that range.
+    const fromTs = kitchenFromDate && kitchenStatusFilter !== "active" ? new Date(kitchenFromDate + "T00:00:00").getTime() : null;
+    const toTs = kitchenToDate && kitchenStatusFilter !== "active" ? new Date(kitchenToDate + "T23:59:59.999").getTime() : null;
     const matchingOrders = [];
     sorted.forEach((order) => {
         const orderIsComplete = !!order.servedAt;
@@ -2186,6 +2327,9 @@ function renderKitchen() {
         // ALL shows everything regardless of status.
         if (kitchenStatusFilter === "active" && orderIsComplete) return;
         if (kitchenStatusFilter === "history" && !orderIsComplete) return;
+        const createdTs = new Date(order.createdAt).getTime();
+        if (fromTs !== null && createdTs < fromTs) return;
+        if (toTs !== null && createdTs > toTs) return;
 
         const itemsToDisplay = isMaster
             ? order.items
@@ -2276,7 +2420,7 @@ function renderKitchenPager(totalOrders, totalPages) {
     if (!root) return;
 
     const pageStart = (kitchenPage - 1) * KITCHEN_PAGE_SIZE;
-    const label = `${pageStart + 1}-${Math.min(pageStart + KITCHEN_PAGE_SIZE, totalOrders)} of ${totalOrders}`;
+    const label = `<strong style="color:var(--color-accent);">${pageStart + 1}-${Math.min(pageStart + KITCHEN_PAGE_SIZE, totalOrders)}</strong> of ${totalOrders}`;
 
     const pagerEl = document.createElement("div");
     pagerEl.className = "menu-pager";
@@ -2301,6 +2445,18 @@ function renderKitchenPager(totalOrders, totalPages) {
     });
 }
 
+/** Recomputes the staff nav's "Orders" badge from whatever's currently in
+ *  KitchenSystem.orders - called right after a local mark-done/mark-served
+ *  action (whose own fetchOrders() call already refreshed that array), so
+ *  the badge updates instantly instead of waiting on the SSE broadcast to
+ *  round-trip back to this same tab (ensureOrdersStream() still does its
+ *  own refresh too, for every OTHER connected station's badge). */
+function refreshOrdersBadge() {
+    if (!KITCHEN_ROLES.includes(session.role)) return;
+    const awaitingFire = KitchenSystem.orders.filter((o) => !o.items.every((i) => i.isDone)).length;
+    StaffShell.setBadge("orders", awaitingFire);
+}
+
 window.markCompleted = async (orderId) => {
     await KitchenSystem.markDone(orderId, currentKitchenStation);
     const order = KitchenSystem.orders.find((o) => o.id === orderId);
@@ -2320,6 +2476,7 @@ window.markCompleted = async (orderId) => {
     }
 
     renderKitchen();
+    refreshOrdersBadge();
 };
 
 window.markServed = async (orderId) => {
@@ -2329,6 +2486,7 @@ window.markServed = async (orderId) => {
         window.showToast(e.message, "error");
     }
     renderKitchen();
+    refreshOrdersBadge();
 };
 
 /**
@@ -2534,6 +2692,38 @@ function renderPopularPicks() {
  * static facts from Branding config, laid out as one 4-up bar matching the
  * design mockup's storeFacts row.
  */
+// Preset labels shown when a store's delivery.message has a preset picked
+// instead of custom text - mirrors DELIVERY_MESSAGE_PRESETS in server.js
+// (kept in sync manually, same small-fixed-list tradeoff other client-side
+// label maps in this app already make rather than fetching them).
+const DELIVERY_MESSAGE_PRESET_LABELS = {
+    queueFull: "Too many orders right now - delivery is paused, we'll be back shortly.",
+    noPartner: "No delivery partner available at the moment."
+};
+
+/** Scrolling "delivery is paused" notice, shown only while the currently
+ *  selected store's delivery is disabled - hidden (not just empty) the rest
+ *  of the time. Called on every Home page show and after a store switch
+ *  (see window.openStorePicker) so it reflects whichever store's settings
+ *  are actually current. */
+function renderHomeDeliveryTicker() {
+    const root = document.getElementById("home-delivery-ticker");
+    if (!root) return;
+    const delivery = siteConfig?.delivery;
+    if (!delivery || delivery.enabled !== false) {
+        root.style.display = "none";
+        root.innerHTML = "";
+        return;
+    }
+    const message = delivery.message?.customText || (delivery.message?.preset && DELIVERY_MESSAGE_PRESET_LABELS[delivery.message.preset]) || "Delivery is paused right now.";
+    root.style.display = "block";
+    root.className = "home-delivery-ticker";
+    // Duplicated text back-to-back so the loop (translateX(-100%) on a track
+    // that starts at padding-left:100%) never shows a visible gap between
+    // one pass ending and the next beginning.
+    root.innerHTML = `<span class="home-delivery-ticker-track">${escapeHtml(message)} &nbsp;&nbsp;&nbsp;&nbsp; ${escapeHtml(message)}</span>`;
+}
+
 async function renderHomeStoreFacts() {
     const root = document.getElementById("home-store-facts");
     if (!root) return;

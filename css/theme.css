@@ -2177,9 +2177,22 @@ input[type="checkbox"]:disabled {
     margin-top: 15px;
     align-items: start;
 }
+/* A per-cell border-left used to be applied here, which under
+   border-collapse:collapse draws a vertical accent line at the LEFT edge of
+   EVERY cell - i.e. an odd-looking internal divider between each column,
+   not just an outline around the row. Top/bottom on every cell plus left/
+   right only on the first/last cell instead draws one clean box around the
+   whole selected row. */
 .order-history-row.active td {
     background: var(--color-bg);
+    border-top: 2px solid var(--color-accent);
+    border-bottom: 2px solid var(--color-accent);
+}
+.order-history-row.active td:first-child {
     border-left: 2px solid var(--color-accent);
+}
+.order-history-row.active td:last-child {
+    border-right: 2px solid var(--color-accent);
 }
 .order-history-detail {
     background: var(--color-bg);
@@ -2427,6 +2440,45 @@ input[type="checkbox"]:disabled {
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     border-bottom: 1px solid var(--color-border);
     margin: 0 -20px;
+}
+/* Delivery-paused notice (see renderHomeDeliveryTicker() in app.js) - a
+   continuously-scrolling single line of text, shown only while delivery is
+   disabled for the customer's currently selected store. */
+.home-delivery-ticker {
+    overflow: hidden;
+    white-space: nowrap;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-danger);
+    border-bottom: 1px solid var(--color-danger);
+    padding: 10px 0;
+    margin: 20px -20px 0;
+}
+.home-delivery-ticker-track {
+    display: inline-block;
+    padding-left: 100%;
+    color: var(--color-danger);
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    animation: home-delivery-ticker-scroll 22s linear infinite;
+}
+@keyframes home-delivery-ticker-scroll {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-100%);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .home-delivery-ticker-track {
+        animation: none;
+        padding-left: 0;
+    }
+    .home-delivery-ticker {
+        white-space: normal;
+    }
 }
 .home-fact {
     padding: 18px 22px;

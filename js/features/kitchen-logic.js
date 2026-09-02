@@ -7,11 +7,25 @@
  * connectLiveUpdates() opens a Server-Sent Events stream so every connected
  * station refreshes automatically when any station changes an order.
  */
+import { StoreSystem } from "./store-logic.js";
+
 export const KitchenSystem = {
     orders: [],
 
+    // Set by billing-page.js's "+ New order for this bill" shortcut, read
+    // and cleared by checkout-modal.js the next time it opens - the mirror
+    // image of selectBillForOrder() (billing-page.js), which pre-selects a
+    // bill in Billing AFTER checkout creates an order. { id, orderNumber } or null.
+    pendingAttachTarget: null,
+
     async fetchOrders() {
-        const res = await fetch("/api/orders", { credentials: "include" });
+        // A single-store manager/employee never has this set (server already
+        // pins them to their own store regardless) - only a multi-store
+        // account (owner/Global Admin/multi-store Local Admin) ever picks a
+        // value here, via the store switcher on the Orders/Billing pages.
+        const storeId = StoreSystem.getStaffSelectedStoreId();
+        const url = storeId != null ? `/api/orders?storeId=${storeId}` : "/api/orders";
+        const res = await fetch(url, { credentials: "include" });
         if (res.ok) this.orders = await res.json();
         return this.orders;
     },
@@ -32,11 +46,13 @@ export const KitchenSystem = {
             phone = null,
             markPaidNow = false,
             tableSessionId = null,
+            attachToOrderId = null,
             couponCode = null,
             redeemPoints = 0,
             guestOrder = false,
             orderType = "takeaway",
-            storeId = null
+            storeId = null,
+            addressId = null
         } = {}
     ) {
         const res = await fetch("/api/orders", {
@@ -59,6 +75,7 @@ export const KitchenSystem = {
                 phone,
                 markPaidNow,
                 tableSessionId,
+                attachToOrderId,
                 couponCode,
                 redeemPoints,
                 guestOrder,
@@ -67,7 +84,8 @@ export const KitchenSystem = {
                 // their own - see js/features/store-logic.js); ignored
                 // server-side for a staff session, which always keeps its
                 // own assigned store.
-                storeId
+                storeId,
+                addressId
             })
         });
         const data = await res.json();
@@ -122,6 +140,30 @@ export const KitchenSystem = {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not update items");
+        await this.fetchOrders();
+        return data;
+    },
+
+    /** Staff-only typeahead for the "attach to existing bill" picker - short,
+     *  capped, server-filtered (not the full order list) since this fires on
+     *  every keystroke. */
+    async searchBills(query) {
+        const res = await fetch(`/api/orders/search?q=${encodeURIComponent(query)}`, { credentials: "include" });
+        return res.ok ? res.json() : [];
+    },
+
+    /** Settles a root order and everything staff have attached to it in one
+     *  shared payment event - the standalone-order counterpart to
+     *  TableSessionsSystem.settleRound(). */
+    async settleGroup(rootOrderId, paymentMethod = null) {
+        const res = await fetch(`/api/orders/${encodeURIComponent(rootOrderId)}/settle-group`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paymentMethod })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not settle this bill");
         await this.fetchOrders();
         return data;
     },

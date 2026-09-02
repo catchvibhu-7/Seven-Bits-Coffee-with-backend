@@ -63,6 +63,22 @@ export function renderAccountSettingsModal(session) {
                 <button id="am-change-password" style="width:100%; background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase; margin-top:10px;">UPDATE PASSWORD</button>
             </div>
 
+            ${
+                session.role === "customer"
+                    ? `
+            <button type="button" id="am-my-addresses" style="width:100%; text-align:left; background:none; border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; font-size:12px; letter-spacing:1px; cursor:pointer; text-transform:uppercase; margin-top:12px;">&gt; My addresses</button>
+            <button type="button" id="am-toggle-delete" aria-expanded="false" aria-controls="am-delete-fields" style="width:100%; text-align:left; background:none; border:1px solid var(--color-danger); color:var(--color-danger); padding:10px; font-family:inherit; font-size:12px; letter-spacing:1px; cursor:pointer; text-transform:uppercase; margin-top:12px;">&gt; Delete my account</button>
+            <div id="am-delete-fields" style="display:none; margin-top:12px;">
+                <p style="font-size:11px; color:var(--color-text-muted); margin:0 0 10px;">Your name, phone number, and password are permanently erased and you won't be able to sign in again. Past orders stay in the shop's records as they are today - this only removes YOUR account.</p>
+                <p id="account-delete-error" style="color:var(--color-danger); font-size: 11px; margin: 0 0 8px;"></p>
+                <input id="am-delete-password" type="password" placeholder="CONFIRM YOUR PASSWORD" aria-label="Confirm password" autocomplete="current-password"
+                    style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin-bottom: 8px;" />
+                <button id="am-delete-confirm" style="width:100%; background: var(--color-danger); color: #fff; border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">PERMANENTLY DELETE ACCOUNT</button>
+            </div>
+            `
+                    : ""
+            }
+
             <!-- Same solid full-width treatment as the BACK button on the
                  checkout modal's Transaction Summary screen (checkout-
                  modal.js) - reused for visual consistency instead of a
@@ -95,6 +111,48 @@ export function renderAccountSettingsModal(session) {
         document.getElementById("am-layout-topbar").addEventListener("click", () => {
             if (StaffShell.layout !== "topbar") StaffShell.switchLayout();
             overlay.remove();
+        });
+    }
+
+    if (session.role === "customer") {
+        document.getElementById("am-my-addresses").addEventListener("click", async () => {
+            const mod = await import("./address-modal.js");
+            mod.renderAddressModal();
+        });
+
+        const deleteToggleBtn = document.getElementById("am-toggle-delete");
+        const deleteFieldsEl = document.getElementById("am-delete-fields");
+        deleteToggleBtn.addEventListener("click", () => {
+            const opening = deleteFieldsEl.style.display === "none";
+            deleteFieldsEl.style.display = opening ? "block" : "none";
+            deleteToggleBtn.textContent = opening ? "v Delete my account" : "> Delete my account";
+            deleteToggleBtn.setAttribute("aria-expanded", String(opening));
+        });
+
+        const deleteBtn = document.getElementById("am-delete-confirm");
+        let armed = false;
+        deleteBtn.addEventListener("click", async () => {
+            const errorEl = document.getElementById("account-delete-error");
+            errorEl.textContent = "";
+            if (!armed) {
+                armed = true;
+                deleteBtn.textContent = "CLICK AGAIN TO CONFIRM - THIS CAN'T BE UNDONE";
+                return;
+            }
+            const password = document.getElementById("am-delete-password").value;
+            if (!password) {
+                errorEl.textContent = "Enter your password to confirm.";
+                return;
+            }
+            try {
+                await AuthSystem.deleteAccount(password);
+                overlay.remove();
+                if (window.location) window.location.reload();
+            } catch (e) {
+                errorEl.textContent = e.message || "Could not delete account";
+                armed = false;
+                deleteBtn.textContent = "PERMANENTLY DELETE ACCOUNT";
+            }
         });
     }
 
