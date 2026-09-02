@@ -10,7 +10,7 @@
  */
 import { AddressSystem } from "../features/address-logic.js";
 import { StoreSystem } from "../features/store-logic.js";
-import { escapeHtml } from "../features/html-utils.js";
+import { escapeHtml, TRASH_ICON } from "../features/html-utils.js";
 
 // Central-India fallback when nothing better is known (no store selected, or
 // the selected store has no lat/lng of its own yet) - just needs to open
@@ -76,7 +76,7 @@ export function renderAddressModal() {
                         </div>
                         <div style="display:flex; gap:6px; margin-top:8px;">
                             <button class="admin-btn-secondary" data-edit-address="${a.id}" style="font-size:10px; padding:5px 8px;">EDIT</button>
-                            <button class="admin-btn-danger" data-delete-address="${a.id}" style="font-size:10px; padding:5px 8px;">DELETE</button>
+                            <button class="icon-btn icon-btn-danger" data-delete-address="${a.id}" title="Delete address ${escapeHtml(a.label)}" aria-label="Delete address ${escapeHtml(a.label)}">${TRASH_ICON}</button>
                             ${!a.isDefault ? `<button class="admin-btn-secondary" data-default-address="${a.id}" style="font-size:10px; padding:5px 8px;">SET DEFAULT</button>` : ""}
                         </div>
                     </div>

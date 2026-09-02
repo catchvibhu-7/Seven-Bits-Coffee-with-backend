@@ -17,13 +17,13 @@
  */
 import { escapeHtml } from "../features/html-utils.js";
 
-/** Small (i) glyph carrying extra field context, read on hover/focus - see
- *  .field-tooltip in theme.css. Falls back to the native title= attribute
- *  too (existing precedent elsewhere in the admin panel), so the
- *  information is never lost even where the CSS popover can't render. */
+/** Small (i) glyph carrying extra field context, read on hover/focus via the
+ *  browser's own title= tooltip - a themed CSS popover used to render this
+ *  (see .field-tooltip in theme.css) but clipped against scroll containers
+ *  and was less readable than the system tooltip it's now replaced by. */
 export function tooltipHtml(text) {
     const escaped = escapeHtml(text);
-    return `<span class="field-tooltip" tabindex="0" role="img" aria-label="${escaped}" title="${escaped}" data-tip="${escaped}">i</span>`;
+    return `<span class="field-tooltip" tabindex="0" role="img" aria-label="${escaped}" title="${escaped}">i</span>`;
 }
 
 /**

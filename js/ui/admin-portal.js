@@ -18,6 +18,7 @@ import { renderComboModal } from "./combo-modal.js";
 import { renderAccountSettingsModal } from "./account-settings-modal.js";
 import { renderImagePickerModal } from "./image-picker-modal.js";
 import { renderReadOnlySection, renderSectionEditModal } from "./admin-section.js";
+import { TRASH_ICON } from "../features/html-utils.js";
 
 // Franchise governance: every role now sees the SAME tab groups (nothing is
 // hidden from a manager the way it used to be) - what differs per role is
@@ -148,7 +149,7 @@ function renderHeroImagesEditModal(heroImages, onSaved) {
                     <input type="text" class="hero-title-input" placeholder="Title (e.g. The counter)" maxlength="60" value="${escapeHtmlAttr(row.title || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:12px; margin-bottom:6px;" />
                     <input type="text" class="hero-subtitle-input" placeholder="Secondary text (e.g. address, a promo line)" maxlength="100" value="${escapeHtmlAttr(row.subtitle || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:7px 8px; font-family:inherit; font-size:12px;" />
                 </div>
-                <button type="button" class="admin-btn-danger hero-remove-btn">REMOVE</button>
+                <button type="button" class="icon-btn icon-btn-danger hero-remove-btn" title="Remove this hero image" aria-label="Remove this hero image">&times;</button>
             </div>`;
     }
 
@@ -621,7 +622,7 @@ export const AdminPortal = {
                         <div style="display:flex; align-items:center; gap:10px; font-size:11px;">
                             <span style="flex:1;">${escapeHtmlAttr(s.name)}${s.address ? ` — ${escapeHtmlAttr(s.address)}` : ""}</span>
                             <button class="admin-btn-secondary" data-toggle-panel="${s.id}" style="padding:4px 8px; font-size:10px;">${expanded ? "CLOSE" : canEdit ? "EDIT" : "VIEW"}</button>
-                            ${isGlobalAdmin && stores.length > 1 ? `<button class="admin-btn-danger" data-remove-store="${s.id}" data-name="${escapeHtmlAttr(s.name)}" style="padding:4px 8px; font-size:10px;">REMOVE</button>` : ""}
+                            ${isGlobalAdmin && stores.length > 1 ? `<button class="icon-btn icon-btn-danger" data-remove-store="${s.id}" data-name="${escapeHtmlAttr(s.name)}" title="Delete ${escapeHtmlAttr(s.name)}" aria-label="Delete ${escapeHtmlAttr(s.name)}">${TRASH_ICON}</button>` : ""}
                         </div>
                         ${expanded ? `<div id="store-panel-${s.id}" style="margin-top:10px; padding:12px; border:1px solid var(--color-border); background:var(--color-bg);"></div>` : ""}
                     </div>
@@ -1498,7 +1499,7 @@ export const AdminPortal = {
                             <td style="font-size:11px;">${escapeHtmlAttr(a.date)}</td>
                             <td>${a.hours}${a.hours > 8 ? ` <span style="color:var(--color-danger); font-size:10px;">(OT)</span>` : ""}</td>
                             <td style="font-size:11px; color:var(--color-text-muted);">${escapeHtmlAttr(a.markedBy)}</td>
-                            <td style="text-align:right;"><button class="admin-btn admin-btn-danger" data-delete-attendance="${a.id}">REMOVE</button></td>
+                            <td style="text-align:right;"><button class="icon-btn icon-btn-danger" data-delete-attendance="${a.id}" title="Delete this attendance entry" aria-label="Delete this attendance entry">${TRASH_ICON}</button></td>
                         </tr>
                     `
                         )
@@ -1683,7 +1684,7 @@ export const AdminPortal = {
                     <button class="admin-btn" data-edit="${item.id}" style="padding:4px 8px; font-size:10px;">EDIT</button>
                     <button class="admin-btn" data-toggle-available="${item.id}" style="padding:4px 8px; font-size:10px;" title="${item.available === false ? "Mark available" : "Mark unavailable"}">${item.available === false ? "SHOW" : "HIDE"}</button>
                     ${multiStore ? `<button class="admin-btn" data-toggle-item-stores="${item.id}" style="padding:4px 8px; font-size:10px;">STORES</button>` : ""}
-                    <button class="admin-btn admin-btn-danger" data-delete="${item.id}" style="padding:4px 8px; font-size:10px;">DEL</button>
+                    <button class="icon-btn icon-btn-danger" data-delete="${item.id}" title="Delete ${escapeHtmlAttr(item.name)}" aria-label="Delete ${escapeHtmlAttr(item.name)}">${TRASH_ICON}</button>
                 </td>
             </tr>
             ${
@@ -2120,7 +2121,7 @@ export const AdminPortal = {
                     <td><input class="cp-label" type="text" aria-label="Option ${idx + 1} label" maxlength="30" value="${escapeHtmlAttr(opt.label)}" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
                     <td><input class="cp-key" type="text" aria-label="Option ${idx + 1} key" maxlength="30" value="${escapeHtmlAttr(opt.key)}" placeholder="auto from label" style="width:100%; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text-muted); padding:5px; font-family:inherit; font-size:11px;" /></td>
                     <td><input class="cp-price" type="number" min="0" step="1" aria-label="Option ${idx + 1} price add-on" value="${opt.priceDelta}" style="width:90px; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:5px; font-family:inherit;" /></td>
-                    <td><button class="admin-btn admin-btn-danger cp-remove-row" aria-label="Remove option ${idx + 1}">REMOVE</button></td>
+                    <td><button class="icon-btn icon-btn-danger cp-remove-row" title="Remove option ${idx + 1}" aria-label="Remove option ${idx + 1}">&times;</button></td>
                 </tr>
             `
             )
@@ -2375,7 +2376,7 @@ export const AdminPortal = {
                         canEdit
                             ? `<button class="admin-btn" data-toggle-coupon="${c.id}">${c.active ? "STOP" : "RESUME"}</button>
                     <button class="admin-btn" data-toggle-private="${c.id}">${c.private ? "MAKE PUBLIC" : "MAKE PRIVATE"}</button>
-                    <button class="admin-btn admin-btn-danger" data-delete-coupon="${c.id}">DELETE</button>`
+                    <button class="icon-btn icon-btn-danger" data-delete-coupon="${c.id}" title="Delete coupon ${escapeHtmlAttr(c.code)}" aria-label="Delete coupon ${escapeHtmlAttr(c.code)}">${TRASH_ICON}</button>`
                             : ""
                     }
                 </td>
@@ -2655,7 +2656,7 @@ export const AdminPortal = {
                                     <td style="text-align:right;">
                                         <button class="admin-btn" data-combo-edit="${combo.id}">EDIT</button>
                                         <button class="admin-btn" data-combo-toggle="${combo.id}">${combo.active !== false ? "HIDE" : "SHOW"}</button>
-                                        <button class="admin-btn admin-btn-danger" data-combo-delete="${combo.id}">DELETE</button>
+                                        <button class="icon-btn icon-btn-danger" data-combo-delete="${combo.id}" title="Delete ${escapeHtmlAttr(combo.name)}" aria-label="Delete ${escapeHtmlAttr(combo.name)}">${TRASH_ICON}</button>
                                     </td>
                                 </tr>
                             `;
@@ -3210,7 +3211,7 @@ export const AdminPortal = {
                                         ? `
                                     <button class="admin-btn" data-edit-staff="${u.id}">EDIT</button>
                                     <button class="admin-btn" data-reset="${u.id}" data-name="${escapeHtmlAttr(u.name)}">RESET PW</button>
-                                    <button class="admin-btn admin-btn-danger" data-remove="${u.id}" data-name="${escapeHtmlAttr(u.name)}">REMOVE</button>
+                                    <button class="icon-btn icon-btn-danger" data-remove="${u.id}" data-name="${escapeHtmlAttr(u.name)}" title="Delete ${escapeHtmlAttr(u.name)}" aria-label="Delete ${escapeHtmlAttr(u.name)}">${TRASH_ICON}</button>
                                 `
                                         : isSelf
                                           ? `<button class="admin-btn" id="self-account-settings">ACCOUNT SETTINGS</button>`
@@ -3335,7 +3336,7 @@ export const AdminPortal = {
                                     <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
                                         <span style="flex:1; font-size:11px;">${escapeHtmlAttr(name)}</span>
                                         ${canEdit ? `<button class="admin-btn" data-activate-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:10px;">ACTIVATE</button>
-                                        <button class="admin-btn admin-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" style="padding:4px 8px; font-size:10px;">DELETE</button>` : ""}
+                                        <button class="icon-btn icon-btn-danger" data-delete-profile="${escapeHtmlAttr(name)}" title="Delete profile ${escapeHtmlAttr(name)}" aria-label="Delete profile ${escapeHtmlAttr(name)}">${TRASH_ICON}</button>` : ""}
                                     </div>
                                 `
                                       )
@@ -3370,7 +3371,7 @@ export const AdminPortal = {
                                     <div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--color-border);">
                                         <img src="${escapeHtmlAttr(url)}" alt="" width="22" height="22" style="width:22px; height:22px; object-fit:contain;" />
                                         <span style="flex:1; font-size:11px;">${escapeHtmlAttr(key)}</span>
-                                        ${canEdit ? `<button class="admin-btn admin-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" style="padding:4px 8px; font-size:10px;">REMOVE</button>` : ""}
+                                        ${canEdit ? `<button class="icon-btn icon-btn-danger" data-remove-icon="${escapeHtmlAttr(key)}" title="Delete icon ${escapeHtmlAttr(key)}" aria-label="Delete icon ${escapeHtmlAttr(key)}">${TRASH_ICON}</button>` : ""}
                                     </div>
                                 `
                                       )
@@ -3642,75 +3643,9 @@ export const AdminPortal = {
             <div class="config-controls">
                 <div id="content-identity-section"></div>
                 <div id="content-nav-section"></div>
-
-                <div class="readonly-section">
-                    <div class="readonly-section-header">
-                        <h3 style="margin:0;">HOME PAGE CONTENT (FRANCHISE DEFAULT)</h3>
-                        ${canEdit ? "" : `<span class="admin-help-text">A store can override “This week's picks” from its own Store Setup page.</span>`}
-                    </div>
-                    <div id="content-home-view"></div>
-                    ${
-                        canEdit
-                            ? `
-                    <div id="content-home-edit" style="margin-top:12px;">
-                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
-                            <div class="control-group">
-                                <label for="cfg-home-heading-picks">PICKS HEADING</label>
-                                <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
-                            </div>
-                            <div class="control-group">
-                                <label for="cfg-home-heading-roast">ROAST HEADING</label>
-                                <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
-                            </div>
-                            <div class="control-group">
-                                <label for="cfg-home-heading-findus">CONTACT HEADING</label>
-                                <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
-                            </div>
-                        </div>
-
-                        <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:16px;">
-                            <div style="flex:1 1 320px; min-width:260px;">
-                                <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
-                                <p class="admin-help-text">Pick up to 3 items to feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
-                                <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
-                                <div id="home-picks-list" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
-                            </div>
-                            <div style="flex:1 1 240px; min-width:220px;">
-                                <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
-                                <p class="admin-help-text">Small badge shown on each picked item's home page card (e.g. "House favourite").</p>
-                                <div id="home-picks-tags" style="max-height:320px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
-                            </div>
-                        </div>
-
-                        <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
-                        <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
-                        <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
-                        <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
-                        <br />
-                        <p id="content-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>
-                        <button class="admin-btn-primary" id="home-content-save">SAVE HOME PAGE CONTENT</button>
-                    </div>`
-                            : ""
-                    }
-                </div>
-
+                <div id="content-home-section"></div>
                 <div id="content-footer-section"></div>
-                <div class="readonly-section">
-                    <div class="readonly-section-header"><h3 style="margin:0;">FOOTER CUSTOM FIELDS</h3></div>
-                    <p class="admin-help-text">Anything else to show on "Find us" - Instagram, WhatsApp, GST number, whatever this shop needs. Add up to 6.</p>
-                    ${
-                        canEdit
-                            ? `
-                    <div id="footer-custom-fields-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
-                    <button type="button" class="admin-btn-secondary" id="footer-custom-field-add" style="margin-bottom:14px;">+ ADD FIELD</button>
-                    <br />
-                    <p id="footer-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>
-                    <button class="admin-btn-primary" id="footer-save">SAVE CUSTOM FIELDS</button>`
-                            : (c.customFooterFields || []).length === 0
-                              ? `<p class="admin-help-text">No custom fields added yet.</p>`
-                              : `<ul style="margin:0; padding-left:18px; font-size:12px;">${(c.customFooterFields || []).map((f) => `<li>${escapeHtmlAttr(f.label)}: ${escapeHtmlAttr(f.value)}</li>`).join("")}</ul>`
-                    }
-                </div>
+                <div id="content-footer-fields-section"></div>
             </div>
         `;
 
@@ -3778,23 +3713,34 @@ export const AdminPortal = {
         });
 
         const pickableItems = this.menu.items.filter((i) => !i.deleted && i.available !== false);
-        const homeViewEl = document.getElementById("content-home-view");
-        if (!c.homePicks || c.homePicks.length === 0) {
-            homeViewEl.innerHTML = `<p class="admin-help-text">No picks curated yet - falls back to the first few items in the top menu section.</p>`;
-        } else {
-            homeViewEl.innerHTML = `<ul style="margin:0; padding-left:18px; font-size:12px;">${c.homePicks
-                .map((p) => {
-                    const item = pickableItems.find((i) => i.id === p.itemId);
-                    return `<li>${escapeHtmlAttr(item ? item.name : "Unknown item")}${p.tag ? ` (${escapeHtmlAttr(p.tag)})` : ""}</li>`;
-                })
-                .join("")}</ul>`;
-        }
+        const picksSummary =
+            !c.homePicks || c.homePicks.length === 0
+                ? "None curated - falls back to the first few items in the top menu section"
+                : c.homePicks
+                      .map((p) => {
+                          const item = pickableItems.find((i) => i.id === p.itemId);
+                          return `${item ? item.name : "Unknown item"}${p.tag ? ` (${p.tag})` : ""}`;
+                      })
+                      .join(", ");
+        renderReadOnlySection(document.getElementById("content-home-section"), {
+            title: "HOME PAGE CONTENT (FRANCHISE DEFAULT)",
+            canEdit,
+            fields: [
+                { label: "This week's picks", value: picksSummary },
+                { label: "Roast process story", value: `${(c.roastSteps || []).length} step(s)` },
+                { label: "Picks heading", value: (c.homeHeadings && c.homeHeadings.picks) || "This week's picks" },
+                { label: "Roast heading", value: (c.homeHeadings && c.homeHeadings.roast) || "How we roast" },
+                { label: "Contact heading", value: (c.homeHeadings && c.homeHeadings.findUs) || "Find us" }
+            ],
+            onEdit: () => this.openHomeContentEditModal(root)
+        });
         if (!canEdit) {
-            homeViewEl.insertAdjacentHTML(
+            document.getElementById("content-home-section").insertAdjacentHTML(
                 "beforeend",
-                `<p class="admin-help-text" style="margin-top:8px;">Roast story: ${(c.roastSteps || []).length} step(s). Headings: “${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}” / “${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}” / “${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}”.</p>`
+                `<p class="admin-help-text" style="margin-top:8px;">A store can override "This week's picks" from its own Store Setup page.</p>`
             );
         }
+
         renderReadOnlySection(document.getElementById("content-footer-section"), {
             title: "STORE DETAILS (HOME PAGE FOOTER, FRANCHISE DEFAULT)",
             canEdit,
@@ -3834,11 +3780,79 @@ export const AdminPortal = {
                 })
         });
 
-        if (!canEdit) return;
+        renderReadOnlySection(document.getElementById("content-footer-fields-section"), {
+            title: "FOOTER CUSTOM FIELDS",
+            canEdit,
+            fields: (c.customFooterFields || []).map((f) => ({ label: f.label, value: f.value })),
+            emptyNote: "No custom fields added yet.",
+            onEdit: () => this.openFooterFieldsEditModal(root)
+        });
+        document.getElementById("content-footer-fields-section").insertAdjacentHTML(
+            "afterbegin",
+            `<p class="admin-help-text" style="margin:-4px 0 8px;">Anything else to show on "Find us" - Instagram, WhatsApp, GST number, whatever this shop needs. Add up to 6.</p>`
+        );
+    },
 
-        // ---- This week's picks: section-grouped list + smart suggestions ----
+    /** Full "This week's picks" + roast-story + headings editor, opened from
+     *  HOME PAGE CONTENT's EDIT button rather than sitting directly on the
+     *  page - a Global Admin browsing Content shouldn't be one misclick from
+     *  a live save, same reasoning as every other section on this tab. */
+    openHomeContentEditModal(root) {
+        document.getElementById("home-content-modal-overlay")?.remove();
+        const c = AdminConfig.settings;
+        const pickableItems = this.menu.items.filter((i) => !i.deleted && i.available !== false);
         const homePicksById = Object.fromEntries((c.homePicks || []).map((p) => [p.itemId, p.tag]));
-        const sectionTitleById = Object.fromEntries(this.menu.sections.map((s) => [s.id, s.title]));
+
+        const overlay = document.createElement("div");
+        overlay.id = "home-content-modal-overlay";
+        overlay.className = "modal-overlay";
+        overlay.style.zIndex = "5500";
+        overlay.innerHTML = `
+            <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 26px; width: min(760px, 94vw); max-height: 88vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
+                <h2 class="modal-title-header">EDIT HOME PAGE CONTENT</h2>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                    <div class="control-group">
+                        <label for="cfg-home-heading-picks">PICKS HEADING</label>
+                        <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
+                    </div>
+                    <div class="control-group">
+                        <label for="cfg-home-heading-roast">ROAST HEADING</label>
+                        <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
+                    </div>
+                    <div class="control-group">
+                        <label for="cfg-home-heading-findus">CONTACT HEADING</label>
+                        <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:16px;">
+                    <div style="flex:1 1 320px; min-width:260px;">
+                        <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
+                        <p class="admin-help-text">Pick up to 3 items to feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
+                        <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+                        <div id="home-picks-list" style="max-height:260px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                    </div>
+                    <div style="flex:1 1 240px; min-width:220px;">
+                        <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
+                        <p class="admin-help-text">Small badge shown on each picked item's home page card (e.g. "House favourite").</p>
+                        <div id="home-picks-tags" style="max-height:260px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                    </div>
+                </div>
+
+                <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
+                <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
+                <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+                <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
+                <br />
+                <p id="content-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>
+                <div style="display: grid; gap: 10px; margin-top: 10px;">
+                    <button id="home-content-save" class="modal-btn-primary">SAVE</button>
+                    <button id="home-content-cancel" class="modal-btn-secondary">CANCEL</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        document.getElementById("home-content-cancel").addEventListener("click", () => overlay.remove());
 
         const pickRowHtml = (item) => {
             const checked = homePicksById[item.id] !== undefined;
@@ -4048,15 +4062,46 @@ export const AdminPortal = {
                         findUs: document.getElementById("cfg-home-heading-findus").value.trim()
                     }
                 });
+                overlay.remove();
                 ok("Home page content saved");
+                this.renderContent(root);
             } catch (e) {
                 errorEl.textContent = e.message;
                 fail(e.message);
             }
         });
+    },
 
-        // ---- Custom footer fields editor (Instagram, GST no, WhatsApp, etc.) ----
+    /** "Find us" custom fields (Instagram, GST no, WhatsApp, etc.) editor,
+     *  opened from FOOTER CUSTOM FIELDS' EDIT button - same reasoning as
+     *  openHomeContentEditModal() above: no save button sitting directly on
+     *  the page. */
+    openFooterFieldsEditModal(root) {
+        document.getElementById("footer-fields-modal-overlay")?.remove();
+        const c = AdminConfig.settings;
         const MAX_CUSTOM_FOOTER_FIELDS = 6;
+
+        const overlay = document.createElement("div");
+        overlay.id = "footer-fields-modal-overlay";
+        overlay.className = "modal-overlay";
+        overlay.style.zIndex = "5500";
+        overlay.innerHTML = `
+            <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 26px; width: min(640px, 94vw); max-height: 88vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
+                <h2 class="modal-title-header">EDIT FOOTER CUSTOM FIELDS</h2>
+                <p class="admin-help-text" style="margin-top:0;">Anything else to show on "Find us" - Instagram, WhatsApp, GST number, whatever this shop needs. Add up to ${MAX_CUSTOM_FOOTER_FIELDS}.</p>
+                <div id="footer-custom-fields-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+                <button type="button" class="admin-btn-secondary" id="footer-custom-field-add" style="margin-bottom:14px;">+ ADD FIELD</button>
+                <br />
+                <p id="footer-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>
+                <div style="display: grid; gap: 10px; margin-top: 10px;">
+                    <button id="footer-save" class="modal-btn-primary">SAVE</button>
+                    <button id="footer-cancel" class="modal-btn-secondary">CANCEL</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        document.getElementById("footer-cancel").addEventListener("click", () => overlay.remove());
+
         const footerFieldsEditor = document.getElementById("footer-custom-fields-editor");
 
         const FOOTER_FIELD_TYPES = [
@@ -4112,6 +4157,7 @@ export const AdminPortal = {
             try {
                 const updated = await AdminConfig.saveSettings({ customFooterFields: finalCustomFields });
                 if (window.renderFooter) window.renderFooter(updated);
+                overlay.remove();
                 ok("Custom fields saved");
                 this.renderContent(root);
             } catch (e) {

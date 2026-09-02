@@ -1429,13 +1429,13 @@ function dietIconHtml(item) {
 }
 
 /** Only rendered when the item actually has allergens set - clicking OR
- *  hovering shows them. Hover/focus alone (via .field-tooltip's own CSS
- *  popover, already used for admin tooltips) doesn't reliably work on a
- *  touch device, so this also wires a real click handler (toast) rather
- *  than depending on :hover for mobile. */
+ *  hovering shows them. Hover/focus alone (via the browser's own title=
+ *  tooltip, same as .field-tooltip's admin-panel usage) doesn't reliably
+ *  work on a touch device, so this also wires a real click handler (toast)
+ *  rather than depending on :hover for mobile. */
 function allergenBadgeHtml(allergens) {
     const escaped = escapeHtml(allergens);
-    return ` <span class="allergen-badge field-tooltip" tabindex="0" role="img" aria-label="Allergens: ${escaped}" title="Allergens: ${escaped}" data-tip="Allergens: ${escaped}" data-allergens="${escaped}" style="font-size:9px;">&#9888;</span>`;
+    return ` <span class="allergen-badge field-tooltip" tabindex="0" role="img" aria-label="Allergens: ${escaped}" title="Allergens: ${escaped}" data-allergens="${escaped}" style="font-size:9px;">&#9888;</span>`;
 }
 
 /** ALL/VEG/NON-VEG toggle - its own row below the category chips (see
