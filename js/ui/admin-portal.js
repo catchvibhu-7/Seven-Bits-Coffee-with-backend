@@ -758,6 +758,7 @@ export const AdminPortal = {
         const footer = AdminConfig.settings.footer || {};
         container.innerHTML = `
             <div id="sp-contact"></div>
+            <div id="sp-hero"></div>
             <div id="sp-picks"></div>
             <div id="sp-payments"></div>
             <div id="sp-operations"></div>
@@ -792,6 +793,40 @@ export const AdminPortal = {
                         onSaved();
                     }
                 })
+        });
+
+        renderReadOnlySection(container.querySelector("#sp-hero"), {
+            title: "HERO IMAGE",
+            canEdit,
+            fields: [{ label: "This store's home page photo", value: store.heroImageUrl || "" }],
+            emptyNote: "None set - only the franchise-wide hero images show for this store.",
+            onEdit: () => {
+                renderSectionEditModal({
+                    title: "EDIT HERO IMAGE",
+                    fields: [
+                        {
+                            id: "sp-hero-url",
+                            label: "One photo shown only on this store's home page, cycled in after the franchise-wide hero images",
+                            value: store.heroImageUrl || "",
+                            maxlength: 500,
+                            placeholder: "https://... or pick from the bucket"
+                        }
+                    ],
+                    onSave: async (v) => {
+                        await PayrollSystem.updateStore(store.id, { heroImageUrl: v["sp-hero-url"].trim() || null });
+                        ok("Hero image saved");
+                        onSaved();
+                    }
+                });
+                const input = document.getElementById("sp-hero-url");
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "admin-btn-secondary";
+                btn.textContent = "BROWSE";
+                btn.style.marginTop = "6px";
+                btn.addEventListener("click", () => renderImagePickerModal({ onSelect: (url) => (input.value = url) }));
+                input.insertAdjacentElement("afterend", btn);
+            }
         });
 
         const allItems = this.menu.items.filter((i) => !i.deleted);

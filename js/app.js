@@ -282,7 +282,13 @@ window.applyBranding = (config) => {
 
     document.body.classList.toggle("theme-light", config.theme === "light");
 
-    renderHeroCarousel(config.heroImages || []);
+    // A store's own single hero photo (Store Setup, manager/Local Admin/
+    // Global Admin) cycles in after the franchise-wide ones, only for a
+    // customer currently viewing that store - config.storeHeroImageUrl is
+    // already store-scoped server-side (mergeStoreOverrides()), null for
+    // every other store or when none is picked.
+    const heroImages = config.heroImages || [];
+    renderHeroCarousel(config.storeHeroImageUrl ? [...heroImages, { url: config.storeHeroImageUrl, title: "", subtitle: "" }] : heroImages);
 
     const logoEl = document.getElementById("site-logo");
     if (logoEl) {

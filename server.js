@@ -2050,6 +2050,18 @@ route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
       delivery: sanitizeDelivery(body.operations.delivery, existingOps.delivery || DEFAULT_STORE_OPERATIONS.delivery, isGlobalAdmin)
     };
   }
+  // heroImageUrl: one store-specific hero photo, shown only to a customer
+  // viewing THIS store's home page, cycled in alongside the franchise-wide
+  // heroImages (see GET /api/stores/public and renderHeroCarousel() in
+  // app.js) - not itself an array, a store gets exactly one. Same
+  // canManageStore() gate as every other field on this route (manager for
+  // their own store, Local Admin for their storeAccess, Global Admin any).
+  if (body.heroImageUrl !== undefined) {
+    if (body.heroImageUrl && String(body.heroImageUrl).length > 8000) {
+      return sendJson(res, 400, { error: "Image URL is too long" });
+    }
+    store.heroImageUrl = body.heroImageUrl ? String(body.heroImageUrl).trim() : null;
+  }
   writeJson(STORES_FILE, stores);
   sendJson(res, 200, store);
 });
@@ -3162,6 +3174,11 @@ function mergeStoreOverrides(config, store) {
     waitTime: operations.waitTime || DEFAULT_STORE_OPERATIONS.waitTime,
     delivery: operations.delivery || DEFAULT_STORE_OPERATIONS.delivery,
     homePicks: store && store.homePicks !== undefined ? store.homePicks : config.homePicks,
+    // A store's own single hero photo (see PATCH /api/stores/:id) - cycled
+    // in alongside the franchise-wide heroImages array (see
+    // renderHeroCarousel() in app.js) only for a customer viewing THIS
+    // store's home page; null when the store hasn't set one.
+    storeHeroImageUrl: (store && store.heroImageUrl) || null,
     footer: {
       ...config.footer,
       ...(store && store.address ? { address: store.address } : {}),
@@ -3540,6 +3557,9 @@ function findUploadUsage(url) {
   const config = readJson(CONFIG_FILE, {});
   (config.heroImages || []).forEach((h) => {
     if (h.url === url) usedIn.push(`home page hero image${h.title ? ` ("${h.title}")` : ""}`);
+  });
+  readJson(STORES_FILE, []).forEach((s) => {
+    if (s.heroImageUrl === url) usedIn.push(`"${s.name}"'s hero image`);
   });
   if (config.logoUrl === url) usedIn.push("logo");
   if (config.logoWideUrl === url) usedIn.push("wide logo");
