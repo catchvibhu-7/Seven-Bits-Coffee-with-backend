@@ -84,14 +84,14 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
   browser tab (their page loaded the old `app.js` before your fix landed) —
   ask for a hard refresh (Ctrl+Shift+R / Cmd+Shift+R) before re-diagnosing
   from scratch.
-- **`main` and `pos-redesign-mobile` have diverged again as of this
-  session's end**: the font-size sweep and the attach-to-bill feature (see
-  "Recent work") are committed on `pos-redesign-mobile` but the user
-  explicitly said not to merge them into `main` yet ("not for now") — don't
-  merge on your own initiative; ask first. Everything from earlier sessions
-  IS already merged into `main` (see the older "Merged `pos-redesign-
-  mobile` into `main`" entry below) — only these two newest commits are
-  pending.
+- **`main` and `pos-redesign-mobile` merged again** (2026-09-02): the
+  attach-to-bill feature, delivery orders, order-ID migration, and the
+  address-search redesign are now all in `main` (`33da456`), pushed to
+  origin — clean merge, no conflicts, boot-tested on a fresh
+  `git archive` extract before pushing. Don't assume this note is still
+  current by the time you read it — check `git log --oneline -3 main
+  pos-redesign-mobile` before trusting it, the two branches can and do
+  diverge again as soon as new work lands on `pos-redesign-mobile`.
 
 ## Testing conventions
 
