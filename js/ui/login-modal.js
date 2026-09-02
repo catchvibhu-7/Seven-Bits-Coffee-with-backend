@@ -4,6 +4,7 @@
  */
 import { AuthSystem } from "../features/auth-logic.js";
 import { renderPasswordStrengthMeter } from "../features/password-strength.js";
+import { t } from "../features/i18n-logic.js";
 
 function fieldStyle(extra = "") {
     return `width: 100%; box-sizing: border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding: 10px; font-family: inherit; margin-bottom: 4px; ${extra}`;
@@ -18,7 +19,7 @@ function fieldStyle(extra = "") {
  * @param {boolean} [options.allowRegister] - show the "Create Account" tab.
  */
 export function renderLoginModal(onSuccess, options = {}) {
-    const { title = "LOGIN REQUIRED", allowGuest = false, allowRegister = false } = options;
+    const { title = t("login.modalTitleDefault"), allowGuest = false, allowRegister = false } = options;
     document.getElementById("login-overlay")?.remove();
 
     let mode = "login"; // "login" | "guest" | "register" | "forgot"
@@ -32,44 +33,44 @@ export function renderLoginModal(onSuccess, options = {}) {
 
     function render() {
         const tabs = [];
-        tabs.push(`<button data-mode="login" class="login-tab ${mode === "login" ? "active" : ""}">LOGIN</button>`);
-        if (allowGuest) tabs.push(`<button data-mode="guest" class="login-tab ${mode === "guest" ? "active" : ""}">GUEST</button>`);
-        if (allowRegister) tabs.push(`<button data-mode="register" class="login-tab ${mode === "register" ? "active" : ""}">SIGN UP</button>`);
+        tabs.push(`<button data-mode="login" class="login-tab ${mode === "login" ? "active" : ""}">${t("login.title")}</button>`);
+        if (allowGuest) tabs.push(`<button data-mode="guest" class="login-tab ${mode === "guest" ? "active" : ""}">${t("login.guestTab")}</button>`);
+        if (allowRegister) tabs.push(`<button data-mode="register" class="login-tab ${mode === "register" ? "active" : ""}">${t("login.signUpTab")}</button>`);
 
         let fields = "";
         if (mode === "login") {
             fields = `
-                <input id="lf-username" type="text" placeholder="USERNAME OR PHONE" aria-label="Username or phone" autocomplete="username" style="${fieldStyle()}" />
-                <input id="lf-password" type="password" placeholder="PASSWORD" aria-label="Password" autocomplete="current-password" style="${fieldStyle("margin-bottom:8px;")}" />
+                <input id="lf-username" type="text" placeholder="${t("login.usernamePlaceholder")}" aria-label="${t("login.usernamePlaceholder")}" autocomplete="username" style="${fieldStyle()}" />
+                <input id="lf-password" type="password" placeholder="${t("login.passwordPlaceholder")}" aria-label="${t("login.passwordPlaceholder")}" autocomplete="current-password" style="${fieldStyle("margin-bottom:8px;")}" />
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px;">
-                    <button id="lf-forgot-link" type="button" style="background:none; border:none; color:var(--color-text-muted); font-size:10px; text-decoration:underline; cursor:pointer; padding:0; font-family:inherit; white-space:nowrap;">Forgot password?</button>
+                    <button id="lf-forgot-link" type="button" style="background:none; border:none; color:var(--color-text-muted); font-size:10px; text-decoration:underline; cursor:pointer; padding:0; font-family:inherit; white-space:nowrap;">${t("login.forgotPasswordLink")}</button>
                     <span id="login-error" style="color:var(--color-danger); font-size:10px; text-align:right;"></span>
                 </div>
             `;
         } else if (mode === "guest") {
             fields = `
-                <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">No account needed - we'll use this number to show your order status. You'll only ever see orders placed under this number.</p>
-                <input id="lf-phone" type="tel" placeholder="PHONE NUMBER" aria-label="Phone number" autocomplete="tel" style="${fieldStyle()}" />
+                <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">${t("login.guestNote")}</p>
+                <input id="lf-phone" type="tel" placeholder="${t("login.phonePlaceholder")}" aria-label="${t("login.phonePlaceholder")}" autocomplete="tel" style="${fieldStyle()}" />
                 <p id="login-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 6px 0 0;"></p>
             `;
         } else if (mode === "register") {
             fields = `
-                <input id="lf-name" type="text" placeholder="YOUR NAME" aria-label="Your name" style="${fieldStyle()}" />
-                <input id="lf-phone" type="tel" placeholder="PHONE NUMBER" aria-label="Phone number" autocomplete="tel" style="${fieldStyle()}" />
-                <input id="lf-username" type="text" placeholder="CHOOSE A USERNAME" aria-label="Choose a username" autocomplete="username" style="${fieldStyle()}" />
+                <input id="lf-name" type="text" placeholder="${t("login.namePlaceholder")}" aria-label="${t("login.namePlaceholder")}" style="${fieldStyle()}" />
+                <input id="lf-phone" type="tel" placeholder="${t("login.phonePlaceholder")}" aria-label="${t("login.phonePlaceholder")}" autocomplete="tel" style="${fieldStyle()}" />
+                <input id="lf-username" type="text" placeholder="${t("login.chooseUsernamePlaceholder")}" aria-label="${t("login.chooseUsernamePlaceholder")}" autocomplete="username" style="${fieldStyle()}" />
                 <div id="lf-username-status" style="font-size: 10px; min-height: 11px; margin-bottom: 6px;"></div>
-                <input id="lf-password" type="password" placeholder="CHOOSE A PASSWORD" aria-label="Choose a password" autocomplete="new-password" style="${fieldStyle()}" />
+                <input id="lf-password" type="password" placeholder="${t("login.choosePasswordPlaceholder")}" aria-label="${t("login.choosePasswordPlaceholder")}" autocomplete="new-password" style="${fieldStyle()}" />
                 <div id="lf-password-meter"></div>
                 <p id="login-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 6px 0 0;"></p>
             `;
         } else if (mode === "forgot") {
             fields = `
-                <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">Enter the username and phone number on your account to set a new password.</p>
-                <input id="lf-username" type="text" placeholder="USERNAME" aria-label="Username" autocomplete="username" style="${fieldStyle()}" />
-                <input id="lf-phone" type="tel" placeholder="PHONE NUMBER ON YOUR ACCOUNT" aria-label="Phone number on your account" autocomplete="tel" style="${fieldStyle()}" />
-                <input id="lf-password" type="password" placeholder="NEW PASSWORD" aria-label="New password" autocomplete="new-password" style="${fieldStyle()}" />
+                <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">${t("login.forgotNote")}</p>
+                <input id="lf-username" type="text" placeholder="${t("login.forgotUsernamePlaceholder")}" aria-label="${t("login.forgotUsernamePlaceholder")}" autocomplete="username" style="${fieldStyle()}" />
+                <input id="lf-phone" type="tel" placeholder="${t("login.forgotPhonePlaceholder")}" aria-label="${t("login.forgotPhonePlaceholder")}" autocomplete="tel" style="${fieldStyle()}" />
+                <input id="lf-password" type="password" placeholder="${t("login.newPasswordPlaceholder")}" aria-label="${t("login.newPasswordPlaceholder")}" autocomplete="new-password" style="${fieldStyle()}" />
                 <div id="lf-password-meter"></div>
-                <p style="font-size: 10px; color: var(--color-text-muted); margin: 10px 0 0;">Staff account? Ask an owner or admin to reset it for you instead.</p>
+                <p style="font-size: 10px; color: var(--color-text-muted); margin: 10px 0 0;">${t("login.staffResetNote")}</p>
                 <p id="login-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 6px 0 0;"></p>
                 <p id="login-success" style="color:var(--color-success); font-size: 11px; min-height: 12px; margin: 0;"></p>
             `;
@@ -78,7 +79,7 @@ export function renderLoginModal(onSuccess, options = {}) {
         overlay.innerHTML = `
             <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 320px; font-family: 'Courier New', monospace;">
                 <h2 class="modal-title-header">
-                    ${mode === "forgot" ? "RESET PASSWORD" : title}
+                    ${mode === "forgot" ? t("login.resetPasswordTitle") : title}
                 </h2>
 
                 ${
@@ -91,10 +92,10 @@ export function renderLoginModal(onSuccess, options = {}) {
 
                 <div style="display: grid; gap: 10px;">
                     <button id="login-submit" class="modal-btn-primary">
-                        ${mode === "login" ? "LOGIN" : mode === "guest" ? "CONTINUE AS GUEST" : mode === "forgot" ? "SET NEW PASSWORD" : "CREATE ACCOUNT"}
+                        ${mode === "login" ? t("login.submitLogin") : mode === "guest" ? t("login.submitGuest") : mode === "forgot" ? t("login.submitForgot") : t("login.submitRegister")}
                     </button>
                     <button id="login-cancel" class="modal-btn-secondary">
-                        ${mode === "forgot" ? "BACK TO LOGIN" : "CANCEL"}
+                        ${mode === "forgot" ? t("common.backToLogin") : t("common.cancel")}
                     </button>
                 </div>
             </div>
@@ -146,17 +147,17 @@ export function renderLoginModal(onSuccess, options = {}) {
                     statusEl.textContent = "";
                     return;
                 }
-                statusEl.textContent = "checking...";
+                statusEl.textContent = t("login.usernameChecking");
                 statusEl.style.color = "var(--color-text-muted)";
                 usernameCheckTimer = setTimeout(async () => {
                     const available = await AuthSystem.checkUsernameAvailable(value);
                     if (available === null) {
                         statusEl.textContent = "";
                     } else if (available) {
-                        statusEl.textContent = "\u2713 available";
+                        statusEl.textContent = t("login.usernameAvailable");
                         statusEl.style.color = "var(--color-success)";
                     } else {
-                        statusEl.textContent = "\u2717 already taken";
+                        statusEl.textContent = t("login.usernameTaken");
                         statusEl.style.color = "var(--color-danger)";
                     }
                 }, 350);
@@ -196,14 +197,14 @@ export function renderLoginModal(onSuccess, options = {}) {
                 const phone = document.getElementById("lf-phone").value;
                 const newPassword = document.getElementById("lf-password").value;
                 await AuthSystem.forgotPassword({ username, phone, newPassword });
-                successEl.textContent = "Password updated - you can log in now.";
+                successEl.textContent = t("login.passwordUpdated");
                 setTimeout(() => {
                     mode = "login";
                     render();
                 }, 1200);
             }
         } catch (e) {
-            if (errorEl) errorEl.textContent = e.message || "Something went wrong";
+            if (errorEl) errorEl.textContent = e.message || t("login.fallbackError");
         }
     }
 
@@ -225,15 +226,15 @@ export function renderForceChangePasswordModal(onSuccess, onLogout) {
     overlay.style.zIndex = "5000";
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 320px; font-family: 'Courier New', monospace;">
-            <h2 class="modal-title-header">SET A NEW PASSWORD</h2>
-            <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">You're using a temporary password. Set your own before continuing.</p>
+            <h2 class="modal-title-header">${t("login.forceChange.title")}</h2>
+            <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">${t("login.forceChange.note")}</p>
             <p id="fcp-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 10px;"></p>
-            <input id="fcp-current" type="password" placeholder="TEMPORARY PASSWORD" aria-label="Temporary password" autocomplete="current-password" style="${fieldStyle()}" />
-            <input id="fcp-new" type="password" placeholder="NEW PASSWORD" aria-label="New password" autocomplete="new-password" style="${fieldStyle()}" />
+            <input id="fcp-current" type="password" placeholder="${t("login.forceChange.tempPasswordPlaceholder")}" aria-label="${t("login.forceChange.tempPasswordPlaceholder")}" autocomplete="current-password" style="${fieldStyle()}" />
+            <input id="fcp-new" type="password" placeholder="${t("login.forceChange.newPasswordPlaceholder")}" aria-label="${t("login.forceChange.newPasswordPlaceholder")}" autocomplete="new-password" style="${fieldStyle()}" />
             <div id="fcp-meter"></div>
             <div style="display: grid; gap: 10px; margin-top: 10px;">
-                <button id="fcp-submit" class="modal-btn-primary">SET PASSWORD</button>
-                <button id="fcp-logout" class="modal-btn-secondary">LOG OUT INSTEAD</button>
+                <button id="fcp-submit" class="modal-btn-primary">${t("login.forceChange.submit")}</button>
+                <button id="fcp-logout" class="modal-btn-secondary">${t("login.forceChange.logout")}</button>
             </div>
         </div>
     `;
@@ -258,7 +259,7 @@ export function renderForceChangePasswordModal(onSuccess, onLogout) {
             overlay.remove();
             onSuccess();
         } catch (e) {
-            errorEl.textContent = e.message || "Could not change password";
+            errorEl.textContent = e.message || t("login.forceChange.fallbackError");
         }
     });
 

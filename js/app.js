@@ -395,7 +395,7 @@ window.handleAccountClick = () => {
             // logged-in one, not stale - a staff login lands on the new
             // staff dashboard instead of the customer home page.
             (loginResult) => afterLoginSuccess(loginResult, () => window.showPage(KITCHEN_ROLES.includes(session.role) ? "staff-home" : "home")),
-            { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
+            { title: t("login.modalTitleGuest"), allowGuest: true, allowRegister: true }
         );
     }
 };
@@ -2079,7 +2079,7 @@ window.openMyOrders = async () => {
     if (!session.authenticated) {
         renderLoginModal(
             (loginResult) => afterLoginSuccess(loginResult, async () => window.openMyOrders()),
-            { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
+            { title: t("login.modalTitleGuest"), allowGuest: true, allowRegister: true }
         );
         return;
     }
@@ -2128,7 +2128,7 @@ window.handleCartStatusClick = async () => {
                 afterLoginSuccess(loginResult, async () => {
                     await renderCheckoutModal(cart, serviceChargeActive, tipApplied);
                 }),
-            { title: "LOGIN OR CONTINUE AS GUEST", allowGuest: true, allowRegister: true }
+            { title: t("login.modalTitleGuest"), allowGuest: true, allowRegister: true }
         );
         return;
     }
