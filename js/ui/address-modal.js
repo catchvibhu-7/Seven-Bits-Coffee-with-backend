@@ -10,10 +10,7 @@
  */
 import { AddressSystem } from "../features/address-logic.js";
 import { StoreSystem } from "../features/store-logic.js";
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
+import { escapeHtml } from "../features/html-utils.js";
 
 // Central-India fallback when nothing better is known (no store selected, or
 // the selected store has no lat/lng of its own yet) - just needs to open
@@ -61,7 +58,7 @@ export function renderAddressModal() {
         addresses = await AddressSystem.list();
         overlay.innerHTML = `
             <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(420px, 92vw); max-height: 85vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
-                <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">MY ADDRESSES</h2>
+                <h2 class="modal-title-header">MY ADDRESSES</h2>
                 ${
                     addresses.length === 0
                         ? `<p style="font-size:12px; color:var(--color-text-muted);">No saved addresses yet.</p>`
@@ -122,34 +119,34 @@ export function renderAddressModal() {
     async function renderForm(existing) {
         overlay.innerHTML = `
             <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(460px, 92vw); max-height: 90vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
-                <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${existing ? "EDIT ADDRESS" : "ADD ADDRESS"}</h2>
+                <h2 class="modal-title-header">${existing ? "EDIT ADDRESS" : "ADD ADDRESS"}</h2>
                 <p id="addr-form-error" style="color:var(--color-danger); font-size: 11px; margin: 0 0 8px;"></p>
-                <label for="addr-label" style="font-size:10px; color:var(--color-text-muted);">LABEL (e.g. Home, Office)</label>
+                <label for="addr-label" class="field-hint">LABEL (e.g. Home, Office)</label>
                 <input id="addr-label" type="text" maxlength="40" value="${escapeHtml(existing?.label || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
-                <label for="addr-text" style="font-size:10px; color:var(--color-text-muted);">ADDRESS (house/street, shown to staff - not used to place the pin)</label>
+                <label for="addr-text" class="field-hint">ADDRESS (house/street, shown to staff - not used to place the pin)</label>
                 <textarea id="addr-text" maxlength="200" rows="2" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px; resize:vertical;">${escapeHtml(existing?.addressText || "")}</textarea>
-                <label for="addr-landmark" style="font-size:10px; color:var(--color-text-muted);">LANDMARK (optional)</label>
+                <label for="addr-landmark" class="field-hint">LANDMARK (optional)</label>
                 <input id="addr-landmark" type="text" maxlength="100" value="${escapeHtml(existing?.landmark || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                 <div style="display:flex; gap:10px;">
                     <div style="flex:2;">
-                        <label for="addr-city" style="font-size:10px; color:var(--color-text-muted);">CITY</label>
+                        <label for="addr-city" class="field-hint">CITY</label>
                         <input id="addr-city" type="text" maxlength="60" value="${escapeHtml(existing?.city || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     </div>
                     <div style="flex:2;">
-                        <label for="addr-state" style="font-size:10px; color:var(--color-text-muted);">STATE</label>
+                        <label for="addr-state" class="field-hint">STATE</label>
                         <input id="addr-state" type="text" maxlength="60" value="${escapeHtml(existing?.state || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     </div>
                     <div style="flex:1;">
-                        <label for="addr-pincode" style="font-size:10px; color:var(--color-text-muted);">PIN CODE</label>
+                        <label for="addr-pincode" class="field-hint">PIN CODE</label>
                         <input id="addr-pincode" type="text" inputmode="numeric" maxlength="12" value="${escapeHtml(existing?.pincode || "")}" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     </div>
                 </div>
-                <label for="addr-search" style="font-size:10px; color:var(--color-text-muted);">SEARCH FOR YOUR ADDRESS</label>
+                <label for="addr-search" class="field-hint">SEARCH FOR YOUR ADDRESS</label>
                 <div style="position:relative;">
                     <input id="addr-search" type="text" placeholder="Search for area, street, city..." autocomplete="off" style="width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 10px;" />
                     <div id="addr-search-results" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:10; background:var(--color-surface); border:1px solid var(--color-accent); max-height:180px; overflow-y:auto;"></div>
                 </div>
-                <label style="font-size:10px; color:var(--color-text-muted);">OR DROP A PIN ON THE MAP TO SET YOUR LOCATION</label>
+                <label class="field-hint">OR DROP A PIN ON THE MAP TO SET YOUR LOCATION</label>
                 <div style="display:flex; justify-content:flex-end; margin:4px 0;">
                     <button type="button" id="addr-use-location" style="background:none; border:none; color:var(--color-accent); font-size:10px; text-decoration:underline; cursor:pointer; font-family:inherit; padding:0;">&gt; Use my current location</button>
                 </div>

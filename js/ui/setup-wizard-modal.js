@@ -63,16 +63,16 @@ export function renderSetupWizardModal({ onNavigate }) {
         if (step === 0) {
             body = `
                 <h3 style="margin-top:0;">Tell customers who you are</h3>
-                <label for="sw-shop-name" style="font-size:10px; color:var(--color-text-muted);">SHOP NAME</label>
+                <label for="sw-shop-name" class="field-hint">SHOP NAME</label>
                 <input id="sw-shop-name" type="text" value="${escapeHtmlAttr(c.shopName || "")}" style="${fieldStyle()}" />
 
-                <label for="sw-logo" style="font-size:10px; color:var(--color-text-muted);">LOGO (shown in the top nav)</label>
+                <label for="sw-logo" class="field-hint">LOGO (shown in the top nav)</label>
                 <div style="display:flex; gap:8px; margin:4px 0 12px;">
                     <input id="sw-logo" type="text" value="${escapeHtmlAttr(c.logoUrl || "")}" placeholder="https://... or pick from the bucket" style="${fieldStyle()} margin:0; flex:1;" />
                     <button type="button" id="sw-logo-pick" class="admin-btn-secondary">BROWSE</button>
                 </div>
 
-                <label for="sw-hero" style="font-size:10px; color:var(--color-text-muted);">HERO / STOREFRONT IMAGE (home page)</label>
+                <label for="sw-hero" class="field-hint">HERO / STOREFRONT IMAGE (home page)</label>
                 <div style="display:flex; gap:8px; margin:4px 0 12px;">
                     <input id="sw-hero" type="text" value="${escapeHtmlAttr(c.heroImageUrl || "")}" placeholder="https://... or pick from the bucket" style="${fieldStyle()} margin:0; flex:1;" />
                     <button type="button" id="sw-hero-pick" class="admin-btn-secondary">BROWSE</button>
@@ -84,17 +84,17 @@ export function renderSetupWizardModal({ onNavigate }) {
                 <p style="font-size:11px; color:var(--color-text-muted); margin-top:-6px;">Skip anything that doesn't apply - defaults are fine to start with and can be changed later from Admin &gt; Payments.</p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                     <div>
-                        <label for="sw-cgst" style="font-size:10px; color:var(--color-text-muted);">CGST %</label>
+                        <label for="sw-cgst" class="field-hint">CGST %</label>
                         <input id="sw-cgst" type="number" inputmode="decimal" min="0" step="0.01" value="${(c.cgstRate * 100).toFixed(2)}" style="${fieldStyle()}" />
                     </div>
                     <div>
-                        <label for="sw-sgst" style="font-size:10px; color:var(--color-text-muted);">SGST %</label>
+                        <label for="sw-sgst" class="field-hint">SGST %</label>
                         <input id="sw-sgst" type="number" inputmode="decimal" min="0" step="0.01" value="${(c.sgstRate * 100).toFixed(2)}" style="${fieldStyle()}" />
                     </div>
                 </div>
-                <label for="sw-gst-number" style="font-size:10px; color:var(--color-text-muted);">GST NUMBER (GSTIN, optional - printed on bills)</label>
+                <label for="sw-gst-number" class="field-hint">GST NUMBER (GSTIN, optional - printed on bills)</label>
                 <input id="sw-gst-number" type="text" value="${escapeHtmlAttr(c.gstNumber || "")}" placeholder="22AAAAA0000A1Z5" autocomplete="off" spellcheck="false" style="${fieldStyle()}" />
-                <label for="sw-upi" style="font-size:10px; color:var(--color-text-muted);">UPI ID (VPA, optional - for "Pay Online")</label>
+                <label for="sw-upi" class="field-hint">UPI ID (VPA, optional - for "Pay Online")</label>
                 <input id="sw-upi" type="text" value="${escapeHtmlAttr(c.upiVpa || "")}" placeholder="yourshop@upi" autocomplete="off" spellcheck="false" style="${fieldStyle()}" />
             `;
         } else if (step === 2) {
@@ -113,7 +113,7 @@ export function renderSetupWizardModal({ onNavigate }) {
         overlay.innerHTML = `
             <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(480px, 92vw); max-height: 85vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace; position: relative;">
                 <button type="button" id="sw-dismiss" title="Close" style="position:absolute; top:12px; right:12px; background:none; border:none; color:var(--color-text-muted); font-size:18px; line-height:1; cursor:pointer; padding:4px;">&times;</button>
-                <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">SETUP WIZARD</h2>
+                <h2 class="modal-title-header">SETUP WIZARD</h2>
                 ${stepperHtml()}
                 <p id="sw-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 8px;"></p>
                 ${body}

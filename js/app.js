@@ -3,6 +3,7 @@
  * Location: /js/app.js
  */
 import { KitchenSystem } from "./features/kitchen-logic.js";
+import { escapeHtml } from "./features/html-utils.js";
 import { CartSystem, discountedBasePrice } from "./features/cart-logic.js";
 import { AuthSystem } from "./features/auth-logic.js";
 import { AdminConfig, currencySymbol } from "./features/config-logic.js";
@@ -969,16 +970,6 @@ window.adjustCartLine = (cartKey, delta) => {
     }
 };
 
-window.removeCartLine = (cartKey) => {
-    cart = cart.filter((c) => c.cartKey !== cartKey);
-    updateCartUI();
-    renderMenuKeepScroll();
-    if (document.getElementById("modal-overlay")) {
-        if (cart.length === 0) window.closeModal();
-        else renderCheckoutModal(cart, serviceChargeActive, tipApplied);
-    }
-};
-
 window.addCombo = (comboId) => {
     const combo = comboData.find((c) => c.id === comboId);
     if (!combo) return;
@@ -1363,10 +1354,6 @@ window.jumpTo = (sectionId) => {
     document.getElementById("menu-root")?.scrollIntoView({ behavior: "smooth", block: "start" });
     document.getElementById("jump-menu").style.display = "none";
 };
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 /** Short "Large · Oat Milk · +Extra Shot" style tag list for a customized order/cart line, HTML-escaped. */
 function customizationTagsText(item) {

@@ -7,6 +7,7 @@
  * save - this only builds the payload.
  */
 import { currencySymbol } from "../features/config-logic.js";
+import { escapeHtml } from "../features/html-utils.js";
 
 const fieldStyle =
     "width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 12px;";
@@ -58,27 +59,27 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
 
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(400px, 92vw); font-family: 'Courier New', monospace; max-height: 88vh; overflow-y: auto;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${isEdit ? "EDIT COMBO" : "ADD COMBO"}</h2>
+            <h2 class="modal-title-header">${isEdit ? "EDIT COMBO" : "ADD COMBO"}</h2>
             <p id="cb-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 8px;"></p>
 
-            <label style="font-size: 10px; color: var(--color-text-muted);">NAME</label>
+            <label class="field-hint">NAME</label>
             <input id="cb-name" type="text" maxlength="60" value="${combo ? escapeHtml(combo.name) : ""}" style="${fieldStyle}" />
 
-            <label style="font-size: 10px; color: var(--color-text-muted);">DESCRIPTION (OPTIONAL)</label>
+            <label class="field-hint">DESCRIPTION (OPTIONAL)</label>
             <input id="cb-description" type="text" maxlength="160" value="${combo ? escapeHtml(combo.description || "") : ""}" style="${fieldStyle}" />
 
-            <label style="font-size: 10px; color: var(--color-text-muted);">ITEMS IN THIS COMBO</label>
+            <label class="field-hint">ITEMS IN THIS COMBO</label>
             <div id="cb-rows">${rowsHtml()}</div>
             <button id="cb-add-row" type="button" style="background:none; border:1px dashed var(--color-border); color: var(--color-text-muted); padding:6px 10px; font-size:10px; cursor:pointer; margin-bottom:12px; font-family:inherit;">+ ADD ITEM</button>
 
             <div style="font-size: 11px; color: var(--color-text-muted); margin-bottom:8px;">Regular total: <span id="cb-base-total">${currencySymbol()}${baseTotal()}</span></div>
 
-            <label style="font-size: 10px; color: var(--color-text-muted);">COMBO PRICE (${currencySymbol()})</label>
+            <label class="field-hint">COMBO PRICE (${currencySymbol()})</label>
             <input id="cb-price" type="number" min="1" step="1" value="${combo ? combo.price : ""}" style="${fieldStyle}" />
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">
-                <button id="cb-save" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">${isEdit ? "SAVE CHANGES" : "CREATE COMBO"}</button>
-                <button id="cb-cancel" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CANCEL</button>
+                <button id="cb-save" class="modal-btn-primary">${isEdit ? "SAVE CHANGES" : "CREATE COMBO"}</button>
+                <button id="cb-cancel" class="modal-btn-secondary">CANCEL</button>
             </div>
         </div>
     `;
@@ -139,6 +140,3 @@ export function renderComboModal({ menuItems, combo = null, onSave }) {
     });
 }
 
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}

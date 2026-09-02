@@ -10,12 +10,9 @@
  */
 import { KitchenSystem } from "../features/kitchen-logic.js";
 import { currencySymbol } from "../features/config-logic.js";
+import { escapeHtml } from "../features/html-utils.js";
 
 let pollTimer = null;
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 function renderOrder(root, order) {
     const color = KitchenSystem.STATUS_COLORS[order.status] || "var(--color-text-muted)";

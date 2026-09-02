@@ -17,12 +17,9 @@
 import { KitchenSystem } from "../features/kitchen-logic.js";
 import { PayrollSystem } from "../features/payroll-logic.js";
 import { currencySymbol } from "../features/config-logic.js";
+import { escapeHtml } from "../features/html-utils.js";
 
 const LOW_STOCK_THRESHOLD = 5; // matches admin-portal.js's Menu Items low-stock highlight
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 function money(n) {
     return currencySymbol() + Number(n || 0).toLocaleString("en-IN");

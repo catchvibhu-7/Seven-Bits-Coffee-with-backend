@@ -77,7 +77,7 @@ export function renderLoginModal(onSuccess, options = {}) {
 
         overlay.innerHTML = `
             <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 320px; font-family: 'Courier New', monospace;">
-                <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">
+                <h2 class="modal-title-header">
                     ${mode === "forgot" ? "RESET PASSWORD" : title}
                 </h2>
 
@@ -90,10 +90,10 @@ export function renderLoginModal(onSuccess, options = {}) {
                 <div id="login-fields">${fields}</div>
 
                 <div style="display: grid; gap: 10px;">
-                    <button id="login-submit" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">
+                    <button id="login-submit" class="modal-btn-primary">
                         ${mode === "login" ? "LOGIN" : mode === "guest" ? "CONTINUE AS GUEST" : mode === "forgot" ? "SET NEW PASSWORD" : "CREATE ACCOUNT"}
                     </button>
-                    <button id="login-cancel" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">
+                    <button id="login-cancel" class="modal-btn-secondary">
                         ${mode === "forgot" ? "BACK TO LOGIN" : "CANCEL"}
                     </button>
                 </div>
@@ -225,15 +225,15 @@ export function renderForceChangePasswordModal(onSuccess, onLogout) {
     overlay.style.zIndex = "5000";
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 320px; font-family: 'Courier New', monospace;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">SET A NEW PASSWORD</h2>
+            <h2 class="modal-title-header">SET A NEW PASSWORD</h2>
             <p style="font-size: 11px; color: var(--color-text-muted); margin-top:0;">You're using a temporary password. Set your own before continuing.</p>
             <p id="fcp-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 10px;"></p>
             <input id="fcp-current" type="password" placeholder="TEMPORARY PASSWORD" aria-label="Temporary password" autocomplete="current-password" style="${fieldStyle()}" />
             <input id="fcp-new" type="password" placeholder="NEW PASSWORD" aria-label="New password" autocomplete="new-password" style="${fieldStyle()}" />
             <div id="fcp-meter"></div>
             <div style="display: grid; gap: 10px; margin-top: 10px;">
-                <button id="fcp-submit" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">SET PASSWORD</button>
-                <button id="fcp-logout" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">LOG OUT INSTEAD</button>
+                <button id="fcp-submit" class="modal-btn-primary">SET PASSWORD</button>
+                <button id="fcp-logout" class="modal-btn-secondary">LOG OUT INSTEAD</button>
             </div>
         </div>
     `;

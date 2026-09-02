@@ -3,6 +3,39 @@
  * Location: /css/theme.css
  */
 
+/* Shared modal <h2> title style - was duplicated inline across ~18 modal files */
+.modal-title-header {
+    letter-spacing: 2px;
+    border-bottom: 1px solid var(--color-accent);
+    padding-bottom: 10px;
+    margin-top: 0;
+    font-size: 1rem;
+}
+/* Shared small hint/label text under a form field - was duplicated inline 50+ times */
+.field-hint {
+    font-size: 10px;
+    color: var(--color-text-muted);
+}
+/* Shared modal action-button pair - was duplicated inline across ~19 call sites.
+   Distinct from .btn-primary (theme.css, sized for the home hero CTA). */
+.modal-btn-primary {
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
+    border: none;
+    padding: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+.modal-btn-secondary {
+    background: var(--color-border);
+    color: var(--color-text);
+    border: none;
+    padding: 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+
 /* ==========================================================================
    0. THEME VARIABLES
    Defaults match the original hardcoded look. app.js's applyBranding()
@@ -2718,21 +2751,6 @@ input[type="checkbox"]:disabled {
     color: var(--color-text-muted);
     line-height: 1.6;
     margin: 6px 0 0;
-}
-.home-widget-btn {
-    width: 100%;
-    margin-top: 14px;
-    padding: 11px;
-    background: #000;
-    border: 2px solid var(--color-accent);
-    color: var(--color-accent);
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: bold;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    cursor: pointer;
-    min-height: 44px;
 }
 .home-visit-row {
     display: flex;

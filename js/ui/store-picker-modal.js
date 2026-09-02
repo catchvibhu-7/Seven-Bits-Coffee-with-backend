@@ -7,10 +7,7 @@
  * why this is a client-side preference, not a session/account field.
  */
 import { StoreSystem } from "../features/store-logic.js";
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
+import { escapeHtml } from "../features/html-utils.js";
 
 /** Great-circle distance in km - accurate enough for "which nearby store"
  *  sorting, no need for anything more precise than that. */
@@ -34,7 +31,7 @@ export function renderStorePickerModal(onPicked) {
     overlay.style.zIndex = "6000";
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(380px, 92vw); box-sizing: border-box; font-family: 'Courier New', monospace;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">CHOOSE YOUR STORE</h2>
+            <h2 class="modal-title-header">CHOOSE YOUR STORE</h2>
             <p style="font-size: 11px; color: var(--color-text-muted); margin: 0 0 16px;">Which location are you ordering from? This only sets the menu and details you see - not tied to your account, so you can switch any time.</p>
             <div id="store-picker-list" style="display: grid; gap: 10px;"></div>
             <p id="store-picker-geo-status" style="font-size: 10px; color: var(--color-text-muted); min-height: 10px; margin: 8px 0 0;"></p>

@@ -11,10 +11,7 @@
  * in the same place.
  */
 import { UploadsSystem } from "../features/uploads-logic.js";
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
+import { escapeHtml } from "../features/html-utils.js";
 
 /**
  * @param {object} options
@@ -36,7 +33,7 @@ export function renderImagePickerModal({ onSelect }) {
     overlay.style.zIndex = "9000";
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 26px; width: min(640px, 92vw); max-height: 85vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">CHOOSE IMAGE</h2>
+            <h2 class="modal-title-header">CHOOSE IMAGE</h2>
             <p id="ip-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 8px;"></p>
 
             <label for="ip-file-input" class="admin-btn" style="display:inline-block; cursor:pointer; margin-bottom:16px;">[ UPLOAD NEW IMAGE ]</label>

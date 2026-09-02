@@ -34,7 +34,10 @@ re-explained — read it before making changes.
 - `js/features/*.js` — pure logic modules consumed by the UI layer
   (cart-logic, config-logic, auth-logic, customization-logic,
   table-sessions-logic, payroll-logic, favorites-logic, store-logic,
-  password-strength). Arcade games live under `js/features/arcade/*.js`
+  password-strength, address-logic). `html-utils.js` exports the one
+  shared `escapeHtml()` — every `js/ui/*.js` file and app.js import it
+  rather than redefining it locally (consolidated from 15 copies). Arcade
+  games live under `js/features/arcade/*.js`
   (one file per game, e.g. `snake-game.js`, `tetris-game.js`, plus
   `arcade-logic.js`/`arcade-page.js`) — this was reorganized out of
   `js/ui/*-game.js`; if you ever see stray files at the old path, they're
@@ -125,6 +128,32 @@ admin panel is `page-admin`, navigated to via `window.showPage('admin')`.
 
 ## Recent work (most recent session)
 
+- **Codebase redundancy cleanup** (repo-wide audit + fix, not a rewrite):
+  ran a ponytail-style over-engineering audit across the whole tree (server.js,
+  app.js, every js/ui and js/features file, theme.css) and fixed every
+  verified, low-risk finding — nothing behavioral, no framework/dependency
+  changes. Deleted: `data/orders.json.bak-pre-id-migration` (CLAUDE.md
+  itself said safe to delete), dead `window.removeCartLine` (app.js, zero
+  call sites), dead `.home-widget-btn` CSS rule (zero references). New
+  `js/features/html-utils.js` exports one `escapeHtml()` — was copy-pasted
+  as a private function in 15 separate files (app.js + 14 js/ui files);
+  every copy now imports the shared one. Three new shared CSS classes in
+  theme.css replace verbatim-duplicated inline `style="..."` attributes:
+  `.modal-title-header` (18 call sites), `.field-hint` (55 call sites),
+  `.modal-btn-primary`/`.modal-btn-secondary` (10 + 9 call sites) — all
+  swapped mechanically (`style="..."` → `class="..."`), zero visual change.
+  Verified with `node --check` on every touched file plus a full live
+  regression on the scratch server: customer flow (menu → customize →
+  cart → checkout → store-picker gating → cash order placement → My
+  Orders), address book (search → autofill → save), and staff/admin flow
+  (Kitchen board, Billing, every Admin tab including Menu Items/Combos/Raw
+  Materials/Staff/Sales/Discounts/Branding/Operations/Store Setup, plus
+  the Add Combo/Add Staff/Open Table/Customize/Coupon-usage modals) — zero
+  new console errors, zero regressions found. One unrelated environment
+  quirk noted during testing: this browser pane's screenshot capture can
+  go stale/black after several modal transitions in the same tab (a
+  compositor issue, confirmed via DOM/network inspection, not an app bug)
+  — reload the tab if it happens, don't mistake it for a rendering defect.
 - **Raw material inventory** (was in "Not yet done", now built): a new
   Admin > Menu > Raw Materials tab, manager+ only to view/add/rename/
   deactivate (`GET`/`POST`/`PATCH /api/raw-materials`, MANAGER_UP_ROLES),

@@ -28,6 +28,7 @@
  * visible button.
  */
 import { AdminConfig } from "../features/config-logic.js";
+import { escapeHtml } from "../features/html-utils.js";
 
 const LAYOUT_KEY = "sb-staff-nav-layout";
 
@@ -126,10 +127,6 @@ function setMainOffsetForLayout(layout) {
     if (!main) return;
     main.style.marginLeft = layout === "rail" ? `${RAIL_WIDTH_PX}px` : "0";
     main.style.marginTop = layout === "topbar" ? `${TOPBAR_HEIGHT_PX}px` : "0";
-}
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 // Mirrors app.js's KITCHEN_ROLES - inlined rather than imported since app.js

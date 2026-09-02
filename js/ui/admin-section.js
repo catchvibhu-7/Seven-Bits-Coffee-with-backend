@@ -15,10 +15,7 @@
  * server.js), so this is a real UI affordance, not the only thing standing
  * between a viewer and an edit they shouldn't have.
  */
-
-function escapeHtml(str) {
-    return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
+import { escapeHtml } from "../features/html-utils.js";
 
 /** Small (i) glyph carrying extra field context, read on hover/focus - see
  *  .field-tooltip in theme.css. Falls back to the native title= attribute
@@ -150,7 +147,7 @@ export function renderSectionEditModal({ title, fields, onSave, width = "420px" 
     overlay.style.zIndex = "5500";
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: ${width}; max-width: 92vw; font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${escapeHtml(title)}</h2>
+            <h2 class="modal-title-header">${escapeHtml(title)}</h2>
             <p id="section-edit-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 10px;"></p>
             ${fields.map(fieldControlHtml).join("")}
             <div style="display: grid; gap: 10px; margin-top: 18px;">

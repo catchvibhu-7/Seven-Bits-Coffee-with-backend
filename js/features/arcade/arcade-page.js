@@ -23,10 +23,7 @@ import { FlappyGame } from "./flappy-game.js";
 import { InvadersGame } from "./invaders-game.js";
 import { ConnectFourGame } from "./connectfour-game.js";
 import { CheckersGame } from "./checkers-game.js";
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
+import { escapeHtml } from "../html-utils.js";
 
 // Inline SVG (not CSS background-images) so thumbnails can reference the
 // live theme/accent color vars directly, same as the rest of the app.

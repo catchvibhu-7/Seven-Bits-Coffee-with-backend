@@ -18,6 +18,7 @@ import { KitchenSystem } from "../features/kitchen-logic.js";
 import { SoundSystem } from "../features/sound-logic.js";
 import { NotificationSystem } from "../features/notification-logic.js";
 import { AddressSystem } from "../features/address-logic.js";
+import { escapeHtml } from "../features/html-utils.js";
 
 // Mirrors app.js's KITCHEN_ROLES - inlined rather than imported since app.js
 // isn't set up as a module other files pull constants from (same pattern
@@ -29,10 +30,6 @@ const STAFF_ROLES = ["employee", "manager", "admin", "owner"];
 function customizationDetailLines(item) {
     if (item.isCombo) return [];
     return CustomizationSystem.describeLineWithAmounts(item);
-}
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 /** One cart line in the checkout modal's item list:

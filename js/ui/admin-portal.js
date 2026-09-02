@@ -1118,10 +1118,10 @@ export const AdminPortal = {
                     : ""
             }
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
-                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.month.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.allTime.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div class="field-hint">${kpi.today.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div class="field-hint">${kpi.week.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div class="field-hint">${kpi.month.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div class="field-hint">${kpi.allTime.orders} orders</div></div>
             </div>
 
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
@@ -1261,10 +1261,10 @@ export const AdminPortal = {
         root.innerHTML = `
             <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:4px;">COMBINED (EVERY STORE YOU CAN SEE)</h3>
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom:26px;">
-                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.today.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.week.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.month.orders} orders</div></div>
-                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div style="font-size:10px; color:var(--color-text-muted);">${kpi.allTime.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">TODAY</div><div class="stat-value">${currencySymbol()}${kpi.today.revenue.toFixed(0)}</div><div class="field-hint">${kpi.today.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS WEEK</div><div class="stat-value">${currencySymbol()}${kpi.week.revenue.toFixed(0)}</div><div class="field-hint">${kpi.week.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">THIS MONTH</div><div class="stat-value">${currencySymbol()}${kpi.month.revenue.toFixed(0)}</div><div class="field-hint">${kpi.month.orders} orders</div></div>
+                <div class="stat-card"><div class="stat-label">ALL TIME</div><div class="stat-value">${currencySymbol()}${kpi.allTime.revenue.toFixed(0)}</div><div class="field-hint">${kpi.allTime.orders} orders</div></div>
             </div>
 
             <h3 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">STORE VS STORE (ALL TIME)</h3>

@@ -10,6 +10,7 @@
  */
 import { CustomizationSystem } from "../features/customization-logic.js";
 import { currencySymbol } from "../features/config-logic.js";
+import { escapeHtml } from "../features/html-utils.js";
 
 const fieldStyle =
     "width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 12px;";
@@ -34,7 +35,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
 
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(380px, 92vw); font-family: 'Courier New', monospace; max-height: 88vh; overflow-y: auto;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${escapeHtml(item.name)}</h2>
+            <h2 class="modal-title-header">${escapeHtml(item.name)}</h2>
             <p style="font-size: 12px; line-height: 1.4; color: var(--color-text-muted); margin: 6px 0 16px;">${escapeHtml(item.story || "")}</p>
 
             ${
@@ -88,8 +89,8 @@ export async function renderCustomizeModal({ item, onAdd }) {
             </div>
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">
-                <button id="cm-add" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">ADD TO CART &middot; <span id="cm-total-price">${currencySymbol()}${item.price}</span></button>
-                <button id="cm-cancel" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CANCEL</button>
+                <button id="cm-add" class="modal-btn-primary">ADD TO CART &middot; <span id="cm-total-price">${currencySymbol()}${item.price}</span></button>
+                <button id="cm-cancel" class="modal-btn-secondary">CANCEL</button>
             </div>
         </div>
     `;
@@ -147,6 +148,3 @@ export async function renderCustomizeModal({ item, onAdd }) {
     });
 }
 
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}

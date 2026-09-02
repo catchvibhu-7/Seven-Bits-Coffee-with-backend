@@ -12,6 +12,7 @@ import { currencySymbol } from "../features/config-logic.js";
 import { KitchenSystem } from "../features/kitchen-logic.js";
 import { TableSessionsSystem } from "../features/table-sessions-logic.js";
 import { PAYMENT_METHODS } from "./billing-page.js";
+import { escapeHtml } from "../features/html-utils.js";
 
 let menuItemsCache = null; // lazy-loaded once for the add-items picker below
 async function loadMenuItems() {
@@ -54,33 +55,33 @@ export function renderTableModal({ tableCount, table = null, onSave }) {
 
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(380px, 92vw); font-family: 'Courier New', monospace;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${isEdit ? "EDIT TABLE" : "OPEN TABLE"}</h2>
+            <h2 class="modal-title-header">${isEdit ? "EDIT TABLE" : "OPEN TABLE"}</h2>
             <p id="tm-error" style="color:var(--color-danger); font-size: 11px; min-height: 12px; margin: 0 0 8px;"></p>
 
-            <label for="tm-table-number" style="font-size: 10px; color: var(--color-text-muted);">TABLE NUMBER</label>
+            <label for="tm-table-number" class="field-hint">TABLE NUMBER</label>
             ${
                 tableCount > 0
                     ? `<select id="tm-table-number" style="${fieldStyle}">${tableOptions}</select>`
                     : `<p style="font-size:11px; color:var(--color-danger); margin:4px 0 12px;">No tables configured - set "Number of Tables" in Admin &gt; Global Settings first.</p>`
             }
 
-            <label for="tm-customer-name" style="font-size: 10px; color: var(--color-text-muted);">CUSTOMER NAME (OPTIONAL - for identifying repeat customers / discounts)</label>
+            <label for="tm-customer-name" class="field-hint">CUSTOMER NAME (OPTIONAL - for identifying repeat customers / discounts)</label>
             <input id="tm-customer-name" type="text" maxlength="60" value="${table ? escapeHtml(table.customerName || "") : ""}" style="${fieldStyle}" />
 
-            <label for="tm-customer-phone" style="font-size: 10px; color: var(--color-text-muted);">CUSTOMER PHONE (OPTIONAL)${phoneIsMasked ? " - MANAGER+ ONLY" : ""}</label>
+            <label for="tm-customer-phone" class="field-hint">CUSTOMER PHONE (OPTIONAL)${phoneIsMasked ? " - MANAGER+ ONLY" : ""}</label>
             <input id="tm-customer-phone" type="tel" maxlength="15" value="${table ? escapeHtml(table.customerPhone || "") : ""}" ${phoneIsMasked ? "readonly" : ""} style="${fieldStyle}${phoneIsMasked ? " color:var(--color-text-muted);" : ""}" />
 
             ${
                 !isEdit
                     ? `
-            <label for="tm-note" style="font-size: 10px; color: var(--color-text-muted);">NOTE (OPTIONAL)</label>
+            <label for="tm-note" class="field-hint">NOTE (OPTIONAL)</label>
             <input id="tm-note" type="text" maxlength="140" style="${fieldStyle}" />`
                     : ""
             }
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">
-                <button id="tm-save" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;" ${tableCount === 0 ? "disabled" : ""}>${isEdit ? "SAVE CHANGES" : "OPEN TABLE"}</button>
-                <button id="tm-cancel" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CANCEL</button>
+                <button id="tm-save" class="modal-btn-primary" ${tableCount === 0 ? "disabled" : ""}>${isEdit ? "SAVE CHANGES" : "OPEN TABLE"}</button>
+                <button id="tm-cancel" class="modal-btn-secondary">CANCEL</button>
             </div>
         </div>
     `;
@@ -108,10 +109,6 @@ export function renderTableModal({ tableCount, table = null, onSave }) {
             errorEl.textContent = e.message || "Could not save";
         }
     });
-}
-
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 /** Converts one merged bill line back into the raw cart shape
@@ -161,7 +158,7 @@ export function renderTableBillModal({ table, onClose, onDismiss }) {
         const menuItems = await loadMenuItems();
         overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(420px, 92vw); font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">TABLE ${escapeHtml(table.tableNumber)} - BILL</h2>
+            <h2 class="modal-title-header">TABLE ${escapeHtml(table.tableNumber)} - BILL</h2>
             ${table.customerName || table.customerPhone ? `<p style="font-size:11px; color:var(--color-text-muted); margin: -6px 0 12px;">${escapeHtml(table.customerName || "")} ${table.customerPhone ? `(${escapeHtml(table.customerPhone)})` : ""}</p>` : ""}
 
             <div style="max-height: 260px; overflow-y: auto; margin: 10px 0; border-bottom: 1px dashed var(--color-border); padding-bottom: 10px;">
@@ -209,8 +206,8 @@ export function renderTableBillModal({ table, onClose, onDismiss }) {
 
             <div id="tb-close-buttons" style="display: grid; gap: 10px; margin-top: 20px;">
                 ${table.dueOrderCount > 0 ? `<button id="tb-settle-round" style="background: var(--color-cyan); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">SETTLE ROUND (KEEP TABLE OPEN)</button>` : ""}
-                <button id="tb-close-paid" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">CLOSE &amp; MARK PAID</button>
-                <button id="tb-close-unpaid" style="background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">CLOSE AS UNPAID (SETTLE LATER)</button>
+                <button id="tb-close-paid" class="modal-btn-primary">CLOSE &amp; MARK PAID</button>
+                <button id="tb-close-unpaid" class="modal-btn-secondary">CLOSE AS UNPAID (SETTLE LATER)</button>
                 <button id="tb-cancel" style="background: none; border: none; color: var(--color-text-muted); font-size: 10px; cursor: pointer; text-decoration: underline; padding: 4px;">CANCEL</button>
             </div>
         </div>

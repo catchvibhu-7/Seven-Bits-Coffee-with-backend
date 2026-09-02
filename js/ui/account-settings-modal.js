@@ -27,7 +27,7 @@ export function renderAccountSettingsModal(session) {
     overlay.style.zIndex = "5000";
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 320px; font-family: 'Courier New', monospace;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">ACCOUNT SETTINGS</h2>
+            <h2 class="modal-title-header">ACCOUNT SETTINGS</h2>
 
             <div style="font-size: 12px; color: var(--color-text-muted); margin-bottom: 15px;">
                 <div>NAME: <span style="color: var(--color-text);">${session.name || "\u2014"}</span></div>

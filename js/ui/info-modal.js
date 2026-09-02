@@ -11,7 +11,7 @@ export function renderInfoModal({ title, message, monospaceValue = null, confirm
     overlay.style.zIndex = "6000";
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: 320px; font-family: 'Courier New', monospace;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">${title}</h2>
+            <h2 class="modal-title-header">${title}</h2>
             <p style="font-size: 12px; color: var(--color-text-muted); white-space: pre-line;">${message}</p>
             ${
                 monospaceValue
@@ -19,7 +19,7 @@ export function renderInfoModal({ title, message, monospaceValue = null, confirm
                     : ""
             }
             <div style="display:grid; gap:10px; margin-top: 10px;">
-                <button id="info-modal-ok" style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase;">${confirmText}</button>
+                <button id="info-modal-ok" class="modal-btn-primary">${confirmText}</button>
                 ${cancelText ? `<button id="info-modal-cancel" style="background:var(--color-border); color:var(--color-text); border:none; padding:10px; cursor:pointer; text-transform:uppercase;">${cancelText}</button>` : ""}
             </div>
         </div>

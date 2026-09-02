@@ -10,6 +10,7 @@
  * from the current menu/config.
  */
 import { currencySymbol } from "../features/config-logic.js";
+import { escapeHtml } from "../features/html-utils.js";
 
 const STATUS_COLORS = { RECEIVED: "var(--color-accent)", PREPARING: "var(--color-cyan)", READY: "var(--color-success)", SERVED: "var(--color-text-muted)" };
 
@@ -92,7 +93,7 @@ export function renderMyOrdersModal(orders, { onReorder }) {
 
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(400px, 92vw); font-family: 'Courier New', monospace; max-height: 85vh; overflow-y: auto;">
-            <h2 style="letter-spacing: 2px; border-bottom: 1px solid var(--color-accent); padding-bottom: 10px; margin-top:0; font-size: 1rem;">MY ORDERS</h2>
+            <h2 class="modal-title-header">MY ORDERS</h2>
             <div>${rows}</div>
             <button id="mo-close" style="margin-top: 15px; width: 100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase; font-family: inherit;">CLOSE</button>
         </div>
@@ -160,6 +161,3 @@ export function renderMyOrdersModal(orders, { onReorder }) {
     });
 }
 
-function escapeHtml(str) {
-    return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
