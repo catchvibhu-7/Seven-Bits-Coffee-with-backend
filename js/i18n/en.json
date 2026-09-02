@@ -1,0 +1,36 @@
+{
+    "common": {
+        "cancel": "CANCEL",
+        "save": "SAVE",
+        "close": "CLOSE",
+        "edit": "EDIT",
+        "delete": "DELETE",
+        "backToLogin": "BACK TO LOGIN",
+        "switchLanguage": "Switch language",
+        "genericError": "Something went wrong. Please try again."
+    },
+    "checkout": {
+        "title": "CHECKOUT",
+        "addToCart": "ADD TO CART",
+        "payCash": "PAY CASH",
+        "payOnline": "PAY ONLINE",
+        "orderConfirmed": "Your order has been placed!"
+    },
+    "login": {
+        "title": "LOGIN",
+        "logout": "LOGOUT",
+        "usernamePlaceholder": "USERNAME OR PHONE"
+    },
+    "myOrders": {
+        "title": "MY ORDERS"
+    },
+    "account": {
+        "title": "ACCOUNT SETTINGS"
+    },
+    "address": {
+        "myAddresses": "MY ADDRESSES"
+    },
+    "tracking": {
+        "title": "TRACK YOUR ORDER"
+    }
+}

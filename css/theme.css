@@ -24,6 +24,11 @@
     cursor: pointer;
     font-size: 16px;
     line-height: 1;
+    /* Sits next to text buttons (.admin-btn/.admin-btn-secondary) in the
+       same table cell - those align by text baseline, but an inline-flex
+       box with no text baseline of its own defaults to its bottom margin
+       edge instead, reading as "sitting lower" than its neighbors. */
+    vertical-align: middle;
 }
 .icon-btn svg {
     width: 14px;
@@ -2187,6 +2192,7 @@ input[type="checkbox"]:disabled {
     text-transform: uppercase;
     margin-right: 4px;
     letter-spacing: 0.5px;
+    vertical-align: middle;
 }
 .admin-btn:hover {
     background: var(--color-accent);

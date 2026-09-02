@@ -2062,6 +2062,31 @@ route("PATCH", /^\/api\/stores\/(?<id>\d+)\/?$/, async (req, res, params) => {
     }
     store.heroImageUrl = body.heroImageUrl ? String(body.heroImageUrl).trim() : null;
   }
+  // "Find us" home page content - store-owned (see mergeStoreOverrides()),
+  // not derived from the franchise-wide footer once a store sets its own.
+  // address/phone are the SAME fields the CONTACT section above already
+  // manages - never a second copy here, only the fields unique to this
+  // section are new (tagline/email/hours/heading).
+  if (typeof body.findUsHeading === "string") store.findUsHeading = body.findUsHeading.trim().slice(0, 60) || null;
+  if (typeof body.tagline === "string") store.tagline = body.tagline.trim().slice(0, 120) || null;
+  if (typeof body.email === "string") store.email = body.email.trim().slice(0, 80) || null;
+  if (typeof body.hours === "string") store.hours = body.hours.trim().slice(0, 60) || null;
+  if (body.homeVisibility && typeof body.homeVisibility === "object") {
+    store.homeVisibility = {
+      tagline: body.homeVisibility.tagline !== false,
+      address: body.homeVisibility.address !== false,
+      phone: body.homeVisibility.phone !== false,
+      email: body.homeVisibility.email !== false,
+      hours: body.homeVisibility.hours !== false
+    };
+  }
+  // Which of the FRANCHISE-WIDE custom fields (Instagram/WhatsApp/GST -
+  // still Global-Admin-authored, see PATCH /api/config) this store wants
+  // hidden from its own home page - an empty/absent list shows all of them,
+  // matching the behavior every store had before this existed.
+  if (Array.isArray(body.hiddenCustomFieldLabels)) {
+    store.hiddenCustomFieldLabels = body.hiddenCustomFieldLabels.map((l) => String(l).slice(0, 30)).slice(0, 20);
+  }
   writeJson(STORES_FILE, stores);
   sendJson(res, 200, store);
 });
@@ -3124,6 +3149,11 @@ const DEFAULT_STORE_OPERATIONS = {
   delivery: { enabled: true, lockedBy: null, message: { preset: null, customText: "" } }
 };
 
+// Which "Find us" fields show on a store's own home page - every field
+// visible by default so an existing store with no configuration looks
+// exactly as it did before per-field visibility existed.
+const DEFAULT_HOME_VISIBILITY = { tagline: true, address: true, phone: true, email: true, hours: true };
+
 /** Great-circle distance in km between two lat/lng points (spherical Earth
  *  approximation) - accurate enough for a same-city delivery-radius check,
  *  no external service/dependency needed. */
@@ -3179,11 +3209,33 @@ function mergeStoreOverrides(config, store) {
     // renderHeroCarousel() in app.js) only for a customer viewing THIS
     // store's home page; null when the store hasn't set one.
     storeHeroImageUrl: (store && store.heroImageUrl) || null,
+    // A store's own "Find us" content - address/phone are the SAME fields
+    // already used for the store picker's distance sort and delivery-radius
+    // check (never duplicated into a second copy here), tagline/email/hours
+    // are new store-only fields. Franchise-wide config.footer is only ever
+    // the fallback for a field this store hasn't set - "not take that info
+    // from footer" once a store has its own value.
     footer: {
       ...config.footer,
-      ...(store && store.address ? { address: store.address } : {}),
-      ...(store && store.phone ? { phone: store.phone } : {})
-    }
+      tagline: (store && store.tagline) || config.footer.tagline,
+      address: (store && store.address) || config.footer.address,
+      phone: (store && store.phone) || config.footer.phone,
+      email: (store && store.email) || config.footer.email,
+      hours: (store && store.hours) || config.footer.hours
+    },
+    homeHeadings: {
+      ...config.homeHeadings,
+      findUs: (store && store.findUsHeading) || (config.homeHeadings && config.homeHeadings.findUs) || "Find us"
+    },
+    // Which of the fields above actually show on THIS store's home page -
+    // per-store choice, default everything visible so an existing store
+    // with no configuration looks exactly as it did before this existed.
+    homeVisibility: (store && store.homeVisibility) || DEFAULT_HOME_VISIBILITY,
+    // The franchise-wide custom fields (Instagram/WhatsApp/GST/...) are
+    // still authored and owned globally (Global-Admin-only, see PATCH
+    // /api/config) - a store only picks which of them it wants to show,
+    // never edits their label/value/url/type itself.
+    customFooterFields: (config.customFooterFields || []).filter((f) => !((store && store.hiddenCustomFieldLabels) || []).includes(f.label))
   };
 }
 

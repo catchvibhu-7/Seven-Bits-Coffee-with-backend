@@ -353,6 +353,7 @@ export const StaffShell = {
             // account even matters.
             return `
                 ${window.storeIndicatorHtml?.() || ""}
+                ${window.langToggleHtml?.() || ""}
                 <button type="button" id="${id}" class="staff-auth-identity"><span class="staff-auth-name">LOGIN</span></button>
             `;
         }
@@ -555,6 +556,7 @@ export const StaffShell = {
         });
         root.querySelector(".js-timeclock-btn")?.addEventListener("click", () => window.handleTimeclockClick?.());
         root.querySelector("#anon-store-indicator")?.addEventListener("click", () => window.openStorePicker?.());
+        root.querySelector(".lang-toggle-btn")?.addEventListener("click", () => window.toggleLanguage?.());
         // The logo/shop-name mark, in whichever of rail/top-bar/mobile-bar/
         // drawer this root is - a plain div (not a real <button>) so it
         // needs its own keyboard handling and focus-visible styling (see

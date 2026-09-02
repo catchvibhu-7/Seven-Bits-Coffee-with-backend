@@ -26,6 +26,7 @@ import { renderBillingPage, selectBillForOrder } from "./ui/billing-page.js";
 import { ArcadeSystem } from "./features/arcade/arcade-logic.js";
 import { StoreSystem } from "./features/store-logic.js";
 import { renderStorePickerModal } from "./ui/store-picker-modal.js";
+import { I18n, t } from "./features/i18n-logic.js";
 
 // --- System State ---
 let cart = [];
@@ -653,6 +654,44 @@ window.storeIndicatorHtml = () => {
     if (!StoreSystem.hasMultipleStores()) return "";
     const store = StoreSystem.getSelectedStore();
     return `<button type="button" id="anon-store-indicator" class="staff-auth-identity"><span class="staff-auth-name">${store ? escapeHtml(store.name.toUpperCase()) : "SELECT STORE"}</span></button>`;
+};
+
+/** Always shows the OTHER language - one tap switches straight to it, no
+ *  dropdown needed for a 2-way choice. Same "only for an anonymous/customer
+ *  visitor" placement as storeIndicatorHtml() above - staff stay on their
+ *  own (untranslated) dashboard regardless. Can render into more than one
+ *  shell container at once (rail/top-bar/mobile drawer), so it's a class,
+ *  not an id - see staff-shell.js's identityHtml() comment on why
+ *  #staff-account-btn needed the same treatment. */
+window.langToggleHtml = () =>
+    `<button type="button" class="staff-auth-identity lang-toggle-btn" aria-label="${t("common.switchLanguage")}"><span class="staff-auth-name">${I18n.getLanguage() === "hi" ? "EN" : "हिं"}</span></button>`;
+
+/** No-arg wrapper so staff-shell.js's click wiring can call this the same
+ *  way it calls window.openStorePicker?.() - without importing I18n itself
+ *  just to read the current language before flipping it. */
+window.toggleLanguage = () => window.setLanguage(I18n.getLanguage() === "hi" ? "en" : "hi");
+
+window.setLanguage = async (lang) => {
+    I18n.setLanguage(lang);
+    await I18n.load();
+    document.querySelectorAll(".lang-toggle-btn .staff-auth-name").forEach((el) => {
+        el.textContent = I18n.getLanguage() === "hi" ? "EN" : "हिं";
+    });
+    const activePageId = document.querySelector(".page.active")?.id.replace("page-", "");
+    if (activePageId === "menu") {
+        renderMenu();
+    } else if (activePageId === "home") {
+        renderHomeStoreFacts();
+        renderHomeVisitRows();
+        renderHomeDeliveryTicker();
+    } else if (activePageId === "track") {
+        renderTrackPage(new URLSearchParams(window.location.search).get("track"));
+    }
+    StaffShell.render();
+    // A modal already open (checkout, my orders, login, ...) is left as-is -
+    // same precedent openStorePicker() sets just above (it doesn't re-render
+    // open modals either); the next time any modal is opened it already
+    // reads the newly-loaded dictionary, no extra plumbing needed.
 };
 
 window.openStorePicker = () => {
@@ -2608,7 +2647,18 @@ function footerFieldValueHtml(c) {
 window.renderFooter = (config) => {
     const root = document.getElementById("site-footer");
     if (!root) return;
-    const f = config.footer || {};
+    // Per-store choice of which fields actually show on ITS home page (see
+    // mergeStoreOverrides() in server.js) - customFooterFields is already
+    // filtered server-side, only the core fields need masking here.
+    const visibility = config.homeVisibility || { tagline: true, address: true, phone: true, email: true, hours: true };
+    const rawFooter = config.footer || {};
+    const f = {
+        tagline: visibility.tagline ? rawFooter.tagline : "",
+        address: visibility.address ? rawFooter.address : "",
+        phone: visibility.phone ? rawFooter.phone : "",
+        email: visibility.email ? rawFooter.email : "",
+        hours: visibility.hours ? rawFooter.hours : ""
+    };
     const customFields = (config.customFooterFields || []).filter((c) => c.value || c.label);
     const socialFields = customFields.filter((c) => c.type === "social");
     const careerFields = customFields.filter((c) => c.type === "career");
@@ -2894,6 +2944,7 @@ function wireStaticControls() {
  */
 (async () => {
     document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
+    await I18n.load(); // before any render, so the very first paint is already in the saved language
     wireStaticControls();
     StaffShell.captureCustomerNav(); // before refreshSession() can possibly swap it out for an already-logged-in staff session
     await StoreSystem.loadStores();

@@ -1,0 +1,36 @@
+{
+    "common": {
+        "cancel": "रद्द करें",
+        "save": "सेव करें",
+        "close": "बंद करें",
+        "edit": "संपादित करें",
+        "delete": "हटाएं",
+        "backToLogin": "लॉगिन पर वापस जाएं",
+        "switchLanguage": "भाषा बदलें",
+        "genericError": "कुछ गलत हो गया। कृपया पुनः प्रयास करें।"
+    },
+    "checkout": {
+        "title": "चेकआउट",
+        "addToCart": "कार्ट में डालें",
+        "payCash": "नकद भुगतान करें",
+        "payOnline": "ऑनलाइन भुगतान करें",
+        "orderConfirmed": "आपका ऑर्डर दर्ज कर लिया गया है!"
+    },
+    "login": {
+        "title": "लॉगिन",
+        "logout": "लॉगआउट",
+        "usernamePlaceholder": "उपयोगकर्ता नाम या फ़ोन नंबर"
+    },
+    "myOrders": {
+        "title": "मेरे ऑर्डर"
+    },
+    "account": {
+        "title": "खाता सेटिंग्स"
+    },
+    "address": {
+        "myAddresses": "मेरे पते"
+    },
+    "tracking": {
+        "title": "अपना ऑर्डर ट्रैक करें"
+    }
+}

@@ -758,6 +758,7 @@ export const AdminPortal = {
         const footer = AdminConfig.settings.footer || {};
         container.innerHTML = `
             <div id="sp-contact"></div>
+            <div id="sp-findus"></div>
             <div id="sp-hero"></div>
             <div id="sp-picks"></div>
             <div id="sp-payments"></div>
@@ -794,6 +795,81 @@ export const AdminPortal = {
                     }
                 })
         });
+
+        // "Find us" home page widget - store-owned content (tagline/email/
+        // hours here, address/phone reused from CONTACT above rather than a
+        // second copy), falling back to the franchise-wide default
+        // (Branding & Content > Content tab) only for whichever fields this
+        // store hasn't set its own value for - see mergeStoreOverrides() in
+        // server.js. Per-field + per-custom-field visibility controls what
+        // actually shows on THIS store's home page.
+        {
+            const visibility = store.homeVisibility || { tagline: true, address: true, phone: true, email: true, hours: true };
+            const customFields = AdminConfig.settings.customFooterFields || [];
+            const hiddenLabels = store.hiddenCustomFieldLabels || [];
+            renderReadOnlySection(container.querySelector("#sp-findus"), {
+                title: "FIND US (HOME PAGE)",
+                canEdit,
+                fields: [
+                    { label: "Heading", value: store.findUsHeading || "" },
+                    { label: "Tagline", value: store.tagline || "", tooltip: `Blank uses the franchise default: "${footer.tagline || "—"}"` },
+                    { label: "Email", value: store.email || "", tooltip: `Blank uses the franchise default: "${footer.email || "—"}"` },
+                    { label: "Hours", value: store.hours || "", tooltip: `Blank uses the franchise default: "${footer.hours || "—"}"` },
+                    {
+                        label: "Visible on home page",
+                        value: Object.entries(visibility)
+                            .filter(([, shown]) => shown)
+                            .map(([field]) => field)
+                            .join(", ")
+                    },
+                    {
+                        label: "Visible custom fields",
+                        value: customFields.length === 0 ? "" : customFields.filter((f) => !hiddenLabels.includes(f.label)).map((f) => f.label).join(", ") || "None"
+                    }
+                ],
+                emptyNote: "No custom fields exist yet - add some in Branding & Content.",
+                onEdit: () =>
+                    renderSectionEditModal({
+                        title: "EDIT FIND US",
+                        width: "480px",
+                        fields: [
+                            { id: "sp-findus-heading", label: "Heading", value: store.findUsHeading || "", maxlength: 60, placeholder: "Franchise default: “Find us”" },
+                            { id: "sp-findus-tagline", label: "Tagline", value: store.tagline || "", maxlength: 120, placeholder: footer.tagline || "" },
+                            { id: "sp-findus-email", label: "Email", value: store.email || "", maxlength: 80, type: "email", placeholder: footer.email || "" },
+                            { id: "sp-findus-hours", label: "Hours", value: store.hours || "", maxlength: 60, placeholder: footer.hours || "" },
+                            { id: "sp-vis-tagline", label: "Show tagline on home page", value: visibility.tagline, type: "checkbox" },
+                            { id: "sp-vis-address", label: "Show address on home page", value: visibility.address, type: "checkbox" },
+                            { id: "sp-vis-phone", label: "Show phone on home page", value: visibility.phone, type: "checkbox" },
+                            { id: "sp-vis-email", label: "Show email on home page", value: visibility.email, type: "checkbox" },
+                            { id: "sp-vis-hours", label: "Show hours on home page", value: visibility.hours, type: "checkbox" },
+                            ...customFields.map((f, i) => ({
+                                id: `sp-cf-${i}`,
+                                label: `Show "${f.label}" on home page`,
+                                value: !hiddenLabels.includes(f.label),
+                                type: "checkbox"
+                            }))
+                        ],
+                        onSave: async (v) => {
+                            await PayrollSystem.updateStore(store.id, {
+                                findUsHeading: v["sp-findus-heading"].trim(),
+                                tagline: v["sp-findus-tagline"].trim(),
+                                email: v["sp-findus-email"].trim(),
+                                hours: v["sp-findus-hours"].trim(),
+                                homeVisibility: {
+                                    tagline: v["sp-vis-tagline"],
+                                    address: v["sp-vis-address"],
+                                    phone: v["sp-vis-phone"],
+                                    email: v["sp-vis-email"],
+                                    hours: v["sp-vis-hours"]
+                                },
+                                hiddenCustomFieldLabels: customFields.filter((f, i) => !v[`sp-cf-${i}`]).map((f) => f.label)
+                            });
+                            ok("Find us settings saved");
+                            onSaved();
+                        }
+                    })
+            });
+        }
 
         renderReadOnlySection(container.querySelector("#sp-hero"), {
             title: "HERO IMAGE",
@@ -3761,11 +3837,10 @@ export const AdminPortal = {
             title: "HOME PAGE CONTENT (FRANCHISE DEFAULT)",
             canEdit,
             fields: [
-                { label: "This week's picks", value: picksSummary },
-                { label: "Roast process story", value: `${(c.roastSteps || []).length} step(s)` },
                 { label: "Picks heading", value: (c.homeHeadings && c.homeHeadings.picks) || "This week's picks" },
-                { label: "Roast heading", value: (c.homeHeadings && c.homeHeadings.roast) || "How we roast" },
-                { label: "Contact heading", value: (c.homeHeadings && c.homeHeadings.findUs) || "Find us" }
+                { label: "This week's picks", value: picksSummary },
+                { label: "Info heading", value: (c.homeHeadings && c.homeHeadings.roast) || "How we roast" },
+                { label: "Info storyboard", value: `${(c.roastSteps || []).length} step(s)` }
             ],
             onEdit: () => this.openHomeContentEditModal(root)
         });
@@ -3845,40 +3920,40 @@ export const AdminPortal = {
         overlay.innerHTML = `
             <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 26px; width: min(760px, 94vw); max-height: 88vh; overflow-y: auto; box-sizing: border-box; font-family: 'Courier New', monospace;">
                 <h2 class="modal-title-header">EDIT HOME PAGE CONTENT</h2>
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+
+                <div style="border:1px solid var(--color-border); padding:14px; margin-bottom:16px;">
+                    <div style="font-size:10px; letter-spacing:.12em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:10px; border-left:3px solid var(--color-accent); padding-left:8px;">Picks</div>
                     <div class="control-group">
                         <label for="cfg-home-heading-picks">PICKS HEADING</label>
                         <input type="text" id="cfg-home-heading-picks" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.picks) || "This week's picks")}" />
                     </div>
+                    <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:10px;">
+                        <div style="flex:1 1 320px; min-width:260px;">
+                            <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
+                            <p class="admin-help-text">Pick up to 3 items to feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
+                            <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+                            <div id="home-picks-list" style="max-height:260px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                        </div>
+                        <div style="flex:1 1 240px; min-width:220px;">
+                            <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
+                            <p class="admin-help-text">Small badge shown on each picked item's home page card (e.g. "House favourite").</p>
+                            <div id="home-picks-tags" style="max-height:260px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="border:1px solid var(--color-border); padding:14px; margin-bottom:16px;">
+                    <div style="font-size:10px; letter-spacing:.12em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:10px; border-left:3px solid var(--color-accent); padding-left:8px;">Info storyboard</div>
                     <div class="control-group">
-                        <label for="cfg-home-heading-roast">ROAST HEADING</label>
+                        <label for="cfg-home-heading-roast">INFO HEADING</label>
                         <input type="text" id="cfg-home-heading-roast" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.roast) || "How we roast")}" />
                     </div>
-                    <div class="control-group">
-                        <label for="cfg-home-heading-findus">CONTACT HEADING</label>
-                        <input type="text" id="cfg-home-heading-findus" maxlength="60" value="${escapeHtmlAttr((c.homeHeadings && c.homeHeadings.findUs) || "Find us")}" />
-                    </div>
+                    <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:10px;">Info storyboard</label>
+                    <p class="admin-help-text">A step-by-step story shown on the home page - name and detail line per step, in order. Add up to 6.</p>
+                    <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+                    <button type="button" class="admin-btn-secondary" id="home-roast-add">+ ADD STEP</button>
                 </div>
 
-                <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:16px;">
-                    <div style="flex:1 1 320px; min-width:260px;">
-                        <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">This week's picks</label>
-                        <p class="admin-help-text">Pick up to 3 items to feature on the home page. Leave nothing checked to fall back to the first few items in your top menu section.</p>
-                        <div id="home-picks-suggestions" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
-                        <div id="home-picks-list" style="max-height:260px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
-                    </div>
-                    <div style="flex:1 1 240px; min-width:220px;">
-                        <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase;">Tags for picked items</label>
-                        <p class="admin-help-text">Small badge shown on each picked item's home page card (e.g. "House favourite").</p>
-                        <div id="home-picks-tags" style="max-height:260px; overflow-y:auto; border:1px solid var(--color-border); padding:8px;"></div>
-                    </div>
-                </div>
-
-                <label style="display:block; font-size:12px; letter-spacing:.1em; color:var(--color-text-muted); text-transform:uppercase; margin-top:16px;">Roast process story</label>
-                <p class="admin-help-text">The step-by-step "how we roast" story - name and detail line per step, in order. Add up to 6.</p>
-                <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
-                <button type="button" class="admin-btn-secondary" id="home-roast-add" style="margin-bottom:14px;">+ ADD STEP</button>
-                <br />
                 <p id="content-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>
                 <div style="display: grid; gap: 10px; margin-top: 10px;">
                     <button id="home-content-save" class="modal-btn-primary">SAVE</button>
@@ -4093,8 +4168,7 @@ export const AdminPortal = {
                     roastSteps: finalRoastSteps,
                     homeHeadings: {
                         picks: document.getElementById("cfg-home-heading-picks").value.trim(),
-                        roast: document.getElementById("cfg-home-heading-roast").value.trim(),
-                        findUs: document.getElementById("cfg-home-heading-findus").value.trim()
+                        roast: document.getElementById("cfg-home-heading-roast").value.trim()
                     }
                 });
                 overlay.remove();
