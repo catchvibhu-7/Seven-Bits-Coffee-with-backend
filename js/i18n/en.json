@@ -12,6 +12,7 @@
     },
     "checkout": {
         "title": "CHECKOUT",
+        "addToCart": "ADD TO CART",
         "transactionSummary": "TRANSACTION SUMMARY",
         "promoTag": "PROMO",
         "comboDealTag": "COMBO DEAL",
@@ -155,6 +156,24 @@
         "deleteFailedFallback": "Could not delete account",
         "passwordUpdatedSuccess": "Password updated.",
         "changePasswordFailedFallback": "Could not change password"
+    },
+    "customize": {
+        "size": "SIZE",
+        "milk": "MILK",
+        "extrasOptional": "EXTRAS (OPTIONAL)",
+        "specialInstructions": "SPECIAL INSTRUCTIONS",
+        "notesPlaceholder": "e.g. less ice, extra hot...",
+        "quantity": "QUANTITY",
+        "decreaseQtyAria": "Decrease quantity",
+        "increaseQtyAria": "Increase quantity"
+    },
+    "storePicker": {
+        "title": "CHOOSE YOUR STORE",
+        "explanation": "Which location are you ordering from? This only sets the menu and details you see - not tied to your account, so you can switch any time.",
+        "skipForNow": "SKIP FOR NOW",
+        "distanceAway": "{{distance}} away",
+        "findingNearby": "Finding stores near you...",
+        "sortedByDistance": "Sorted by distance from you."
     },
     "address": {
         "myAddresses": "MY ADDRESSES",

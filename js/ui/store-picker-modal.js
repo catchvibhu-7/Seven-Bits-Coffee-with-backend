@@ -8,6 +8,7 @@
  */
 import { StoreSystem } from "../features/store-logic.js";
 import { escapeHtml } from "../features/html-utils.js";
+import { t } from "../features/i18n-logic.js";
 
 /** Great-circle distance in km - accurate enough for "which nearby store"
  *  sorting, no need for anything more precise than that. */
@@ -31,11 +32,11 @@ export function renderStorePickerModal(onPicked) {
     overlay.style.zIndex = "6000";
     overlay.innerHTML = `
         <div class="modal-content" style="border: 2px solid var(--color-accent); background: var(--color-surface); color: var(--color-text); padding: 30px; width: min(380px, 92vw); box-sizing: border-box; font-family: 'Courier New', monospace;">
-            <h2 class="modal-title-header">CHOOSE YOUR STORE</h2>
-            <p style="font-size: 11px; color: var(--color-text-muted); margin: 0 0 16px;">Which location are you ordering from? This only sets the menu and details you see - not tied to your account, so you can switch any time.</p>
+            <h2 class="modal-title-header">${t("storePicker.title")}</h2>
+            <p style="font-size: 11px; color: var(--color-text-muted); margin: 0 0 16px;">${t("storePicker.explanation")}</p>
             <div id="store-picker-list" style="display: grid; gap: 10px;"></div>
             <p id="store-picker-geo-status" style="font-size: 10px; color: var(--color-text-muted); min-height: 10px; margin: 8px 0 0;"></p>
-            <button id="store-picker-cancel" style="margin-top:10px; width:100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">${currentId != null ? "CANCEL" : "SKIP FOR NOW"}</button>
+            <button id="store-picker-cancel" style="margin-top:10px; width:100%; background: var(--color-border); color: var(--color-text); border: none; padding: 10px; cursor: pointer; text-transform: uppercase;">${currentId != null ? t("common.cancel") : t("storePicker.skipForNow")}</button>
         </div>
     `;
     document.body.appendChild(overlay);
@@ -51,7 +52,7 @@ export function renderStorePickerModal(onPicked) {
                 <button type="button" class="store-pick-btn" data-store-id="${s.id}" style="text-align:left; background:${s.id === currentId ? "var(--color-accent)" : "var(--color-bg)"}; color:${s.id === currentId ? "var(--color-accent-contrast)" : "var(--color-text)"}; border:1px solid var(--color-accent); padding:12px 14px; cursor:pointer; font-family:inherit;">
                     <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
                         <span style="font-weight:bold; font-size:14px;">${escapeHtml(s.name)}</span>
-                        ${distance != null ? `<span style="font-size:11px; opacity:0.8; white-space:nowrap;">${distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`} away</span>` : ""}
+                        ${distance != null ? `<span style="font-size:11px; opacity:0.8; white-space:nowrap;">${t("storePicker.distanceAway", { distance: distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km` })}</span>` : ""}
                     </div>
                     ${s.address ? `<div style="font-size:11px; opacity:0.8; margin-top:2px;">${escapeHtml(s.address)}</div>` : ""}
                 </button>`;
@@ -76,7 +77,7 @@ export function renderStorePickerModal(onPicked) {
     const statusEl = document.getElementById("store-picker-geo-status");
     const storesWithCoords = StoreSystem.stores.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
     if (navigator.geolocation && storesWithCoords.length > 0) {
-        statusEl.textContent = "Finding stores near you...";
+        statusEl.textContent = t("storePicker.findingNearby");
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const { latitude, longitude } = pos.coords;
@@ -90,7 +91,7 @@ export function renderStorePickerModal(onPicked) {
                     return da - db;
                 });
                 renderList(sorted, distancesById);
-                statusEl.textContent = "Sorted by distance from you.";
+                statusEl.textContent = t("storePicker.sortedByDistance");
             },
             () => {
                 statusEl.textContent = "";

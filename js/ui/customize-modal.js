@@ -11,6 +11,7 @@
 import { CustomizationSystem } from "../features/customization-logic.js";
 import { currencySymbol } from "../features/config-logic.js";
 import { escapeHtml } from "../features/html-utils.js";
+import { t } from "../features/i18n-logic.js";
 
 const fieldStyle =
     "width:100%; box-sizing:border-box; background:var(--color-bg); border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; margin: 4px 0 12px;";
@@ -41,7 +42,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
             ${
                 isDrink
                     ? `
-            <span id="cm-size-label" class="cm-field-label">SIZE</span>
+            <span id="cm-size-label" class="cm-field-label">${t("customize.size")}</span>
             <div id="cm-size-group" class="cm-pill-group" role="group" aria-labelledby="cm-size-label" style="display:flex; gap:8px; margin: 6px 0 16px; flex-wrap: wrap;">
                 ${opts.sizeOptions
                     .map(
@@ -52,7 +53,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
                     .join("")}
             </div>
 
-            <span id="cm-milk-label" class="cm-field-label">MILK</span>
+            <span id="cm-milk-label" class="cm-field-label">${t("customize.milk")}</span>
             <div id="cm-milk-group" class="cm-pill-group" role="group" aria-labelledby="cm-milk-label" style="display:flex; gap:8px; margin: 6px 0 16px; flex-wrap: wrap;">
                 ${opts.milkOptions
                     .map(
@@ -65,7 +66,7 @@ export async function renderCustomizeModal({ item, onAdd }) {
                     : ""
             }
 
-            <span id="cm-extras-label" class="cm-field-label">EXTRAS (OPTIONAL)</span>
+            <span id="cm-extras-label" class="cm-field-label">${t("customize.extrasOptional")}</span>
             <div id="cm-extras-group" class="cm-pill-group" role="group" aria-labelledby="cm-extras-label" style="display:flex; gap:8px; margin: 6px 0 16px; flex-wrap: wrap;">
                 ${opts.extraOptions
                     .map(
@@ -76,21 +77,21 @@ export async function renderCustomizeModal({ item, onAdd }) {
                     .join("")}
             </div>
 
-            <label for="cm-notes" class="cm-field-label">SPECIAL INSTRUCTIONS</label>
-            <textarea id="cm-notes" rows="2" maxlength="${opts.maxNotesLength}" placeholder="e.g. less ice, extra hot..." style="${fieldStyle} resize: vertical; font-size: 13px;"></textarea>
+            <label for="cm-notes" class="cm-field-label">${t("customize.specialInstructions")}</label>
+            <textarea id="cm-notes" rows="2" maxlength="${opts.maxNotesLength}" placeholder="${t("customize.notesPlaceholder")}" style="${fieldStyle} resize: vertical; font-size: 13px;"></textarea>
 
             <div style="display:flex; align-items:center; justify-content:space-between; margin: 14px 0 18px;">
-                <span id="cm-qty-label" class="cm-field-label">QUANTITY</span>
+                <span id="cm-qty-label" class="cm-field-label">${t("customize.quantity")}</span>
                 <div class="btn-qty-container" role="group" aria-labelledby="cm-qty-label">
-                    <button id="cm-qty-minus" type="button" aria-label="Decrease quantity">-</button>
+                    <button id="cm-qty-minus" type="button" aria-label="${t("customize.decreaseQtyAria")}">-</button>
                     <span id="cm-qty-value">1</span>
-                    <button id="cm-qty-plus" type="button" aria-label="Increase quantity">+</button>
+                    <button id="cm-qty-plus" type="button" aria-label="${t("customize.increaseQtyAria")}">+</button>
                 </div>
             </div>
 
             <div style="display: grid; gap: 10px; margin-top: 10px;">
-                <button id="cm-add" class="modal-btn-primary">ADD TO CART &middot; <span id="cm-total-price">${currencySymbol()}${item.price}</span></button>
-                <button id="cm-cancel" class="modal-btn-secondary">CANCEL</button>
+                <button id="cm-add" class="modal-btn-primary">${t("checkout.addToCart")} &middot; <span id="cm-total-price">${currencySymbol()}${item.price}</span></button>
+                <button id="cm-cancel" class="modal-btn-secondary">${t("common.cancel")}</button>
             </div>
         </div>
     `;

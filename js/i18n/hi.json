@@ -12,6 +12,7 @@
     },
     "checkout": {
         "title": "चेकआउट",
+        "addToCart": "कार्ट में डालें",
         "transactionSummary": "लेन-देन सारांश",
         "promoTag": "प्रोमो",
         "comboDealTag": "कॉम्बो डील",
@@ -155,6 +156,24 @@
         "deleteFailedFallback": "खाता हटाया नहीं जा सका",
         "passwordUpdatedSuccess": "पासवर्ड अपडेट हो गया।",
         "changePasswordFailedFallback": "पासवर्ड बदला नहीं जा सका"
+    },
+    "customize": {
+        "size": "साइज़",
+        "milk": "दूध",
+        "extrasOptional": "एक्स्ट्रा (वैकल्पिक)",
+        "specialInstructions": "विशेष निर्देश",
+        "notesPlaceholder": "जैसे कम बर्फ, अधिक गरम...",
+        "quantity": "मात्रा",
+        "decreaseQtyAria": "मात्रा घटाएं",
+        "increaseQtyAria": "मात्रा बढ़ाएं"
+    },
+    "storePicker": {
+        "title": "अपनी दुकान चुनें",
+        "explanation": "आप किस स्थान से ऑर्डर कर रहे हैं? यह केवल आपके द्वारा देखे जाने वाले मेन्यू और विवरण को सेट करता है - यह आपके खाते से जुड़ा नहीं है, इसलिए आप कभी भी बदल सकते हैं।",
+        "skipForNow": "अभी के लिए छोड़ें",
+        "distanceAway": "{{distance}} दूर",
+        "findingNearby": "आपके पास की दुकानें ढूंढी जा रही हैं...",
+        "sortedByDistance": "आपसे दूरी के अनुसार क्रमबद्ध।"
     },
     "address": {
         "myAddresses": "मेरे पते",
