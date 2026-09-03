@@ -35,6 +35,12 @@ export function renderAccountSettingsModal(session) {
                 <div>${t("account.roleLabel")} <span style="color: var(--color-accent);">${(session.role || "").toUpperCase()}</span></div>
             </div>
 
+            <!-- Unconditional - every role that can open this modal gets a
+                 way to change language here, not just the anonymous nav
+                 toggle (see window.langSwitcherHtml(), app.js). -->
+            <h3 style="font-size: 12px; letter-spacing: 1px; margin-bottom: 10px;">${t("account.language")}</h3>
+            <div style="margin-bottom: 18px;">${window.langSwitcherHtml?.() || ""}</div>
+
             ${
                 hasLayoutChoice
                     ? `
@@ -88,6 +94,7 @@ export function renderAccountSettingsModal(session) {
         </div>
     `;
     document.body.appendChild(overlay);
+    window.wireLangSwitcher?.(overlay);
 
     const newField = document.getElementById("am-new");
     const meterEl = document.getElementById("am-meter");

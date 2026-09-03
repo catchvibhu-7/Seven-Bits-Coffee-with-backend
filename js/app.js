@@ -656,26 +656,41 @@ window.storeIndicatorHtml = () => {
     return `<button type="button" id="anon-store-indicator" class="staff-auth-identity"><span class="staff-auth-name">${store ? escapeHtml(store.name.toUpperCase()) : "SELECT STORE"}</span></button>`;
 };
 
-/** Always shows the OTHER language - one tap switches straight to it, no
- *  dropdown needed for a 2-way choice. Same "only for an anonymous/customer
- *  visitor" placement as storeIndicatorHtml() above - staff stay on their
- *  own (untranslated) dashboard regardless. Can render into more than one
- *  shell container at once (rail/top-bar/mobile drawer), so it's a class,
- *  not an id - see staff-shell.js's identityHtml() comment on why
- *  #staff-account-btn needed the same treatment. */
-window.langToggleHtml = () =>
-    `<button type="button" class="staff-auth-identity lang-toggle-btn" aria-label="${t("common.switchLanguage")}"><span class="staff-auth-name">${I18n.getLanguage() === "hi" ? "EN" : "हिं"}</span></button>`;
+/** A 2-button segmented pill (EN / हिं) rather than a single "tap to switch"
+ *  button - shown to EVERY session (anonymous, guest, customer, staff), not
+ *  just anonymous visitors, since a guest/customer had no way at all to
+ *  change language again once past the login modal otherwise. Themed
+ *  entirely off existing CSS custom properties (--color-bg/--color-accent/
+ *  --color-text-muted, see .lang-switcher in theme.css) so it automatically
+ *  matches whatever branding colors are configured, rather than a hardcoded
+ *  light/dark look. Can render into more than one shell container at once
+ *  (rail/top-bar/mobile drawer), so wireLangSwitcher() below re-wires every
+ *  copy - same reasoning as staff-shell.js's identityHtml() needing an
+ *  idSuffix for #staff-account-btn. */
+window.langSwitcherHtml = () => {
+    const lang = I18n.getLanguage();
+    return `
+        <div class="lang-switcher" role="group" aria-label="${t("common.switchLanguage")}">
+            <button type="button" class="lang-switcher-btn${lang === "en" ? " active" : ""}" data-lang="en">EN</button>
+            <button type="button" class="lang-switcher-btn${lang === "hi" ? " active" : ""}" data-lang="hi">हिं</button>
+        </div>
+    `;
+};
 
-/** No-arg wrapper so staff-shell.js's click wiring can call this the same
- *  way it calls window.openStorePicker?.() - without importing I18n itself
- *  just to read the current language before flipping it. */
-window.toggleLanguage = () => window.setLanguage(I18n.getLanguage() === "hi" ? "en" : "hi");
+/** Wires every `.lang-switcher` under `root` (call again after inserting new
+ *  copies of langSwitcherHtml() - staff-shell.js's render() and
+ *  account-settings-modal.js both do this). */
+window.wireLangSwitcher = (root = document) => {
+    root.querySelectorAll(".lang-switcher-btn").forEach((btn) => {
+        btn.addEventListener("click", () => window.setLanguage(btn.dataset.lang));
+    });
+};
 
 window.setLanguage = async (lang) => {
     I18n.setLanguage(lang);
     await I18n.load();
-    document.querySelectorAll(".lang-toggle-btn .staff-auth-name").forEach((el) => {
-        el.textContent = I18n.getLanguage() === "hi" ? "EN" : "हिं";
+    document.querySelectorAll(".lang-switcher-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.lang === I18n.getLanguage());
     });
     const activePageId = document.querySelector(".page.active")?.id.replace("page-", "");
     if (activePageId === "menu") {
@@ -688,10 +703,15 @@ window.setLanguage = async (lang) => {
         renderTrackPage(new URLSearchParams(window.location.search).get("track"));
     }
     StaffShell.render();
-    // A modal already open (checkout, my orders, login, ...) is left as-is -
-    // same precedent openStorePicker() sets just above (it doesn't re-render
-    // open modals either); the next time any modal is opened it already
-    // reads the newly-loaded dictionary, no extra plumbing needed.
+    // Account Settings is the one modal that carries its own copy of the
+    // switcher (see account-settings-modal.js) - re-render it in place so
+    // its labels/buttons update immediately instead of only on next open,
+    // unlike every other modal (checkout, my orders, login, ...) which is
+    // deliberately left as-is per openStorePicker()'s existing precedent.
+    if (document.getElementById("account-modal-overlay")) {
+        const mod = await import("./ui/account-settings-modal.js");
+        mod.renderAccountSettingsModal(session);
+    }
 };
 
 window.openStorePicker = () => {

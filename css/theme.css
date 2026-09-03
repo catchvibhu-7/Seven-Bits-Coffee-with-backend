@@ -417,6 +417,41 @@ header {
     text-transform: uppercase;
 }
 
+/* Two-way EN/हिं pill (window.langSwitcherHtml(), app.js) - shown to every
+   session now, not just an anonymous visitor, so a guest/customer/staff can
+   change language again after the login modal. Purely theme-token colored
+   (bg for the track, accent for the active pill, muted text for the
+   inactive one) rather than a hardcoded light/dark look, so it matches
+   whatever branding colors are configured. align-self:flex-start keeps it
+   from stretching to the rail's full 100% column width like the identity/
+   login button below it does. */
+.lang-switcher {
+    display: inline-flex;
+    align-self: flex-start;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 2px;
+}
+.lang-switcher-btn {
+    background: none;
+    border: none;
+    padding: 5px 12px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    border-radius: 999px;
+    transition: background 0.15s, color 0.15s;
+}
+.lang-switcher-btn.active {
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
+}
+
 /* Only the clock-in/out button uses this now (Rail/Top bar switching and
    Log out both moved into the single account button's dropdown/settings -
    see .staff-auth-identity above and account-settings-modal.js). Full width

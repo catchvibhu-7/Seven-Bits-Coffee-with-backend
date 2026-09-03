@@ -29,6 +29,7 @@
  */
 import { AdminConfig } from "../features/config-logic.js";
 import { escapeHtml } from "../features/html-utils.js";
+import { t } from "../features/i18n-logic.js";
 
 const LAYOUT_KEY = "sb-staff-nav-layout";
 
@@ -237,9 +238,9 @@ export const StaffShell = {
     },
 
     tabsForRole() {
-        if (!this.isStaffSession()) return CUSTOMER_TAB_DEFS;
+        if (!this.isStaffSession()) return CUSTOMER_TAB_DEFS.map((tab) => ({ ...tab, label: t(`nav.${tab.key}`) }));
         const role = this.session?.role;
-        return STAFF_TAB_DEFS.filter((t) => !t.managerUp || this.managerUpRoles.includes(role));
+        return STAFF_TAB_DEFS.filter((tab) => !tab.managerUp || this.managerUpRoles.includes(role));
     },
 
     /** Toggles rail <-> top-bar in place - no page navigation happens, so
@@ -344,6 +345,10 @@ export const StaffShell = {
     identityHtml(idSuffix = "") {
         const s = this.session || {};
         const id = `staff-account-btn${idSuffix}`;
+        // Shown regardless of role now - a guest/customer/staff session had
+        // no way at all to change language again once past the login modal
+        // otherwise (see window.langSwitcherHtml() in app.js).
+        const langSwitcher = window.langSwitcherHtml?.() || "";
         if (!s.role) {
             // window.storeIndicatorHtml() (app.js) adds a compact "pick your
             // store" pill above LOGIN for a fully anonymous visitor - empty
@@ -353,13 +358,14 @@ export const StaffShell = {
             // account even matters.
             return `
                 ${window.storeIndicatorHtml?.() || ""}
-                ${window.langToggleHtml?.() || ""}
-                <button type="button" id="${id}" class="staff-auth-identity"><span class="staff-auth-name">LOGIN</span></button>
+                ${langSwitcher}
+                <button type="button" id="${id}" class="staff-auth-identity"><span class="staff-auth-name">${t("login.title")}</span></button>
             `;
         }
         const name = s.name || s.role.toUpperCase();
         const role = s.role.toUpperCase();
         return `
+            ${langSwitcher}
             <button type="button" id="${id}" class="staff-auth-identity">
                 <span class="staff-auth-name">${escapeHtml(name)}</span>
                 <span class="staff-auth-role">${escapeHtml(role)}</span>
@@ -556,7 +562,7 @@ export const StaffShell = {
         });
         root.querySelector(".js-timeclock-btn")?.addEventListener("click", () => window.handleTimeclockClick?.());
         root.querySelector("#anon-store-indicator")?.addEventListener("click", () => window.openStorePicker?.());
-        root.querySelector(".lang-toggle-btn")?.addEventListener("click", () => window.toggleLanguage?.());
+        window.wireLangSwitcher?.(root);
         // The logo/shop-name mark, in whichever of rail/top-bar/mobile-bar/
         // drawer this root is - a plain div (not a real <button>) so it
         // needs its own keyboard handling and focus-visible styling (see

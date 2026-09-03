@@ -10,6 +10,11 @@
         "genericError": "कुछ गलत हो गया। कृपया पुनः प्रयास करें।",
         "loading": "लोड हो रहा है..."
     },
+    "nav": {
+        "home": "होम",
+        "menu": "मेन्यू",
+        "arcade": "आर्केड"
+    },
     "checkout": {
         "title": "चेकआउट",
         "addToCart": "कार्ट में डालें",
@@ -134,6 +139,7 @@
         "title": "खाता सेटिंग्स",
         "nameLabel": "नाम:",
         "roleLabel": "भूमिका:",
+        "language": "भाषा",
         "siteLayout": "साइट लेआउट",
         "layoutLeftPane": "बायां पैनल",
         "layoutTopBar": "टॉप बार",

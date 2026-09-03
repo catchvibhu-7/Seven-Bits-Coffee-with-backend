@@ -10,6 +10,11 @@
         "genericError": "Something went wrong. Please try again.",
         "loading": "Loading..."
     },
+    "nav": {
+        "home": "Home",
+        "menu": "Menu",
+        "arcade": "Arcade"
+    },
     "checkout": {
         "title": "CHECKOUT",
         "addToCart": "ADD TO CART",
@@ -134,6 +139,7 @@
         "title": "ACCOUNT SETTINGS",
         "nameLabel": "NAME:",
         "roleLabel": "ROLE:",
+        "language": "LANGUAGE",
         "siteLayout": "SITE LAYOUT",
         "layoutLeftPane": "Left pane",
         "layoutTopBar": "Top bar",
