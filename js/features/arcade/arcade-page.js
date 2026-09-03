@@ -187,6 +187,7 @@ const GAME_DEFS = {
 // numeric score at all (win/lose only).
 const SCORE_GAMES = new Set(["tetris", "snake", "pong", "breakout", "flappy", "invaders", "2048"]);
 const CUSTOM_HEADER_GAMES = new Set(["tictactoe", "connectfour", "checkers"]);
+let fullscreenListenerWired = false;
 
 export const ArcadePage = {
     root: null,
@@ -279,6 +280,10 @@ export const ArcadePage = {
         this.activeGame = gameKey;
         this.root.innerHTML = `
             <div class="arcade-play-layout">
+                <div class="arcade-play-toolbar">
+                    <button type="button" id="arcade-back-btn" class="admin-btn">&larr; BACK TO GAMES</button>
+                    <button type="button" id="arcade-fullscreen-btn" class="admin-btn">&#x26F6; FULLSCREEN</button>
+                </div>
                 <div class="arcade-switcher" id="arcade-switcher"></div>
                 <div class="arcade-game-area" id="arcade-game-area"></div>
                 <div class="arcade-sidebar" id="arcade-sidebar"></div>
@@ -292,9 +297,51 @@ export const ArcadePage = {
         };
         def.module.onScoreSubmitted = () => this.renderSidebar(gameKey);
 
+        // A standalone row (not inside #arcade-switcher, which is display:none
+        // below 820px - see theme.css) so BACK and FULLSCREEN stay reachable
+        // on a phone too. The 10 single-player games no longer render their
+        // own BACK button at all (see each game's own mount()), so without
+        // this row they'd have had no way out on a narrow screen.
+        this.root.querySelector("#arcade-back-btn").addEventListener("click", () => this.exitCurrentGame());
+        this.wireFullscreenButton(gameArea);
+
         this.renderSwitcher(gameKey);
         this.renderSidebar(gameKey);
         def.module.mount(gameArea);
+    },
+
+    /** Fullscreens #arcade-game-area itself (not the whole play layout) so
+     *  the game gets the entire screen instead of sharing it with the
+     *  switcher/sidebar columns - see the :fullscreen CSS overrides in
+     *  theme.css that let the canvas/board grow past their normal capped
+     *  size once actually fullscreen. Falls back to hiding the button
+     *  entirely if the Fullscreen API isn't available at all (very old
+     *  browsers, some locked-down kiosk/embedded webviews) rather than
+     *  leaving a button that would just silently do nothing. */
+    wireFullscreenButton(gameArea) {
+        const btn = this.root.querySelector("#arcade-fullscreen-btn");
+        if (!btn) return;
+        if (!gameArea.requestFullscreen) {
+            btn.style.display = "none";
+            return;
+        }
+        btn.addEventListener("click", () => {
+            if (document.fullscreenElement) document.exitFullscreen();
+            else gameArea.requestFullscreen().catch(() => {});
+        });
+        // One listener for the whole page's lifetime (not re-added per
+        // launchGame() call, which would otherwise stack a new one on every
+        // game switch) - always re-queries the CURRENT button by id rather
+        // than closing over gameArea/btn from whichever launchGame() call
+        // happened to wire it, since both get torn down and recreated every
+        // time this.root.innerHTML is rebuilt.
+        if (!fullscreenListenerWired) {
+            fullscreenListenerWired = true;
+            document.addEventListener("fullscreenchange", () => {
+                const liveBtn = document.getElementById("arcade-fullscreen-btn");
+                if (liveBtn) liveBtn.innerHTML = document.fullscreenElement ? "&#x26F6; EXIT FULLSCREEN" : "&#x26F6; FULLSCREEN";
+            });
+        }
     },
 
     /** Ends whatever's currently mounted and returns to the card grid - the
@@ -315,18 +362,14 @@ export const ArcadePage = {
     /** Desktop-only panel (hidden on narrow screens, see .arcade-switcher in
      *  theme.css) - a quick way to jump straight to another game without
      *  backing out to the card grid, plus a short tip for whatever's active.
-     *  The "BACK TO GAMES" button up top is a shared, always-available exit -
-     *  the 10 single-player games no longer render their own copy (see each
-     *  game's own mount()); Tic-Tac-Toe/Connect Four/Checkers keep their own
-     *  mode-specific BACK/LEAVE MATCH controls untouched (this is an
-     *  additional quick exit alongside those, not a replacement, since their
-     *  own controls carry match-state meaning this one doesn't need to). */
+     *  BACK TO GAMES/FULLSCREEN live in their own always-visible toolbar row
+     *  above this (see launchGame() above), not in here, since this panel
+     *  itself disappears on a phone. */
     renderSwitcher(gameKey) {
         const switcher = this.root.querySelector("#arcade-switcher");
         if (!switcher) return;
         const others = Object.entries(GAME_DEFS).filter(([key]) => key !== gameKey);
         switcher.innerHTML = `
-            <button type="button" id="arcade-switcher-back" class="admin-btn">&larr; BACK TO GAMES</button>
             <div class="arcade-switcher-games">
                 ${others
                     .map(
@@ -348,7 +391,6 @@ export const ArcadePage = {
                     : ""
             }
         `;
-        switcher.querySelector("#arcade-switcher-back").addEventListener("click", () => this.exitCurrentGame());
         switcher.querySelectorAll(".arcade-switch-btn").forEach((btn) => {
             btn.addEventListener("click", () => this.launchGame(btn.dataset.game));
         });

@@ -3103,6 +3103,22 @@ body.home-full-width .home-body {
     gap: 20px;
 }
 
+/* Always visible regardless of layout/screen width (unlike .arcade-switcher
+   below, which disappears on a phone) - BACK TO GAMES is the only way out
+   for the 10 single-player games now that they don't render their own copy
+   (see launchGame(), arcade-page.js). Spans every grid column so it sits as
+   its own full-width row above the switcher/game/sidebar columns rather
+   than getting squeezed into whichever column it would otherwise land in. */
+.arcade-play-toolbar {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.arcade-play-toolbar .admin-btn {
+    flex: none;
+}
+
 .arcade-switcher {
     display: none;
 }
@@ -3232,19 +3248,48 @@ body.home-full-width .home-body {
 }
 
 @media (min-width: 820px) and (min-aspect-ratio: 1/1) {
+    /* Used to force the canvas back to native pixel size here ("upscaling
+       blurs crisp pixel art") - that reasoning didn't hold up:
+       image-rendering:pixelated above is already unconditional, so CSS
+       upscaling nearest-neighbor's the pixels bigger instead of blurring
+       them, the same crisp scaling the "vertical" layout below already
+       relied on. Giving the wrapper an explicit height (rather than
+       flex:1 1 auto stretching into a column whose own height is only
+       ever content-driven on this layout - see .arcade-game-area's
+       min-height:0 override) is what lets the canvas's height:100% below
+       resolve against something concrete instead of collapsing to auto,
+       which is what actually let it grow at all instead of just sitting
+       at native size again. Capped rather than uncapped so a portrait-
+       shaped board (Breakout) doesn't blow past a sane height on a tall
+       monitor, and a landscape one (Pong) doesn't do the same past width. */
     .arcade-canvas-wrap {
-        /* Desktop landscape keeps the canvas at its native pixel size
-           (upscaling it to fill a 620px column would blur crisp pixel art) -
-           only the "vertical" layout above stretches it, where there's
-           genuine spare height and no wider column to compare it against. */
         flex: 0 0 auto;
+        width: 100%;
+        height: min(70vh, 640px);
     }
-    .arcade-canvas-wrap canvas {
-        width: auto;
-        height: auto;
-        max-width: 100%;
-        max-height: 100%;
-    }
+}
+
+/* True Fullscreen API mode (⛶ FULLSCREEN button, wireFullscreenButton() in
+   arcade-page.js, applied to #arcade-game-area itself rather than the whole
+   play layout so the game gets the entire screen instead of sharing it with
+   the switcher/sidebar columns). Overrides the two caps above - higher
+   specificity (an id + this selector) beats the plain-class desktop-media
+   rules regardless of source order, so a fullscreened canvas/board actually
+   uses the real screen instead of still being boxed into its usual
+   ~640-800px ceiling. The browser gives a fullscreened element a plain
+   black backdrop by default; this repaints it in the app's own theme
+   instead so it doesn't look like a jarring flash to a different UI. */
+#arcade-game-area:fullscreen {
+    background: var(--color-bg);
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
+#arcade-game-area:fullscreen .arcade-canvas-wrap {
+    height: 90vh;
+}
+#arcade-game-area:fullscreen .arcade-board {
+    max-width: min(90vw, 90vh);
 }
 
 /* Same idea for the DOM-grid games (2048, Minesweeper, Memory, Tic-Tac-Toe,
