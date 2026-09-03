@@ -279,7 +279,10 @@
              language (arcade-page.js's .arcade-grid/.arcade-card already
              echo .menu-grid's card chrome). -->
         <div id="page-arcade" class="page">
-            <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
+            <!-- Top padding matches .menu-page-header's own 10px top padding
+                 (theme.css), same fix as Billing/Kitchen - see their own
+                 comments for why. -->
+            <div style="padding:10px 28px 44px; max-width:1600px; margin:0 auto;">
                 <div style="border-bottom:2px solid var(--color-accent); padding-bottom:16px; margin-bottom:22px;">
                     <h1 id="arcade-page-title" style="font-size:26px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">ARCADE</h1>
                 </div>
