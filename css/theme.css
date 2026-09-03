@@ -417,11 +417,11 @@ header {
     text-transform: uppercase;
 }
 
-/* Two-way EN/हिं pill (window.langSwitcherHtml(), app.js) - shown to every
-   session now, not just an anonymous visitor, so a guest/customer/staff can
-   change language again after the login modal. Purely theme-token colored
-   (bg for the track, accent for the active pill, muted text for the
-   inactive one) rather than a hardcoded light/dark look, so it matches
+/* Two-way EN/हिं pill (window.langSwitcherHtml(), app.js) - shown pre-login
+   only (identityHtml()'s anonymous branch, staff-shell.js); once any
+   session exists it lives in Account Settings only. Purely theme-token
+   colored (bg for the track, accent for the active pill, muted text for
+   the inactive one) rather than a hardcoded light/dark look, so it matches
    whatever branding colors are configured. align-self:flex-start keeps it
    from stretching to the rail's full 100% column width like the identity/
    login button below it does. */
@@ -446,6 +446,17 @@ header {
     cursor: pointer;
     border-radius: 999px;
     transition: background 0.15s, color 0.15s;
+}
+/* Explicit rather than relying on the global button:focus-visible rule
+   further down this file - that one didn't win here (still showed the
+   browser's native blue ring), likely a specificity/ordering fight since
+   this class also sets its own background/color per state. */
+.lang-switcher-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+.lang-switcher-btn:focus:not(:focus-visible) {
+    outline: none;
 }
 .lang-switcher-btn.active {
     background: var(--color-accent);
@@ -1924,6 +1935,8 @@ header {
 .control-group input[type="number"],
 .control-group input[type="date"],
 .control-group input[type="password"],
+.control-group input[type="tel"],
+.control-group input[type="email"],
 .control-group select {
     background: var(--color-bg);
     border: 1px solid var(--color-border);

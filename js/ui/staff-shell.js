@@ -345,27 +345,24 @@ export const StaffShell = {
     identityHtml(idSuffix = "") {
         const s = this.session || {};
         const id = `staff-account-btn${idSuffix}`;
-        // Shown regardless of role now - a guest/customer/staff session had
-        // no way at all to change language again once past the login modal
-        // otherwise (see window.langSwitcherHtml() in app.js).
-        const langSwitcher = window.langSwitcherHtml?.() || "";
         if (!s.role) {
             // window.storeIndicatorHtml() (app.js) adds a compact "pick your
             // store" pill above LOGIN for a fully anonymous visitor - empty
             // string when there's only one store, so this is a no-op for a
             // single-location deployment. Ordered first since choosing a
             // store is the thing a new visitor needs to do before an
-            // account even matters.
+            // account even matters. The language switcher only shows here,
+            // pre-login - once any session exists it lives in Account
+            // Settings only (see window.langSwitcherHtml() in app.js).
             return `
                 ${window.storeIndicatorHtml?.() || ""}
-                ${langSwitcher}
+                ${window.langSwitcherHtml?.() || ""}
                 <button type="button" id="${id}" class="staff-auth-identity"><span class="staff-auth-name">${t("login.title")}</span></button>
             `;
         }
         const name = s.name || s.role.toUpperCase();
         const role = s.role.toUpperCase();
         return `
-            ${langSwitcher}
             <button type="button" id="${id}" class="staff-auth-identity">
                 <span class="staff-auth-name">${escapeHtml(name)}</span>
                 <span class="staff-auth-role">${escapeHtml(role)}</span>

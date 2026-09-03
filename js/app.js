@@ -420,9 +420,13 @@ window.renderAccountMenu = (triggerBtnId = "nav-account") => {
     const menuWidth = 180;
 
     const items = [];
-    if (session.role !== "guest") {
-        items.push({ label: "ACCOUNT SETTINGS", action: () => renderAccountSettingsModal(session) });
-    }
+    // Was customer/staff only (a guest has no password to change, so this
+    // used to skip the whole modal for them) - now unconditional, since
+    // Account Settings is the ONLY place to change language once any
+    // session exists (see identityHtml() in staff-shell.js) and a guest
+    // needs that too. renderAccountSettingsModal() itself hides the
+    // password section for a guest session instead.
+    items.push({ label: "ACCOUNT SETTINGS", action: () => renderAccountSettingsModal(session) });
     // Only a customer/guest gets this (staff always work at their own
     // assigned store - see js/features/store-logic.js) and only when
     // there's actually more than one store to choose from.

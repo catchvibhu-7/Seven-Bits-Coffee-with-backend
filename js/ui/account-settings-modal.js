@@ -53,9 +53,15 @@ export function renderAccountSettingsModal(session) {
                     : ""
             }
 
-            <!-- Collapsed by default - the fields/meter/error-success
+            <!-- A guest session has no password at all (see AuthSystem's
+                 guest flow) - showing this for them would just let them hit
+                 a confusing "could not change password" error. Collapsed by
+                 default otherwise - the fields/meter/error-success
                  paragraphs used to always be visible, reserving dead space
                  in the modal even when nobody was changing anything. -->
+            ${
+                session.role !== "guest"
+                    ? `
             <button type="button" id="am-toggle-password" aria-expanded="false" aria-controls="am-password-fields" style="width:100%; text-align:left; background:none; border:1px solid var(--color-border); color:var(--color-text); padding:10px; font-family:inherit; font-size:12px; letter-spacing:1px; cursor:pointer; text-transform:uppercase;">${t("account.changePasswordToggleClosed")}</button>
             <div id="am-password-fields" style="display:none; margin-top:12px;">
                 <p id="account-modal-error" style="color:var(--color-danger); font-size: 11px; margin: 0 0 8px;"></p>
@@ -69,6 +75,9 @@ export function renderAccountSettingsModal(session) {
 
                 <button id="am-change-password" style="width:100%; background: var(--color-accent); color: var(--color-accent-contrast); border: none; padding: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase; margin-top:10px;">${t("account.updatePassword")}</button>
             </div>
+            `
+                    : ""
+            }
 
             ${
                 session.role === "customer"
@@ -98,13 +107,13 @@ export function renderAccountSettingsModal(session) {
 
     const newField = document.getElementById("am-new");
     const meterEl = document.getElementById("am-meter");
-    newField.addEventListener("input", () => renderPasswordStrengthMeter(meterEl, newField.value));
+    newField?.addEventListener("input", () => renderPasswordStrengthMeter(meterEl, newField.value));
 
     document.getElementById("am-close").addEventListener("click", () => overlay.remove());
 
     const toggleBtn = document.getElementById("am-toggle-password");
     const fieldsEl = document.getElementById("am-password-fields");
-    toggleBtn.addEventListener("click", () => {
+    toggleBtn?.addEventListener("click", () => {
         const opening = fieldsEl.style.display === "none";
         fieldsEl.style.display = opening ? "block" : "none";
         toggleBtn.textContent = opening ? t("account.changePasswordToggleOpen") : t("account.changePasswordToggleClosed");
@@ -164,7 +173,7 @@ export function renderAccountSettingsModal(session) {
         });
     }
 
-    document.getElementById("am-change-password").addEventListener("click", async () => {
+    document.getElementById("am-change-password")?.addEventListener("click", async () => {
         const errorEl = document.getElementById("account-modal-error");
         const successEl = document.getElementById("account-modal-success");
         errorEl.textContent = "";
