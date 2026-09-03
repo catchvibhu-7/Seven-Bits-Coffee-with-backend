@@ -3840,7 +3840,8 @@ export const AdminPortal = {
                 { label: "Picks heading", value: (c.homeHeadings && c.homeHeadings.picks) || "This week's picks" },
                 { label: "This week's picks", value: picksSummary },
                 { label: "Info heading", value: (c.homeHeadings && c.homeHeadings.roast) || "How we roast" },
-                { label: "Info storyboard", value: `${(c.roastSteps || []).length} step(s)` }
+                { label: "Info storyboard", value: `${(c.roastSteps || []).length} step(s)` },
+                { label: "Page width", value: c.homeFullWidth ? "Full width (edge-to-edge)" : "Centered (capped width)" }
             ],
             onEdit: () => this.openHomeContentEditModal(root)
         });
@@ -3952,6 +3953,15 @@ export const AdminPortal = {
                     <p class="admin-help-text">A step-by-step story shown on the home page - name and detail line per step, in order. Add up to 6.</p>
                     <div id="home-roast-editor" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
                     <button type="button" class="admin-btn-secondary" id="home-roast-add">+ ADD STEP</button>
+                </div>
+
+                <div style="border:1px solid var(--color-border); padding:14px; margin-bottom:16px;">
+                    <div style="font-size:10px; letter-spacing:.12em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:10px; border-left:3px solid var(--color-accent); padding-left:8px;">Layout</div>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px;">
+                        <input type="checkbox" id="cfg-home-full-width" ${c.homeFullWidth ? "checked" : ""} />
+                        Stretch full width (edge-to-edge, like Menu/Billing/Kitchen/Arcade)
+                    </label>
+                    <p class="admin-help-text" style="margin-top:6px;">Off by default - the hero and body sections stay centered with a max width, which usually reads better for this page's prose/marketing content on a very wide screen.</p>
                 </div>
 
                 <p id="content-error" role="alert" aria-live="polite" style="color:var(--color-danger); font-size:11px; min-height:12px;"></p>
@@ -4169,8 +4179,10 @@ export const AdminPortal = {
                     homeHeadings: {
                         picks: document.getElementById("cfg-home-heading-picks").value.trim(),
                         roast: document.getElementById("cfg-home-heading-roast").value.trim()
-                    }
+                    },
+                    homeFullWidth: document.getElementById("cfg-home-full-width").checked
                 });
+                if (window.applyBranding) window.applyBranding(AdminConfig.settings);
                 overlay.remove();
                 ok("Home page content saved");
                 this.renderContent(root);

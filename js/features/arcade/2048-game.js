@@ -146,8 +146,6 @@ export const Game2048 = {
 
     render(message = "") {
         this.root.innerHTML = `
-            <h3 style="text-align:center; margin-bottom:8px;">2048</h3>
-            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="g2048-score" style="color:var(--color-accent);">${this.score}</strong></p>
             <div class="arcade-board" style="display:grid; grid-template-columns:repeat(${SIZE},1fr); gap:6px; background:var(--color-border); padding:6px; border-radius:4px;">
                 ${this.grid
                     .flat()
@@ -165,15 +163,15 @@ export const Game2048 = {
             <p id="g2048-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;">${message}</p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="g2048-again" class="admin-btn-primary" style="display:${this.gameOver ? "" : "none"};">PLAY AGAIN</button>
-                <button id="g2048-back" class="admin-btn">BACK</button>
             </div>
             <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">Arrow keys or buttons to slide tiles.</p>
         `;
+        const scoreEl = document.getElementById("arcade-current-score");
+        if (scoreEl) scoreEl.textContent = this.score;
         this.root.querySelector("#g2048-up").addEventListener("click", () => this.move("up"));
         this.root.querySelector("#g2048-down").addEventListener("click", () => this.move("down"));
         this.root.querySelector("#g2048-left").addEventListener("click", () => this.move("left"));
         this.root.querySelector("#g2048-right").addEventListener("click", () => this.move("right"));
-        this.root.querySelector("#g2048-back").addEventListener("click", () => this.exit());
         this.root.querySelector("#g2048-again")?.addEventListener("click", () => this.startGame());
     },
 

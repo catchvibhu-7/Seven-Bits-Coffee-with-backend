@@ -50,8 +50,7 @@ export const InvadersGame = {
     mount(root) {
         this.root = root;
         this.root.innerHTML = `
-            <h3 style="text-align:center; margin-bottom:8px;">SPACE INVADERS</h3>
-            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="inv-score" style="color:var(--color-accent);">0</strong> &middot; LIVES: <strong id="inv-lives" style="color:var(--color-accent);">3</strong></p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">LIVES: <strong id="inv-lives" style="color:var(--color-accent);">3</strong></p>
             <div class="arcade-canvas-wrap">
                 <canvas id="inv-canvas" width="${WIDTH}" height="${HEIGHT}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
             </div>
@@ -63,7 +62,6 @@ export const InvadersGame = {
             <p id="inv-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="inv-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
-                <button id="inv-back" class="admin-btn">BACK</button>
             </div>
             <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">Arrow keys to move, Space to fire.</p>
         `;
@@ -107,7 +105,6 @@ export const InvadersGame = {
         });
         rightBtn.addEventListener("touchend", () => (this.touchRight = false));
         this.root.querySelector("#inv-fire").addEventListener("click", () => this.fire());
-        this.root.querySelector("#inv-back").addEventListener("click", () => this.exit());
         this.root.querySelector("#inv-again").addEventListener("click", () => this.startGame());
 
         this.startGame();
@@ -229,7 +226,7 @@ export const InvadersGame = {
     },
 
     updateHud() {
-        const scoreEl = this.root.querySelector("#inv-score");
+        const scoreEl = document.getElementById("arcade-current-score");
         const livesEl = this.root.querySelector("#inv-lives");
         if (scoreEl) scoreEl.textContent = this.score;
         if (livesEl) livesEl.textContent = this.lives;

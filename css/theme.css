@@ -2628,6 +2628,15 @@ input[type="checkbox"]:disabled {
     margin: 0 auto;
     padding: 34px 20px 46px;
 }
+/* Admin-toggleable (Content -> Home Page Content -> Layout, config.homeFullWidth,
+   see window.applyBranding() in app.js) - stretches these two edge-to-edge
+   like Menu/Billing/Kitchen/Arcade instead of the default centered/capped
+   width. Off by default since Home's prose/marketing content (unlike those
+   dashboard pages) more often reads better with a cap. */
+body.home-full-width .home-hero-inner,
+body.home-full-width .home-body {
+    max-width: none;
+}
 .home-section-header {
     display: flex;
     align-items: baseline;
@@ -3134,6 +3143,31 @@ input[type="checkbox"]:disabled {
     width: 100%;
 }
 
+/* Game name + live score, hoisted up here from each of the 10 single-player
+   games' own template (see renderSidebar()/setScore(), arcade-page.js) -
+   sits directly above the HIGH SCORES box below it, per direct ask. */
+.arcade-current-game-header {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    text-align: center;
+}
+.arcade-current-game-header h3 {
+    margin: 0;
+    font-size: 15px;
+    letter-spacing: 1px;
+}
+.arcade-current-game-header p {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--color-text-muted);
+}
+.arcade-current-game-header strong {
+    color: var(--color-accent);
+}
+
 @media (min-width: 820px) and (min-aspect-ratio: 1/1) {
     .arcade-play-layout {
         /* The game itself is what someone's actually here to look at - the
@@ -3233,6 +3267,16 @@ input[type="checkbox"]:disabled {
     .arcade-board {
         max-width: min(90%, 800px);
     }
+}
+
+/* Shared "leave this game" control (renderSwitcher(), arcade-page.js) -
+   sits above the game list per direct ask, replacing the 10 single-player
+   games' own individual BACK buttons (Tic-Tac-Toe/Connect Four/Checkers
+   keep their own mode-specific BACK/LEAVE MATCH controls alongside this,
+   untouched). */
+#arcade-switcher-back {
+    width: 100%;
+    margin-bottom: 14px;
 }
 
 .arcade-switcher-games {

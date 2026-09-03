@@ -242,6 +242,12 @@ if (!fs.existsSync(CONFIG_FILE)) {
     // first time it visits with nobody logged in yet, before it has its own
     // saved localStorage preference (see StaffShell in staff-shell.js).
     defaultNavLayout: "rail",
+    // false = the existing centered/capped hero+body width (readable on an
+    // ultra-wide monitor); true = stretch edge-to-edge like Menu/Billing/
+    // Kitchen/Arcade do. Admin-toggleable since unlike those dashboard
+    // pages, Home is prose/marketing content where a width cap is a more
+    // debatable default - see Content -> Home Page Content -> Layout.
+    homeFullWidth: false,
     // Industry-standard "earn on spend, redeem for a discount" loyalty
     // program - both rates admin-editable from Discounts & Loyalty.
     loyalty: {
@@ -3351,6 +3357,7 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
     "upiVpa",
     "upiPayeeName",
     "defaultNavLayout",
+    "homeFullWidth",
     "razorpayEnabled",
     "razorpayKeyId"
   ];
@@ -3368,6 +3375,7 @@ route("PATCH", /^\/api\/config\/?$/, async (req, res) => {
   if (config.defaultNavLayout !== undefined && config.defaultNavLayout !== "rail" && config.defaultNavLayout !== "topbar") {
     config.defaultNavLayout = "rail";
   }
+  if (config.homeFullWidth !== undefined) config.homeFullWidth = Boolean(config.homeFullWidth);
   if (config.razorpayEnabled !== undefined) config.razorpayEnabled = Boolean(config.razorpayEnabled);
   if (typeof config.razorpayKeyId === "string") config.razorpayKeyId = config.razorpayKeyId.trim().slice(0, 100);
   // Never echoed back by GET /api/config (see maskSecrets()) - only ever

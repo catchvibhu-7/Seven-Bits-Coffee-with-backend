@@ -44,8 +44,6 @@ export const SnakeGame = {
         this.root = root;
         this.difficulty = loadDifficulty(DIFFICULTY_KEY);
         this.root.innerHTML = `
-            <h3 style="text-align:center; margin-bottom:8px;">SNAKE</h3>
-            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">SCORE: <strong id="snake-score" style="color:var(--color-accent);">0</strong></p>
             <div class="arcade-canvas-wrap">
                 <canvas id="snake-canvas" width="${COLS * CELL}" height="${ROWS * CELL}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
             </div>
@@ -57,7 +55,6 @@ export const SnakeGame = {
             <p id="snake-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="snake-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
-                <button id="snake-back" class="admin-btn">BACK</button>
             </div>
             <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">Arrow keys to steer.</p>
         `;
@@ -68,7 +65,6 @@ export const SnakeGame = {
         this.root.querySelector("#sn-down").addEventListener("click", () => this.setDirection(0, 1));
         this.root.querySelector("#sn-left").addEventListener("click", () => this.setDirection(-1, 0));
         this.root.querySelector("#sn-right").addEventListener("click", () => this.setDirection(1, 0));
-        this.root.querySelector("#snake-back").addEventListener("click", () => this.exit());
         this.root.querySelector("#snake-again").addEventListener("click", () => this.startGame());
         wireDifficultySelector(this.root, "snake-diff", (d) => {
             this.difficulty = d;
@@ -174,7 +170,7 @@ export const SnakeGame = {
     },
 
     updateScore() {
-        const el = this.root.querySelector("#snake-score");
+        const el = document.getElementById("arcade-current-score");
         if (el) el.textContent = this.score;
     },
 

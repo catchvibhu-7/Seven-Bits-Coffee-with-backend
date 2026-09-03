@@ -165,7 +165,7 @@ const GAME_DEFS = {
     tictactoe: { name: "TIC-TAC-TOE", module: TicTacToeGame, scoreLabel: "BEST WIN STREAK" },
     tetris: { name: "TETRIS", module: TetrisGame, scoreLabel: "HIGH SCORES" },
     snake: { name: "SNAKE", module: SnakeGame, scoreLabel: "HIGH SCORES" },
-    pong: { name: "PONG", module: PongGame, scoreLabel: "HIGH SCORES" },
+    pong: { name: "PONG", module: PongGame, scoreLabel: "HIGH SCORES", scoreUnit: "RALLY" },
     memory: { name: "MEMORY MATCH", module: MemoryGame, scoreLabel: "HIGH SCORES" },
     simon: { name: "SIMON SAYS", module: SimonGame, scoreLabel: "ROUNDS REACHED" },
     minesweeper: { name: "MINESWEEPER", module: MinesweeperGame, scoreLabel: "HIGH SCORES" },
@@ -176,6 +176,17 @@ const GAME_DEFS = {
     connectfour: { name: "CONNECT FOUR", module: ConnectFourGame, scoreLabel: "BEST WIN STREAK" },
     checkers: { name: "CHECKERS", module: CheckersGame, scoreLabel: "BEST WIN STREAK" }
 };
+
+// The 10 single-player games have a static (never changes mid-game) title
+// and, for these 7, a live numeric score - both got hoisted into the shared
+// sidebar header (see renderSidebar()/setScore() below) so it's not
+// duplicated inside each game's own template anymore. Tic-Tac-Toe/Connect
+// Four/Checkers are deliberately excluded from both sets - their own
+// in-game header carries live match-state (mode select / vs bot / vs an
+// opponent's name) that doesn't fit a static sidebar line, and they have no
+// numeric score at all (win/lose only).
+const SCORE_GAMES = new Set(["tetris", "snake", "pong", "breakout", "flappy", "invaders", "2048"]);
+const CUSTOM_HEADER_GAMES = new Set(["tictactoe", "connectfour", "checkers"]);
 
 export const ArcadePage = {
     root: null,
@@ -286,14 +297,36 @@ export const ArcadePage = {
         def.module.mount(gameArea);
     },
 
+    /** Ends whatever's currently mounted and returns to the card grid - the
+     *  same two calls launchGame() already makes when jumping straight from
+     *  one game to another (module.unmount() first, since that's also where
+     *  the 3 online-match games leave/cancel their queue - see e.g.
+     *  checkers-game.js's unmount() - so this is safe to call regardless of
+     *  match state, not just for the 10 simple single-player games). Wired
+     *  to the switcher panel's own "BACK TO GAMES" button, above the game
+     *  list - see renderSwitcher() below. */
+    exitCurrentGame() {
+        const def = GAME_DEFS[this.activeGame];
+        if (!def) return;
+        def.module.unmount();
+        def.module.onExit();
+    },
+
     /** Desktop-only panel (hidden on narrow screens, see .arcade-switcher in
      *  theme.css) - a quick way to jump straight to another game without
-     *  backing out to the card grid, plus a short tip for whatever's active. */
+     *  backing out to the card grid, plus a short tip for whatever's active.
+     *  The "BACK TO GAMES" button up top is a shared, always-available exit -
+     *  the 10 single-player games no longer render their own copy (see each
+     *  game's own mount()); Tic-Tac-Toe/Connect Four/Checkers keep their own
+     *  mode-specific BACK/LEAVE MATCH controls untouched (this is an
+     *  additional quick exit alongside those, not a replacement, since their
+     *  own controls carry match-state meaning this one doesn't need to). */
     renderSwitcher(gameKey) {
         const switcher = this.root.querySelector("#arcade-switcher");
         if (!switcher) return;
         const others = Object.entries(GAME_DEFS).filter(([key]) => key !== gameKey);
         switcher.innerHTML = `
+            <button type="button" id="arcade-switcher-back" class="admin-btn">&larr; BACK TO GAMES</button>
             <div class="arcade-switcher-games">
                 ${others
                     .map(
@@ -315,17 +348,56 @@ export const ArcadePage = {
                     : ""
             }
         `;
+        switcher.querySelector("#arcade-switcher-back").addEventListener("click", () => this.exitCurrentGame());
         switcher.querySelectorAll(".arcade-switch-btn").forEach((btn) => {
             btn.addEventListener("click", () => this.launchGame(btn.dataset.game));
         });
     },
 
-    async renderSidebar(gameKey) {
+    /** Header (game name + live score, for the 10 single-player games that
+     *  have one - see SCORE_GAMES) is rendered synchronously here, before
+     *  the async high-scores fetch below it, so #arcade-current-score
+     *  already exists in the DOM by the time module.mount() runs right
+     *  after this in launchGame() and tries to write its first value into
+     *  it. Tic-Tac-Toe/Connect Four/Checkers keep rendering their own
+     *  (match-state-dependent - mode select / vs bot / vs opponent name)
+     *  header inside their own game area, untouched - only the 10 simple
+     *  games had a static, never-changing title worth hoisting up here. */
+    renderSidebar(gameKey) {
         const sidebar = this.root.querySelector("#arcade-sidebar");
         if (!sidebar) return;
         const def = GAME_DEFS[gameKey];
-        const scores = await ArcadeSystem.fetchScores(gameKey);
+        const showsScore = SCORE_GAMES.has(gameKey);
         sidebar.innerHTML = `
+            ${
+                !CUSTOM_HEADER_GAMES.has(gameKey)
+                    ? `<div class="arcade-current-game-header">
+                        <h3>${escapeHtml(def.name)}</h3>
+                        ${showsScore ? `<p>${escapeHtml(def.scoreUnit || "SCORE")}: <strong id="arcade-current-score">0</strong></p>` : ""}
+                    </div>`
+                    : ""
+            }
+            <div id="arcade-highscores-box"></div>
+        `;
+        this.renderHighScores(gameKey);
+    },
+
+    /** Sets the live score shown in the shared sidebar header above - the 10
+     *  single-player games call this instead of maintaining their own
+     *  "#xxx-score" element (see each game's own mount()/update code). A
+     *  no-op if that header isn't showing (e.g. a game not in SCORE_GAMES,
+     *  or the switcher/sidebar isn't mounted for some other reason). */
+    setScore(value) {
+        const el = document.getElementById("arcade-current-score");
+        if (el) el.textContent = value;
+    },
+
+    async renderHighScores(gameKey) {
+        const box = this.root.querySelector("#arcade-highscores-box");
+        if (!box) return;
+        const def = GAME_DEFS[gameKey];
+        const scores = await ArcadeSystem.fetchScores(gameKey);
+        box.innerHTML = `
             <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:4px; padding:16px;">
                 <h4 style="font-size:12px; letter-spacing:1px; color:var(--color-accent); margin-bottom:12px;">${def.scoreLabel}</h4>
                 ${

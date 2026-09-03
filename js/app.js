@@ -282,6 +282,7 @@ window.applyBranding = (config) => {
     }
 
     document.body.classList.toggle("theme-light", config.theme === "light");
+    document.body.classList.toggle("home-full-width", !!config.homeFullWidth);
 
     // A store's own single hero photo (Store Setup, manager/Local Admin/
     // Global Admin) cycles in after the franchise-wide ones, only for a

@@ -73,8 +73,6 @@ export const PongGame = {
         this.paddleSpeed = loadSensitivity();
         this.difficulty = loadDifficulty(DIFFICULTY_KEY);
         this.root.innerHTML = `
-            <h3 style="text-align:center; margin-bottom:8px;">PONG</h3>
-            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">RALLY: <strong id="pong-score" style="color:var(--color-accent);">0</strong></p>
             <div class="arcade-canvas-wrap">
                 <canvas id="pong-canvas" width="${WIDTH}" height="${HEIGHT}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
             </div>
@@ -91,7 +89,6 @@ export const PongGame = {
             <p id="pong-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="pong-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
-                <button id="pong-back" class="admin-btn">BACK</button>
             </div>
             <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">Arrow keys (or the buttons) to move your paddle.</p>
         `;
@@ -146,7 +143,6 @@ export const PongGame = {
         });
         downBtn.addEventListener("touchend", () => (this.touchDown = false));
 
-        this.root.querySelector("#pong-back").addEventListener("click", () => this.exit());
         this.root.querySelector("#pong-again").addEventListener("click", () => this.startGame());
 
         this.startGame();
@@ -259,7 +255,7 @@ export const PongGame = {
     },
 
     updateScore() {
-        const el = this.root.querySelector("#pong-score");
+        const el = document.getElementById("arcade-current-score");
         if (el) el.textContent = this.score;
     },
 

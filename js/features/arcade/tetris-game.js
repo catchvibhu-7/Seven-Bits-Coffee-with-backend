@@ -61,11 +61,7 @@ export const TetrisGame = {
     mount(root) {
         this.root = root;
         this.root.innerHTML = `
-            <h3 style="text-align:center; margin-bottom:8px;">TETRIS</h3>
-            <div style="display:flex; justify-content:space-between; max-width:320px; margin:0 auto 8px; font-size:12px; color:var(--color-text-muted);">
-                <span>SCORE: <strong id="tetris-score" style="color:var(--color-accent);">0</strong></span>
-                <span>LEVEL: <strong id="tetris-level" style="color:var(--color-accent);">1</strong></span>
-            </div>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">LEVEL: <strong id="tetris-level" style="color:var(--color-accent);">1</strong></p>
             <div class="arcade-canvas-wrap">
                 <canvas id="tetris-canvas" width="${COLS * CELL}" height="${ROWS * CELL}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
             </div>
@@ -78,7 +74,6 @@ export const TetrisGame = {
             <p id="tetris-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;"></p>
             <div style="display:grid; gap:10px; max-width:320px; margin:8px auto 0;">
                 <button id="tetris-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
-                <button id="tetris-back" class="admin-btn">BACK</button>
             </div>
             <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">Arrow keys to move/rotate, Space to hard-drop.</p>
         `;
@@ -88,7 +83,6 @@ export const TetrisGame = {
         this.root.querySelector("#tt-right").addEventListener("click", () => this.tryMove(1, 0));
         this.root.querySelector("#tt-down").addEventListener("click", () => this.softDrop());
         this.root.querySelector("#tt-rotate").addEventListener("click", () => this.rotate());
-        this.root.querySelector("#tetris-back").addEventListener("click", () => this.exit());
         this.root.querySelector("#tetris-again").addEventListener("click", () => this.startGame());
 
         this.keyHandler = (e) => this.handleKey(e);
@@ -269,7 +263,7 @@ export const TetrisGame = {
     },
 
     updateStats() {
-        const scoreEl = this.root.querySelector("#tetris-score");
+        const scoreEl = document.getElementById("arcade-current-score");
         const levelEl = this.root.querySelector("#tetris-level");
         if (scoreEl) scoreEl.textContent = this.score;
         if (levelEl) levelEl.textContent = this.level;

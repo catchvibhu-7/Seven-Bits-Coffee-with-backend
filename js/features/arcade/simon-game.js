@@ -44,7 +44,6 @@ export const SimonGame = {
 
     render(message = "") {
         this.root.innerHTML = `
-            <h3 style="text-align:center; margin-bottom:8px;">SIMON SAYS</h3>
             <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">ROUND: <strong id="simon-round" style="color:var(--color-accent);">${this.sequence.length}</strong></p>
             <div class="arcade-board" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; max-width:min(94vw, 320px);">
                 ${PADS.map((c) => `<div class="simon-pad" data-key="${c.key}" style="aspect-ratio:1; background:${c.bg}; border-radius:6px; cursor:pointer; opacity:0.55; transition:opacity 0.1s;"></div>`).join("")}
@@ -52,13 +51,11 @@ export const SimonGame = {
             <p id="simon-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;">${message}</p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="simon-again" class="admin-btn-primary" style="display:none;">PLAY AGAIN</button>
-                <button id="simon-back" class="admin-btn">BACK</button>
             </div>
         `;
         this.root.querySelectorAll(".simon-pad").forEach((el) => {
             el.addEventListener("click", () => this.handlePadClick(Number(el.dataset.key)));
         });
-        this.root.querySelector("#simon-back").addEventListener("click", () => this.exit());
         this.root.querySelector("#simon-again").addEventListener("click", () => this.startGame());
     },
 

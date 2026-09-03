@@ -42,7 +42,6 @@ export const MemoryGame = {
 
     render(message = "") {
         this.root.innerHTML = `
-            <h3 style="text-align:center; margin-bottom:8px;">MEMORY MATCH</h3>
             <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">MOVES: <strong id="mm-moves" style="color:var(--color-accent);">${this.moves}</strong></p>
             <div class="arcade-board" style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px;">
                 ${this.cards
@@ -59,13 +58,11 @@ export const MemoryGame = {
             <p id="mm-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;">${message}</p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="mm-again" class="admin-btn-primary" style="display:${this.matchesFound === SYMBOLS.length ? "" : "none"};">PLAY AGAIN</button>
-                <button id="mm-back" class="admin-btn">BACK</button>
             </div>
         `;
         this.root.querySelectorAll(".mm-card").forEach((el) => {
             el.addEventListener("click", () => this.flip(Number(el.dataset.i)));
         });
-        this.root.querySelector("#mm-back").addEventListener("click", () => this.exit());
         this.root.querySelector("#mm-again")?.addEventListener("click", () => this.startGame());
     },
 
