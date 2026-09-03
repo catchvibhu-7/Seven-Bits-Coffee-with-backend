@@ -3231,15 +3231,25 @@ body.home-full-width .home-body {
 }
 
 .arcade-canvas-wrap canvas {
-    /* width/height:auto only ever SHRINKS a canvas via max-width/max-height -
-       it never grows one past its native pixel size, since auto sizing for a
-       replaced element resolves to its intrinsic dimensions. Explicit 100%
-       plus object-fit:contain is what actually lets it scale up to fill the
-       flex wrapper's height while keeping its aspect ratio (letterboxed on
-       the cross axis rather than distorted). */
-    width: 100%;
+    /* width:100%; height:100%; object-fit:contain used to size the canvas's
+       own CSS box to fill the ENTIRE wrapper, then only letterbox the drawn
+       content inside it - the canvas's own border (set inline per game,
+       e.g. "border:1px solid var(--color-border)") is drawn around that
+       full oversized box, not around the actual letterboxed content, so on
+       a wide wrapper it rendered as a wide rectangle with the real game
+       board sitting in a narrow strip inside it, border nowhere near it.
+       height:100% + width:auto instead sizes the canvas's BOX itself to
+       its real aspect ratio (a canvas's intrinsic ratio comes from its
+       width/height HTML attributes) - no object-fit/letterboxing needed,
+       so the border hugs the actual board exactly. max-width is a safety
+       net for a game wide enough that height-driven sizing would overflow
+       a narrow column (accepted as the one case that can't preserve both
+       constraints at once, same tradeoff .arcade-board's DOM-grid games
+       already make with their own single-dimension max-width). */
     height: 100%;
-    object-fit: contain;
+    width: auto;
+    max-width: 100%;
+    display: block;
     /* These games draw blocky shapes, not photos - scaling up several times
        over (a 360px Snake board can end up past 900px tall on a big
        portrait screen) would otherwise blur through the browser's default
