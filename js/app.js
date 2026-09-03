@@ -692,6 +692,7 @@ window.setLanguage = async (lang) => {
     document.querySelectorAll(".lang-switcher-btn").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.lang === I18n.getLanguage());
     });
+    translateMenuChrome();
     const activePageId = document.querySelector(".page.active")?.id.replace("page-", "");
     if (activePageId === "menu") {
         renderMenu();
@@ -1410,10 +1411,10 @@ window.toggleJumpMenu = (e) => {
         menu.style.display = "none";
     } else {
         menu.innerHTML = `
-            <div class="jump-header">Categories:</div>
+            <div class="jump-header">${t("menu.categoriesHeader")}</div>
             ${
                 comboData.length > 0
-                    ? `<div class="jump-option" data-jump="combos"><span class="jump-id">COMBO DEALS</span></div>`
+                    ? `<div class="jump-option" data-jump="combos"><span class="jump-id">${t("menu.comboDeals")}</span></div>`
                     : ""
             }
             ${menuData.sections
@@ -1488,9 +1489,9 @@ function itemImageMarkup(item) {
  *  of which way it goes. Pure CSS shapes, no icon asset needed. */
 function dietIconHtml(item) {
     if (item.isVeg === false) {
-        return `<span class="diet-icon diet-icon-nonveg" role="img" aria-label="Non-vegetarian" title="Non-vegetarian"><span class="diet-icon-triangle"></span></span>`;
+        return `<span class="diet-icon diet-icon-nonveg" role="img" aria-label="${t("menu.nonVegAria")}" title="${t("menu.nonVegAria")}"><span class="diet-icon-triangle"></span></span>`;
     }
-    return `<span class="diet-icon diet-icon-veg" role="img" aria-label="Vegetarian" title="Vegetarian"><span class="diet-icon-dot"></span></span>`;
+    return `<span class="diet-icon diet-icon-veg" role="img" aria-label="${t("menu.vegAria")}" title="${t("menu.vegAria")}"><span class="diet-icon-dot"></span></span>`;
 }
 
 /** Only rendered when the item actually has allergens set - clicking OR
@@ -1500,7 +1501,8 @@ function dietIconHtml(item) {
  *  rather than depending on :hover for mobile. */
 function allergenBadgeHtml(allergens) {
     const escaped = escapeHtml(allergens);
-    return ` <span class="allergen-badge field-tooltip" tabindex="0" role="img" aria-label="Allergens: ${escaped}" title="Allergens: ${escaped}" data-allergens="${escaped}" style="font-size:9px;">&#9888;</span>`;
+    const label = t("menu.allergensAria", { list: escaped });
+    return ` <span class="allergen-badge field-tooltip" tabindex="0" role="img" aria-label="${label}" title="${label}" data-allergens="${escaped}" style="font-size:9px;">&#9888;</span>`;
 }
 
 /** ALL/VEG/NON-VEG toggle - its own row below the category chips (see
@@ -1511,9 +1513,9 @@ function renderMenuDietFilter() {
     const root = document.getElementById("menu-diet-filter");
     if (!root) return;
     const options = [
-        { key: "all", label: "ALL" },
-        { key: "veg", label: `${dietIconHtml({ isVeg: true })} VEG` },
-        { key: "nonveg", label: `${dietIconHtml({ isVeg: false })} NON-VEG` }
+        { key: "all", label: t("menu.dietAll") },
+        { key: "veg", label: `${dietIconHtml({ isVeg: true })} ${t("menu.dietVeg")}` },
+        { key: "nonveg", label: `${dietIconHtml({ isVeg: false })} ${t("menu.dietNonVeg")}` }
     ];
     root.innerHTML = options
         .map((o) => `<button type="button" class="menu-diet-chip${dietFilter === o.key ? " active" : ""}" data-diet="${o.key}">${o.label}</button>`)
@@ -1611,7 +1613,7 @@ function renderMenuCategoryChips() {
     const overflowBtn = document.createElement("button");
     overflowBtn.type = "button";
     overflowBtn.className = "menu-cat-chip menu-cat-overflow-btn";
-    overflowBtn.setAttribute("aria-label", "More categories");
+    overflowBtn.setAttribute("aria-label", t("menu.moreCategories"));
     overflowBtn.textContent = "⋯";
     root.appendChild(overflowBtn);
 
@@ -1652,16 +1654,17 @@ function renderSectionPager(container, sectionId, currentPage, totalItems, total
     if (totalPages <= 1) return;
 
     const pageStart = (currentPage - 1) * MENU_PAGE_SIZE;
-    const label = `<strong style="color:var(--color-accent);">${pageStart + 1}-${Math.min(pageStart + MENU_PAGE_SIZE, totalItems)}</strong> of ${totalItems}`;
+    const range = `<strong style="color:var(--color-accent);">${pageStart + 1}-${Math.min(pageStart + MENU_PAGE_SIZE, totalItems)}</strong>`;
+    const label = t("menu.pagerLabel", { range, total: totalItems });
 
     const pagerEl = document.createElement("div");
     pagerEl.className = "menu-pager";
     pagerEl.innerHTML = `
-        <button type="button" class="admin-pg-btn" data-page="1" ${currentPage <= 1 ? "disabled" : ""} title="First page">«</button>
-        <button type="button" class="admin-pg-btn" data-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""} title="Previous page">‹</button>
+        <button type="button" class="admin-pg-btn" data-page="1" ${currentPage <= 1 ? "disabled" : ""} title="${t("menu.firstPage")}">«</button>
+        <button type="button" class="admin-pg-btn" data-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""} title="${t("menu.previousPage")}">‹</button>
         <span class="menu-pager-label">${label}</span>
-        <button type="button" class="admin-pg-btn" data-page="${currentPage + 1}" ${currentPage >= totalPages ? "disabled" : ""} title="Next page">›</button>
-        <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${currentPage >= totalPages ? "disabled" : ""} title="Last page">»</button>
+        <button type="button" class="admin-pg-btn" data-page="${currentPage + 1}" ${currentPage >= totalPages ? "disabled" : ""} title="${t("menu.nextPage")}">›</button>
+        <button type="button" class="admin-pg-btn" data-page="${totalPages}" ${currentPage >= totalPages ? "disabled" : ""} title="${t("menu.lastPage")}">»</button>
     `;
     container.appendChild(pagerEl);
     pagerEl.querySelectorAll("[data-page]").forEach((btn) => {
@@ -1687,7 +1690,7 @@ function renderMenu(filterQuery = "") {
         const comboSection = document.createElement("section");
         comboSection.id = "section-combos";
         comboSection.className = "section-container";
-        comboSection.innerHTML = `<h2 class="section-title">COMBO DEALS</h2>`;
+        comboSection.innerHTML = `<h2 class="section-title">${t("menu.comboDeals")}</h2>`;
         const comboContainer = document.createElement("div");
         comboContainer.className = viewMode === "grid" ? "menu-grid" : "menu-list";
         comboData.forEach((combo) => {
@@ -1702,11 +1705,11 @@ function renderMenu(filterQuery = "") {
             const buttonHTML =
                 count > 0
                     ? `<div class="btn-qty-container">
-                    <button type="button" class="combo-remove-btn" aria-label="Remove one ${escapeHtml(combo.name)}">-</button>
+                    <button type="button" class="combo-remove-btn" aria-label="${t("menu.removeOneAria", { name: escapeHtml(combo.name) })}">-</button>
                     <span>${count}</span>
-                    <button type="button" class="combo-add-btn" aria-label="Add one ${escapeHtml(combo.name)}">+</button>
+                    <button type="button" class="combo-add-btn" aria-label="${t("menu.addOneAria", { name: escapeHtml(combo.name) })}">+</button>
                 </div>`
-                    : `<button class="btn-add-fixed combo-add-btn">ADD COMBO</button>`;
+                    : `<button class="btn-add-fixed combo-add-btn">${t("menu.addCombo")}</button>`;
             const comboEl = document.createElement("div");
             comboEl.className = "menu-item";
             comboEl.innerHTML = `
@@ -1779,19 +1782,20 @@ function renderMenu(filterQuery = "") {
             const customizedLines = cart.filter((c) => c.id === item.id && c.cartKey !== defaultKey);
 
             const quickControlsHTML = isUnavailable
-                ? `<button class="btn-add-fixed" disabled style="opacity:0.4; cursor:not-allowed;">UNAVAILABLE</button>`
+                ? `<button class="btn-add-fixed" disabled style="opacity:0.4; cursor:not-allowed;">${t("menu.unavailable")}</button>`
                 : defaultCount > 0
                   ? `<div class="btn-qty-container">
-                    <button type="button" class="quick-remove-btn" aria-label="Remove one ${escapeHtml(item.name)}">-</button>
+                    <button type="button" class="quick-remove-btn" aria-label="${t("menu.removeOneAria", { name: escapeHtml(item.name) })}">-</button>
                     <span>${defaultCount}</span>
-                    <button type="button" class="quick-add-btn" aria-label="Add one ${escapeHtml(item.name)}">+</button>
+                    <button type="button" class="quick-add-btn" aria-label="${t("menu.addOneAria", { name: escapeHtml(item.name) })}">+</button>
                 </div>`
-                  : `<button class="btn-add-fixed quick-add-btn">ADD BIT</button>`;
+                  : `<button class="btn-add-fixed quick-add-btn">${t("menu.addBit")}</button>`;
 
             const showFavorite = TRACKING_ROLES.includes(session.role);
             const isFav = showFavorite && FavoritesSystem.isFavorite(item.id);
+            const favLabel = isFav ? t("menu.removeFavorite") : t("menu.addFavorite");
             const favButton = showFavorite
-                ? `<button type="button" class="btn-favorite fav-toggle-btn" title="${isFav ? "Remove from favorites" : "Add to favorites"}" aria-label="${isFav ? "Remove from favorites" : "Add to favorites"}" aria-pressed="${isFav}" style="background:none; border:none; cursor:pointer; font-size: 19px; line-height:1; color: ${isFav ? "var(--color-accent)" : "var(--color-text-muted)"};">${isFav ? "\u2605" : "\u2606"}</button>`
+                ? `<button type="button" class="btn-favorite fav-toggle-btn" title="${favLabel}" aria-label="${favLabel}" aria-pressed="${isFav}" style="background:none; border:none; cursor:pointer; font-size: 19px; line-height:1; color: ${isFav ? "var(--color-accent)" : "var(--color-text-muted)"};">${isFav ? "\u2605" : "\u2606"}</button>`
                 : "";
 
             // Staff can flag an item as needing to come off the menu (e.g. out of
@@ -1801,8 +1805,8 @@ function renderMenu(filterQuery = "") {
             const staffRequestHtml =
                 session.role === "employee" && !isUnavailable
                     ? hasPendingRequest
-                        ? `<div style="font-size:9px; color:var(--color-text-muted); margin-top:4px;">DISABLE REQUEST PENDING REVIEW</div>`
-                        : `<button class="btn-customize-link request-disable-btn" style="background:none; border:none; color:var(--color-danger); text-decoration:underline; font-size:10px; cursor:pointer; font-family:inherit; padding:0; margin-top:4px; display:block;">\u26a0 REQUEST DISABLE</button>`
+                        ? `<div style="font-size:9px; color:var(--color-text-muted); margin-top:4px;">${t("menu.disableRequestPending")}</div>`
+                        : `<button class="btn-customize-link request-disable-btn" style="background:none; border:none; color:var(--color-danger); text-decoration:underline; font-size:10px; cursor:pointer; font-family:inherit; padding:0; margin-top:4px; display:block;">${t("menu.requestDisable")}</button>`
                     : "";
 
             // Each customized variant already in the cart gets its own row with a
@@ -1812,17 +1816,17 @@ function renderMenu(filterQuery = "") {
             const customizedRowsHtml = customizedLines
                 .map((line) => {
                     const tags = CustomizationSystem.describeLine(line);
-                    const label = tags.length ? tags.join(" \u00b7 ") : "Customized";
+                    const label = tags.length ? tags.join(" \u00b7 ") : t("menu.customizedFallback");
                     return `
                     <div class="customized-line-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 0; border-top:1px dashed var(--color-border);">
                         <div style="font-size:10px; color:var(--color-text-muted); flex:1;">
-                            <span style="color:var(--color-accent);">CUSTOMIZED</span> ${escapeHtml(label)}
+                            <span style="color:var(--color-accent);">${t("checkout.customizedTag")}</span> ${escapeHtml(label)}
                             ${line.notes ? `<div style="font-style:italic;">"${escapeHtml(line.notes)}"</div>` : ""}
                         </div>
                         <div class="btn-qty-container">
-                            <button type="button" class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="-1" title="Remove one" aria-label="Remove one">-</button>
+                            <button type="button" class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="-1" title="${t("menu.removeOneGeneric")}" aria-label="${t("menu.removeOneGeneric")}">-</button>
                             <span>${line.quantity}</span>
-                            <button type="button" class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="1" title="Repeat this exact customization" aria-label="Repeat this exact customization">+</button>
+                            <button type="button" class="customized-line-btn" data-cart-key="${line.cartKey}" data-delta="1" title="${t("menu.repeatCustomization")}" aria-label="${t("menu.repeatCustomization")}">+</button>
                         </div>
                     </div>
                 `;
@@ -1852,9 +1856,9 @@ function renderMenu(filterQuery = "") {
             itemEl.innerHTML = `
                 <div class="menu-item-banner">${itemImageMarkup(item)}</div>
                 <div class="info">
-                    <div class="name">${dietIconHtml(item)}${favButton}${item.name}${item.allergens ? allergenBadgeHtml(item.allergens) : ""}${isSoldOut ? ' <span style="font-size:10px; color:var(--color-danger); font-weight:normal;">(SOLD OUT)</span>' : isUnavailable ? ' <span style="font-size:10px; color:var(--color-danger); font-weight:normal;">(UNAVAILABLE)</span>' : isLowStock ? ` <span style="font-size:10px; color:var(--color-danger); font-weight:normal;">(${item.stockCount} LEFT)</span>` : ""}${onPromo ? ' <span style="color:var(--color-accent); font-size:10px;">PROMO</span>' : ""}</div>
+                    <div class="name">${dietIconHtml(item)}${favButton}${item.name}${item.allergens ? allergenBadgeHtml(item.allergens) : ""}${isSoldOut ? ` <span style="font-size:10px; color:var(--color-danger); font-weight:normal;">(${t("menu.soldOut")})</span>` : isUnavailable ? ` <span style="font-size:10px; color:var(--color-danger); font-weight:normal;">(${t("menu.unavailable")})</span>` : isLowStock ? ` <span style="font-size:10px; color:var(--color-danger); font-weight:normal;">(${t("menu.stockLeft", { count: item.stockCount })})</span>` : ""}${onPromo ? ` <span style="color:var(--color-accent); font-size:10px;">${t("checkout.promoTag")}</span>` : ""}</div>
                     <div class="story">${item.story}</div>
-                    ${isUnavailable ? "" : `<button class="btn-customize-link open-customize-btn" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:10px; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">CUSTOMIZE</span></button>`}
+                    ${isUnavailable ? "" : `<button class="btn-customize-link open-customize-btn" style="display:inline-flex; align-items:baseline; gap:3px; background:none; border:none; color:var(--color-accent); font-size:10px; cursor:pointer; font-family:inherit; padding:0; margin-top:4px;"><span>+</span><span style="text-decoration:underline;">${t("menu.customize")}</span></button>`}
                     ${staffRequestHtml}
                 </div>
                 <div class="item-controls">
@@ -1884,8 +1888,8 @@ function renderMenu(filterQuery = "") {
 
     if (!anyItemsRendered) {
         root.innerHTML += favoritesFilterActive
-            ? `<p style="text-align:center; padding: 30px; font-size: 12px; color: var(--color-text-muted);">No favorites yet - tap the \u2606 on any item to add one.</p>`
-            : `<p style="text-align:center; padding: 30px; font-size: 12px; color: var(--color-text-muted);">No items match.</p>`;
+            ? `<p style="text-align:center; padding: 30px; font-size: 12px; color: var(--color-text-muted);">${t("menu.noFavoritesYet")}</p>`
+            : `<p style="text-align:center; padding: 30px; font-size: 12px; color: var(--color-text-muted);">${t("menu.noItemsMatch")}</p>`;
     }
 
     const footer = document.getElementById("footer-actions");
@@ -1942,14 +1946,14 @@ function renderMenuCartPanel() {
     panel.innerHTML = `
         <div style="padding:16px 18px 14px; border-bottom:1px dashed var(--color-border); flex:none;">
             <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
-                <h2 style="font-size:13px; font-weight:bold; letter-spacing:.18em; margin:0; text-transform:uppercase; color:var(--color-accent);">Cart / KOT</h2>
-                <span style="font-size:11px; color:var(--color-text-muted);">${totalItems} item${totalItems === 1 ? "" : "s"}</span>
+                <h2 style="font-size:13px; font-weight:bold; letter-spacing:.18em; margin:0; text-transform:uppercase; color:var(--color-accent);">${t("menu.cartTitle")}</h2>
+                <span style="font-size:11px; color:var(--color-text-muted);">${t("menu.itemCount", { count: totalItems, unit: totalItems === 1 ? t("menu.itemUnit") : t("menu.itemsUnit") })}</span>
             </div>
         </div>
         <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:4px 18px;">
             ${
                 groupedCart.length === 0
-                    ? `<p style="padding:36px 0; text-align:center; color:var(--color-text-muted); font-size:11px; line-height:1.8;">Cart is empty.<br>Tap an item to add it.</p>`
+                    ? `<p style="padding:36px 0; text-align:center; color:var(--color-text-muted); font-size:11px; line-height:1.8;">${t("menu.cartEmpty")}</p>`
                     : groupedCart
                           .map((line, i) => {
                               const isCustomized = line.cartKey !== defaultCartKey(line.id);
@@ -1967,7 +1971,7 @@ function renderMenuCartPanel() {
                               const detailsHtml = isCustomized
                                   ? `
                         <div style="margin-top:4px;">
-                            <button type="button" class="menu-cart-customized-toggle" data-target="${breakdownId}" aria-expanded="false" aria-controls="${breakdownId}" style="font-size:9px; font-weight:bold; letter-spacing:.08em; color:var(--color-accent); text-transform:uppercase; cursor:pointer; text-decoration:underline; background:none; border:none; padding:0; font-family:inherit;">Customized</button>
+                            <button type="button" class="menu-cart-customized-toggle" data-target="${breakdownId}" aria-expanded="false" aria-controls="${breakdownId}" style="font-size:9px; font-weight:bold; letter-spacing:.08em; color:var(--color-accent); text-transform:uppercase; cursor:pointer; text-decoration:underline; background:none; border:none; padding:0; font-family:inherit;">${t("checkout.customizedTag")}</button>
                             <span style="font-size:9px; color:var(--color-text-muted); margin-left:4px;">${currencySymbol()}${extraTotal.toFixed(2)}</span>
                             <div id="${breakdownId}" style="display:none; margin-top:3px;">
                                 ${detailLines
@@ -1985,14 +1989,14 @@ function renderMenuCartPanel() {
                 <div style="display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px dashed var(--color-border);">
                     <div style="flex:1; min-width:0;">
                         <div style="font-size:12px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(line.name)}</div>
-                        <div style="font-size:10px; color:var(--color-text-muted); margin-top:3px;">${currencySymbol()}${line.price.toFixed(2)} each</div>
+                        <div style="font-size:10px; color:var(--color-text-muted); margin-top:3px;">${currencySymbol()}${line.price.toFixed(2)} ${t("menu.each")}</div>
                         ${detailsHtml}
                         ${line.notes ? `<div style="font-size:10px; color:var(--color-text-muted); font-style:italic; margin-top:2px;">"${escapeHtml(line.notes)}"</div>` : ""}
                     </div>
                     <div class="btn-qty-container">
-                        <button type="button" class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="-1" aria-label="Decrease quantity of ${escapeHtml(line.name)}">-</button>
+                        <button type="button" class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="-1" aria-label="${t("checkout.decreaseQtyAria", { name: escapeHtml(line.name) })}">-</button>
                         <span>${line.quantity}</span>
-                        <button type="button" class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="1" aria-label="Increase quantity of ${escapeHtml(line.name)}">+</button>
+                        <button type="button" class="menu-cart-qty-btn" data-cart-key="${line.cartKey}" data-delta="1" aria-label="${t("checkout.increaseQtyAria", { name: escapeHtml(line.name) })}">+</button>
                     </div>
                     <span style="width:56px; flex:none; text-align:right; font-size:11px; font-weight:bold;">${currencySymbol()}${(line.price * line.quantity).toFixed(2)}</span>
                 </div>
@@ -2003,13 +2007,13 @@ function renderMenuCartPanel() {
         </div>
         <div style="padding:14px 18px 18px; border-top:1px solid var(--color-border); flex:none;">
             <div style="margin-bottom:12px;">
-                <div id="cart-order-type-label" style="font-size:10px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); margin-bottom:6px;">ORDER TYPE</div>
+                <div id="cart-order-type-label" style="font-size:10px; font-weight:bold; letter-spacing:.1em; color:var(--color-text-muted); margin-bottom:6px;">${t("menu.orderTypeLabel")}</div>
                 <div style="display:grid; grid-template-columns:${deliveryAvailable ? "1fr 1fr 1fr" : "1fr 1fr"}; gap:8px;" role="group" aria-labelledby="cart-order-type-label">
-                    <button type="button" class="cart-order-type-btn" data-order-type="takeaway" aria-pressed="${orderType === "takeaway"}" style="padding:9px 6px; background:${orderType === "takeaway" ? "var(--color-accent)" : "transparent"}; color:${orderType === "takeaway" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Takeaway</button>
-                    <button type="button" class="cart-order-type-btn" data-order-type="dine-in" aria-pressed="${orderType === "dine-in"}" style="padding:9px 6px; background:${orderType === "dine-in" ? "var(--color-accent)" : "transparent"}; color:${orderType === "dine-in" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Dine-in</button>
+                    <button type="button" class="cart-order-type-btn" data-order-type="takeaway" aria-pressed="${orderType === "takeaway"}" style="padding:9px 6px; background:${orderType === "takeaway" ? "var(--color-accent)" : "transparent"}; color:${orderType === "takeaway" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">${t("tracking.takeaway")}</button>
+                    <button type="button" class="cart-order-type-btn" data-order-type="dine-in" aria-pressed="${orderType === "dine-in"}" style="padding:9px 6px; background:${orderType === "dine-in" ? "var(--color-accent)" : "transparent"}; color:${orderType === "dine-in" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">${t("tracking.dineIn")}</button>
                     ${
                         deliveryAvailable
-                            ? `<button type="button" class="cart-order-type-btn" data-order-type="delivery" aria-pressed="${orderType === "delivery"}" style="padding:9px 6px; background:${orderType === "delivery" ? "var(--color-accent)" : "transparent"}; color:${orderType === "delivery" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">Delivery</button>`
+                            ? `<button type="button" class="cart-order-type-btn" data-order-type="delivery" aria-pressed="${orderType === "delivery"}" style="padding:9px 6px; background:${orderType === "delivery" ? "var(--color-accent)" : "transparent"}; color:${orderType === "delivery" ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:1px solid var(--color-accent); font-size:10px; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;">${t("menu.delivery")}</button>`
                             : ""
                     }
                 </div>
@@ -2020,11 +2024,11 @@ function renderMenuCartPanel() {
                  checkout - see renderCheckoutModal() - and again on the
                  Billing page and the printed bill, not before. -->
             <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:10px 0 14px;">
-                <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">SUBTOTAL</span>
+                <span style="font-size:11px; font-weight:bold; letter-spacing:.1em;">${t("menu.subtotal")}</span>
                 <span style="font-size:22px; font-weight:bold; color:var(--color-accent);">${currencySymbol()}${breakdown.subtotal.toFixed(2)}</span>
             </div>
-            <button id="staff-cart-checkout-btn" ${cart.length === 0 ? "disabled" : ""} style="width:100%; padding:12px; background:${cart.length ? "var(--color-accent)" : "var(--color-border)"}; color:${cart.length ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:none; font-size:12px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:${cart.length ? "pointer" : "not-allowed"}; min-height:44px;">[ Checkout ]</button>
-            <div style="font-size:9px; color:var(--color-text-muted); text-align:center; margin-top:8px; line-height:1.5;">Tax, service charge & tip shown at checkout.</div>
+            <button id="staff-cart-checkout-btn" ${cart.length === 0 ? "disabled" : ""} style="width:100%; padding:12px; background:${cart.length ? "var(--color-accent)" : "var(--color-border)"}; color:${cart.length ? "var(--color-accent-contrast)" : "var(--color-text-muted)"}; border:none; font-size:12px; font-weight:bold; letter-spacing:.1em; text-transform:uppercase; cursor:${cart.length ? "pointer" : "not-allowed"}; min-height:44px;">${t("menu.checkoutButton")}</button>
+            <div style="font-size:9px; color:var(--color-text-muted); text-align:center; margin-top:8px; line-height:1.5;">${t("menu.taxNote")}</div>
         </div>
     `;
     panel.querySelector("#staff-cart-checkout-btn")?.addEventListener("click", () => window.handleCartStatusClick());
@@ -2941,6 +2945,22 @@ window.wireCustomerNav = () => {
  *  that's part of index.html and never gets wholesale innerHTML-replaced
  *  after the initial page load (unlike the customer nav above), so this
  *  only ever needs to run once, here at boot. */
+/** The Grid/List view toggle and the search box's placeholder are static
+ *  markup in index.html - unlike the nav tabs (staff-shell.js regenerates
+ *  those from CUSTOMER_TAB_DEFS on every render), nothing ever rewrites
+ *  these, so a language switch needs to touch them directly. Called once at
+ *  boot (after I18n.load()) and again from window.setLanguage(). */
+function translateMenuChrome() {
+    const gridBtn = document.getElementById("menu-view-grid-btn");
+    if (gridBtn) gridBtn.innerHTML = `&#9638; ${t("menu.viewGrid")}`;
+    const listBtn = document.getElementById("menu-view-list-btn");
+    if (listBtn) listBtn.innerHTML = `&#9776; ${t("menu.viewList")}`;
+    const searchInput = document.getElementById("menu-search");
+    if (searchInput) searchInput.placeholder = t("menu.searchPlaceholder");
+    const titleEl = document.querySelector(".menu-page-title");
+    if (titleEl) titleEl.innerHTML = `${t("menu.pageTitlePart1")}<span>/</span>${t("menu.pageTitlePart2")}`;
+}
+
 function wireStaticControls() {
     window.wireCustomerNav();
     document.getElementById("home-hero-start-btn")?.addEventListener("click", () => window.showPage("menu"));
@@ -2965,6 +2985,7 @@ function wireStaticControls() {
 (async () => {
     document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
     await I18n.load(); // before any render, so the very first paint is already in the saved language
+    translateMenuChrome();
     wireStaticControls();
     StaffShell.captureCustomerNav(); // before refreshSession() can possibly swap it out for an already-logged-in staff session
     await StoreSystem.loadStores();
