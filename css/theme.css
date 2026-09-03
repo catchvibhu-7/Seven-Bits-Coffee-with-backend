@@ -3082,13 +3082,16 @@ input[type="checkbox"]:disabled {
    On the wide-landscape side, the 3 columns use minmax() rather than a
    single small fixed width so a genuinely huge monitor lets them grow a
    bit too, rather than leaving the same fixed ~980px block centered in a
-   sea of margin regardless of screen size. */
+   sea of margin regardless of screen size. No max-width/margin:auto on
+   this grid itself (dropped - was capping the whole 3-column layout at
+   1400px, leaving dead space flanking the switcher/leaderboard on a wide
+   screen instead of letting them sit nearer the true edges) - the game
+   board itself still stays a sane fixed width via .arcade-game-area's own
+   max-width below, so removing this doesn't make the GAME any wider. */
 .arcade-play-layout {
     display: grid;
     grid-template-columns: 1fr;
     gap: 20px;
-    max-width: 1400px;
-    margin: 0 auto;
 }
 
 .arcade-switcher {
@@ -3150,8 +3153,12 @@ input[type="checkbox"]:disabled {
         top: 20px;
     }
     .arcade-game-area {
-        max-width: 700px;
-        margin: 0 auto;
+        /* No max-width/margin:auto here anymore - was capping this column at
+           700px regardless of how much room the now-uncapped 3-column grid
+           actually has. DOM-grid games (.arcade-board below) grow into
+           whatever this column's real width is; canvas games stay at their
+           native pixel size regardless (see .arcade-canvas-wrap canvas
+           above) so this doesn't affect them either way. */
         min-height: 0; /* the fixed-size desktop game doesn't need to stretch */
     }
     .arcade-sidebar {
@@ -3224,7 +3231,7 @@ input[type="checkbox"]:disabled {
        such limit, they just redraw their own cells at whatever size CSS
        gives them. */
     .arcade-board {
-        max-width: min(90%, 520px);
+        max-width: min(90%, 800px);
     }
 }
 
