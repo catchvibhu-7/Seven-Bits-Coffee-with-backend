@@ -163,6 +163,24 @@
         "passwordUpdatedSuccess": "पासवर्ड अपडेट हो गया।",
         "changePasswordFailedFallback": "पासवर्ड बदला नहीं जा सका"
     },
+    "home": {
+        "startOrder": "[ ऑर्डर शुरू करें ]",
+        "heroCaptionDefault": "काउंटर",
+        "picksHint": "जोड़ने के लिए टैप करें",
+        "openToday": "आज खुला है",
+        "address": "पता",
+        "ordersToday": "आज के ऑर्डर",
+        "bitsBrewedToday": "आज बने बिट्स",
+        "currentWait": "वर्तमान प्रतीक्षा",
+        "seeHoursBelow": "नीचे समय देखें",
+        "phone": "फ़ोन",
+        "email": "ईमेल",
+        "hours": "समय",
+        "storeDetailsComingSoon": "दुकान का विवरण जल्द आ रहा है।",
+        "cartBitsLabel": "कार्ट में बिट्स:",
+        "favoritesOnly": "केवल पसंदीदा",
+        "jumpToCategory": "श्रेणी पर जाएं"
+    },
     "menu": {
         "pageTitlePart1": "मेन्यू",
         "pageTitlePart2": "ऑर्डर",

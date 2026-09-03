@@ -158,7 +158,7 @@
             <div class="home-body">
                 <div class="home-section-header">
                     <h2 id="home-heading-picks">This week&rsquo;s picks</h2>
-                    <span>Tap to add</span>
+                    <span id="home-picks-hint">Tap to add</span>
                 </div>
                 <div id="popular-picks-grid" class="home-picks-grid"></div>
 
@@ -236,7 +236,7 @@
 
             <div class="menu-controls">
                 <button type="button" id="favorites-filter-label" style="display:none; align-items:center; gap:5px; font-size: 11px; color: var(--color-text-muted); cursor:pointer; font-family: 'Courier New', monospace; user-select:none; background:none; border:none; padding:0;">
-                    <span id="favorites-filter-star" aria-hidden="true" style="font-size:15px; line-height:1; color: var(--color-text-muted);">&#9734;</span> FAVORITES ONLY
+                    <span id="favorites-filter-star" aria-hidden="true" style="font-size:15px; line-height:1; color: var(--color-text-muted);">&#9734;</span> <span id="favorites-filter-text">FAVORITES ONLY</span>
                 </button>
                 <!-- Search is wired via window.initSearchBar() in app.js (debounced), not an inline
                      handler - the old oninput="renderMenu(...)" called a function that was never
@@ -256,7 +256,7 @@
 
                 <!-- CART BAR -->
                 <div id="cart-status" class="cart-bar">
-                    <span>BITS IN CART:</span>
+                    <span id="cart-bits-label">BITS IN CART:</span>
                     <span id="cart-count">0</span>
                 </div>
 
@@ -281,7 +281,7 @@
         <div id="page-arcade" class="page">
             <div style="padding:26px 28px 44px; max-width:1600px; margin:0 auto;">
                 <div style="border-bottom:2px solid var(--color-accent); padding-bottom:16px; margin-bottom:22px;">
-                    <h1 style="font-size:26px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">ARCADE</h1>
+                    <h1 id="arcade-page-title" style="font-size:26px; font-weight:bold; letter-spacing:2px; margin:0; text-transform:uppercase;">ARCADE</h1>
                 </div>
                 <div id="arcade-root"></div>
             </div>

@@ -226,7 +226,7 @@ function renderHeroCarousel(images) {
 
     const showSlide = (el, img) => {
         el.style.backgroundImage = img?.url ? `url(${JSON.stringify(img.url).slice(1, -1)})` : "";
-        if (titleEl) titleEl.textContent = img?.title || (images.length ? "" : "The counter");
+        if (titleEl) titleEl.textContent = img?.title || (images.length ? "" : t("home.heroCaptionDefault"));
         if (subtitleEl) subtitleEl.textContent = img?.subtitle || "";
     };
 
@@ -693,6 +693,7 @@ window.setLanguage = async (lang) => {
         btn.classList.toggle("active", btn.dataset.lang === I18n.getLanguage());
     });
     translateMenuChrome();
+    translateHomeChrome();
     const activePageId = document.querySelector(".page.active")?.id.replace("page-", "");
     if (activePageId === "menu") {
         renderMenu();
@@ -700,6 +701,11 @@ window.setLanguage = async (lang) => {
         renderHomeStoreFacts();
         renderHomeVisitRows();
         renderHomeDeliveryTicker();
+        // Re-runs the carousel purely to refresh its "The counter" fallback
+        // caption in the new language - a no-op visually otherwise, same
+        // image(s)/timer as before.
+        const heroImages = siteConfig?.heroImages || [];
+        renderHeroCarousel(siteConfig?.storeHeroImageUrl ? [...heroImages, { url: siteConfig.storeHeroImageUrl, title: "", subtitle: "" }] : heroImages);
     } else if (activePageId === "track") {
         renderTrackPage(new URLSearchParams(window.location.search).get("track"));
     }
@@ -2840,13 +2846,13 @@ async function renderHomeStoreFacts() {
     const waitMins = await fetchCurrentWaitMins();
 
     const facts = [
-        { label: "Open today", value: siteConfig.footer?.hours || "See hours below", color: "var(--color-success)" },
-        { label: "Address", value: siteConfig.footer?.address || "-", color: "var(--color-text)" },
-        { label: "Orders today", value: stats ? String(stats.ordersToday) : "-", color: "var(--color-text)" },
-        { label: "Bits brewed today", value: stats ? String(stats.itemsServedToday) : "-", color: "var(--color-accent)" }
+        { label: t("home.openToday"), value: siteConfig.footer?.hours || t("home.seeHoursBelow"), color: "var(--color-success)" },
+        { label: t("home.address"), value: siteConfig.footer?.address || "-", color: "var(--color-text)" },
+        { label: t("home.ordersToday"), value: stats ? String(stats.ordersToday) : "-", color: "var(--color-text)" },
+        { label: t("home.bitsBrewedToday"), value: stats ? String(stats.itemsServedToday) : "-", color: "var(--color-accent)" }
     ];
     if (waitMins != null) {
-        facts.push({ label: "Current wait", value: `~${waitMins} min${waitMins === 1 ? "" : "s"}`, color: "var(--color-accent)" });
+        facts.push({ label: t("home.currentWait"), value: `~${waitMins} ${waitMins === 1 ? t("checkout.unitMin") : t("checkout.unitMins")}`, color: "var(--color-accent)" });
     }
     root.innerHTML = facts
         .map(
@@ -2896,10 +2902,10 @@ function renderHomeVisitRows() {
     if (!root) return;
     const f = siteConfig.footer || {};
     const rows = [
-        { label: "Address", value: f.address },
-        { label: "Phone", value: f.phone },
-        { label: "Email", value: f.email },
-        { label: "Hours", value: f.hours },
+        { label: t("home.address"), value: f.address },
+        { label: t("home.phone"), value: f.phone },
+        { label: t("home.email"), value: f.email },
+        { label: t("home.hours"), value: f.hours },
         // Admin-added fields beyond the fixed set above (Instagram, GST no,
         // WhatsApp, whatever a given shop wants) - see Content -> Store
         // Details -> "+ ADD FIELD".
@@ -2916,7 +2922,7 @@ function renderHomeVisitRows() {
     `
               )
               .join("")
-        : `<p style="color:var(--color-text-muted); font-size:12px; margin-top:10px;">Store details coming soon.</p>`;
+        : `<p style="color:var(--color-text-muted); font-size:12px; margin-top:10px;">${t("home.storeDetailsComingSoon")}</p>`;
 }
 
 window.pickFromHome = (itemId) => {
@@ -2961,6 +2967,28 @@ function translateMenuChrome() {
     if (titleEl) titleEl.innerHTML = `${t("menu.pageTitlePart1")}<span>/</span>${t("menu.pageTitlePart2")}`;
 }
 
+/** Same reasoning as translateMenuChrome() above - these are static
+ *  index.html elements nothing else ever rewrites (unlike the hero
+ *  shopName/tagline/badge/headings right above them, which ARE admin-
+ *  editable branding content and stay out of scope here, same as every
+ *  other i18n step). Called once at boot and again from window.setLanguage(). */
+function translateHomeChrome() {
+    const startBtn = document.getElementById("home-hero-start-btn");
+    if (startBtn) startBtn.textContent = t("home.startOrder");
+    const arcadeBtn = document.getElementById("home-hero-arcade-btn");
+    if (arcadeBtn) arcadeBtn.textContent = t("nav.arcade");
+    const picksHint = document.getElementById("home-picks-hint");
+    if (picksHint) picksHint.textContent = t("home.picksHint");
+    const favText = document.getElementById("favorites-filter-text");
+    if (favText) favText.textContent = t("home.favoritesOnly");
+    const cartLabel = document.getElementById("cart-bits-label");
+    if (cartLabel) cartLabel.textContent = t("home.cartBitsLabel");
+    const jumpBtn = document.getElementById("jump-menu-fab-btn");
+    if (jumpBtn) jumpBtn.setAttribute("aria-label", t("home.jumpToCategory"));
+    const arcadeTitle = document.getElementById("arcade-page-title");
+    if (arcadeTitle) arcadeTitle.textContent = t("nav.arcade");
+}
+
 function wireStaticControls() {
     window.wireCustomerNav();
     document.getElementById("home-hero-start-btn")?.addEventListener("click", () => window.showPage("menu"));
@@ -2986,6 +3014,7 @@ function wireStaticControls() {
     document.addEventListener("click", () => SoundSystem.unlock(), { once: true });
     await I18n.load(); // before any render, so the very first paint is already in the saved language
     translateMenuChrome();
+    translateHomeChrome();
     wireStaticControls();
     StaffShell.captureCustomerNav(); // before refreshSession() can possibly swap it out for an already-logged-in staff session
     await StoreSystem.loadStores();

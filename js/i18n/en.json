@@ -163,6 +163,24 @@
         "passwordUpdatedSuccess": "Password updated.",
         "changePasswordFailedFallback": "Could not change password"
     },
+    "home": {
+        "startOrder": "[ START ORDER ]",
+        "heroCaptionDefault": "The counter",
+        "picksHint": "Tap to add",
+        "openToday": "Open today",
+        "address": "Address",
+        "ordersToday": "Orders today",
+        "bitsBrewedToday": "Bits brewed today",
+        "currentWait": "Current wait",
+        "seeHoursBelow": "See hours below",
+        "phone": "Phone",
+        "email": "Email",
+        "hours": "Hours",
+        "storeDetailsComingSoon": "Store details coming soon.",
+        "cartBitsLabel": "BITS IN CART:",
+        "favoritesOnly": "FAVORITES ONLY",
+        "jumpToCategory": "Jump to category"
+    },
     "menu": {
         "pageTitlePart1": "MENU",
         "pageTitlePart2": "ORDER",
