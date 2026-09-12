@@ -5283,7 +5283,7 @@ route("POST", /^\/api\/arcade\/scores\/?$/, async (req, res) => {
   if (!access.allowed) return sendJson(res, 403, { error: access.reason });
   const body = await readBody(req);
   const game = String(body.game || "");
-  const KNOWN_GAMES = ["tetris", "tictactoe", "snake", "pong", "memory", "simon", "minesweeper", "2048", "breakout", "invaders", "connectfour", "checkers", "sudoku", "mewdoku"];
+  const KNOWN_GAMES = ["tetris", "tictactoe", "snake", "pong", "memory", "simon", "minesweeper", "2048", "breakout", "invaders", "connectfour", "checkers", "sudoku", "mewdoku", "wordle"];
   if (!KNOWN_GAMES.includes(game)) return sendJson(res, 400, { error: "Unknown game" });
   const score = parseInt(body.score, 10);
   if (!Number.isFinite(score) || score <= 0 || score > 1000000) {

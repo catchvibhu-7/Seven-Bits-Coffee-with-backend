@@ -24,6 +24,7 @@ import { ConnectFourGame } from "./connectfour-game.js";
 import { CheckersGame } from "./checkers-game.js";
 import { SudokuGame } from "./sudoku-game.js";
 import { MewdokuGame } from "./mewdoku-game.js";
+import { WordleGame } from "./wordle-game.js";
 import { escapeHtml } from "../html-utils.js";
 
 // Inline SVG (not CSS background-images) so thumbnails can reference the
@@ -131,6 +132,17 @@ const THUMBS = {
             <text x="19" y="24" font-size="16" text-anchor="middle">🐱</text>
             <text x="45" y="50" font-size="16" text-anchor="middle">🐱</text>
         </svg>`,
+    wordle: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <rect x="2" y="24" width="14" height="16" fill="#22c55e" />
+            <rect x="18" y="24" width="14" height="16" fill="#eab308" />
+            <rect x="34" y="24" width="14" height="16" fill="none" stroke="var(--color-border)" stroke-width="2" />
+            <rect x="50" y="24" width="12" height="16" fill="none" stroke="var(--color-border)" stroke-width="2" />
+            <text x="9" y="36" font-size="11" text-anchor="middle" fill="#000" font-weight="bold">W</text>
+            <text x="25" y="36" font-size="11" text-anchor="middle" fill="#000" font-weight="bold">O</text>
+            <text x="41" y="36" font-size="11" text-anchor="middle" fill="var(--color-text)" font-weight="bold">R</text>
+            <text x="56" y="36" font-size="11" text-anchor="middle" fill="var(--color-text)" font-weight="bold">D</text>
+        </svg>`,
     invaders: `
         <svg viewBox="0 0 64 64" class="arcade-thumb">
             <g fill="var(--color-cyan)">
@@ -172,6 +184,7 @@ const TIPS = {
     invaders: "Keep moving sideways while you shoot - clearing a wave starts a faster one, so keep your lives banked.",
     sudoku: "Scan for a row, column or 3x3 box that's almost full - it usually only has one number left that fits.",
     mewdoku: "Each cat needs its own row, column AND colored region - place one, then rule out the row/column it blocks for the rest.",
+    wordle: "Open with a word that uses common, distinct letters (like CRANE or SLATE) to learn the most from your first guess.",
     connectfour: "Controlling the center column gives you the most ways to eventually connect four.",
     checkers: "Captures are forced - if one's available on your turn, you have to take it."
 };
@@ -190,7 +203,8 @@ const GAME_DEFS = {
     connectfour: { name: "CONNECT FOUR", module: ConnectFourGame, scoreLabel: "BEST WIN STREAK" },
     checkers: { name: "CHECKERS", module: CheckersGame, scoreLabel: "BEST WIN STREAK" },
     sudoku: { name: "SUDOKU", module: SudokuGame, scoreLabel: "HIGH SCORES" },
-    mewdoku: { name: "MEWDOKU", module: MewdokuGame, scoreLabel: "HIGH SCORES" }
+    mewdoku: { name: "MEWDOKU", module: MewdokuGame, scoreLabel: "HIGH SCORES" },
+    wordle: { name: "WORDLE", module: WordleGame, scoreLabel: "HIGH SCORES" }
 };
 
 // The 10 single-player games have a static (never changes mid-game) title
