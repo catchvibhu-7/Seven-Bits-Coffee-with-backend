@@ -3128,18 +3128,34 @@ body.home-full-width .home-body {
     min-width: 0; /* lets canvas/grid children shrink instead of overflowing their column */
     display: flex;
     flex-direction: column;
+    min-height: 360px;
+}
+
+/* Only a canvas game actually wants the tall column - its canvas grows
+   into the extra room (see .arcade-canvas-wrap's flex:1 1 auto). A
+   DOM-grid game (2048, Minesweeper, Memory, Simon, Tic-Tac-Toe, Connect
+   Four, Checkers) has a fixed-size board with nothing to grow into, so
+   forcing this same height just stranded the sidebar (score/high scores)
+   far below a big empty gap on mobile. */
+.arcade-game-area:has(.arcade-canvas-wrap) {
     min-height: max(360px, calc(100dvh - 260px));
 }
 
-/* Every game's last element is its PLAY AGAIN/BACK (or equivalent) button
-   row, or a trailing instructions line - pushing it to the bottom of the
-   now-tall game area means the extra room .arcade-canvas-wrap/.arcade-board
-   don't soak up still gets used instead of sitting empty between the
-   controls and the page below. !important because that element almost
-   always carries its own small inline margin-top (e.g. "margin-top:8px"
-   for a bit of breathing room from the row above it), which otherwise wins
-   over any class-based rule regardless of specificity. */
-.arcade-game-area > *:last-child {
+/* A canvas game's last element is its PLAY AGAIN/BACK (or equivalent)
+   button row - pushing it to the bottom of the now-tall game area means
+   the extra room .arcade-canvas-wrap doesn't soak up still gets used
+   instead of sitting empty between the controls and the page below.
+   !important because that element almost always carries its own small
+   inline margin-top (e.g. "margin-top:8px" for breathing room from the
+   row above it), which otherwise wins over any class-based rule
+   regardless of specificity.
+   Scoped to :has(.arcade-canvas-wrap) - a DOM-grid game (2048,
+   Minesweeper, Memory, Simon, Tic-Tac-Toe, Connect Four, Checkers) has no
+   sibling that grows to fill the tall container, so this same push
+   stranded its board's own buttons at the very bottom with a huge dead
+   gap above them instead of right below the board. Those games just want
+   their compact content sitting together, not split top/bottom. */
+.arcade-game-area:has(.arcade-canvas-wrap) > *:last-child {
     margin-top: auto !important;
 }
 
