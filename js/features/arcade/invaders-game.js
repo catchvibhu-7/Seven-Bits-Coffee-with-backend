@@ -2,7 +2,10 @@
  * SEVEN BITS COFFEE - SPACE INVADERS (arcade)
  * Location: /js/features/arcade/invaders-game.js
  *
- * Single wave, 3 lives. Colors read live from the theme via themeColor()
+ * Wave-based, 3 lives shared across the whole run - clearing a wave starts
+ * the next one (more/faster enemies) instead of ending the game, keeping
+ * score and lives; only running out of lives ends it. Colors read live from
+ * the theme via themeColor()
  * (canvas can't resolve CSS vars itself): player ship = accent, enemies =
  * cyan; player/enemy bullets stay fixed (white/red) since they need to
  * read as distinctly "yours" vs "incoming" at a glance more than they
@@ -36,6 +39,7 @@ export const InvadersGame = {
     enemySpeed: 0.6,
     score: 0,
     lives: 3,
+    level: 1,
     gameOver: false,
     ready: false,
     keys: null,
@@ -50,7 +54,7 @@ export const InvadersGame = {
     mount(root) {
         this.root = root;
         this.root.innerHTML = `
-            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">LIVES: <strong id="inv-lives" style="color:var(--color-accent);">3</strong></p>
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">LIVES: <strong id="inv-lives" style="color:var(--color-accent);">3</strong> &middot; WAVE: <strong id="inv-level" style="color:var(--color-accent);">1</strong></p>
             <div class="arcade-canvas-wrap">
                 <canvas id="inv-canvas" width="${WIDTH}" height="${HEIGHT}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
             </div>
@@ -128,25 +132,53 @@ export const InvadersGame = {
         this.playerX = WIDTH / 2 - PLAYER_W / 2;
         this.playerBullets = [];
         this.enemyBullets = [];
-        this.enemyDir = 1;
-        this.enemySpeed = 0.6;
         this.frame = 0;
         this.score = 0;
         this.lives = 3;
+        this.level = 1;
         this.gameOver = false;
         this.ready = false;
-        this.enemies = [];
-        for (let r = 0; r < ENEMY_ROWS; r++) {
-            for (let c = 0; c < ENEMY_COLS; c++) {
-                this.enemies.push({ x: 20 + c * (ENEMY_W + ENEMY_GAP), y: ENEMY_TOP + r * (ENEMY_H + ENEMY_GAP), alive: true });
-            }
-        }
+        this.spawnWave();
         this.root.querySelector("#inv-message").textContent = "";
         this.root.querySelector("#inv-again").style.display = "none";
         this.updateHud();
         if (this.rafId) cancelAnimationFrame(this.rafId);
         this.draw();
         runCountdown(this.root, () => {
+            this.ready = true;
+            this.loop();
+        });
+    },
+
+    /** Builds this.level's enemy formation - a fresh (denser/faster) wave
+     *  on every call, so clearing one wave can roll straight into the next
+     *  without resetting score/lives. */
+    spawnWave() {
+        this.enemies = [];
+        for (let r = 0; r < ENEMY_ROWS; r++) {
+            for (let c = 0; c < ENEMY_COLS; c++) {
+                this.enemies.push({ x: 20 + c * (ENEMY_W + ENEMY_GAP), y: ENEMY_TOP + r * (ENEMY_H + ENEMY_GAP), alive: true });
+            }
+        }
+        this.enemyDir = 1;
+        this.enemySpeed = 0.6 + (this.level - 1) * 0.15;
+    },
+
+    /** Wave cleared with lives still in hand - advance instead of ending,
+     *  same countdown-then-resume flow startGame() uses so the player gets
+     *  a beat to reset before the faster wave starts moving. */
+    nextLevel() {
+        this.level++;
+        this.playerBullets = [];
+        this.enemyBullets = [];
+        this.ready = false;
+        this.spawnWave();
+        this.updateHud();
+        if (this.rafId) cancelAnimationFrame(this.rafId);
+        this.draw();
+        this.root.querySelector("#inv-message").textContent = `WAVE ${this.level - 1} CLEARED!`;
+        runCountdown(this.root, () => {
+            this.root.querySelector("#inv-message").textContent = "";
             this.ready = true;
             this.loop();
         });
@@ -159,8 +191,14 @@ export const InvadersGame = {
     },
 
     loop() {
-        if (this.gameOver) return;
+        if (this.gameOver || !this.ready) return;
         this.update();
+        // update() can synchronously call nextLevel() (clears this.ready
+        // and cancels rafId, expecting its own countdown to resume the
+        // loop later) or endGame() (sets gameOver) - re-check before
+        // scheduling another frame so this same call doesn't immediately
+        // re-arm a loop that just deliberately stopped itself.
+        if (this.gameOver || !this.ready) return;
         this.draw();
         this.rafId = requestAnimationFrame(() => this.loop());
     },
@@ -179,7 +217,7 @@ export const InvadersGame = {
 
         const aliveEnemies = this.enemies.filter((e) => e.alive);
         if (aliveEnemies.length === 0) {
-            return this.endGame(true);
+            return this.nextLevel();
         }
 
         let hitEdge = false;
@@ -215,21 +253,23 @@ export const InvadersGame = {
                 this.lives--;
                 this.updateHud();
                 if (this.lives <= 0) {
-                    return this.endGame(false);
+                    return this.endGame();
                 }
             }
         }
 
         if (aliveEnemies.some((e) => e.y + ENEMY_H >= PLAYER_Y)) {
-            return this.endGame(false);
+            return this.endGame();
         }
     },
 
     updateHud() {
         const scoreEl = document.getElementById("arcade-current-score");
         const livesEl = this.root.querySelector("#inv-lives");
+        const levelEl = this.root.querySelector("#inv-level");
         if (scoreEl) scoreEl.textContent = this.score;
         if (livesEl) livesEl.textContent = this.lives;
+        if (levelEl) levelEl.textContent = this.level;
     },
 
     draw() {
@@ -251,12 +291,12 @@ export const InvadersGame = {
         ctx.fillRect(this.playerX, PLAYER_Y, PLAYER_W, PLAYER_H);
     },
 
-    async endGame(won) {
+    async endGame() {
         this.gameOver = true;
         if (this.rafId) cancelAnimationFrame(this.rafId);
         const { submitted, newHighScore } = await submitScoreWithCelebration(this.root, "invaders", this.score);
         if (submitted && this.onScoreSubmitted) this.onScoreSubmitted();
-        const base = won ? `WAVE CLEARED! - SCORE: ${this.score}` : `GAME OVER - SCORE: ${this.score}`;
+        const base = `GAME OVER - WAVE ${this.level} - SCORE: ${this.score}`;
         this.root.querySelector("#inv-message").textContent = newHighScore ? `NEW HIGH SCORE! ${base}` : base;
         this.root.querySelector("#inv-again").style.display = "";
     },

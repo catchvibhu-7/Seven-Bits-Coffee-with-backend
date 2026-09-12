@@ -44,10 +44,13 @@ export const TetrisGame = {
     root: null,
     canvas: null,
     ctx: null,
+    nextCanvas: null,
+    nextCtx: null,
     board: null,
     pieces: null,
     pieceKeys: null,
     piece: null,
+    nextPiece: null,
     px: 0,
     py: 0,
     score: 0,
@@ -61,7 +64,13 @@ export const TetrisGame = {
     mount(root) {
         this.root = root;
         this.root.innerHTML = `
-            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">LEVEL: <strong id="tetris-level" style="color:var(--color-accent);">1</strong></p>
+            <div style="display:flex; justify-content:center; align-items:center; gap:20px; margin-bottom:8px;">
+                <p style="font-size:12px; color:var(--color-text-muted); margin:0;">LEVEL: <strong id="tetris-level" style="color:var(--color-accent);">1</strong></p>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-size:12px; color:var(--color-text-muted);">NEXT:</span>
+                    <canvas id="tetris-next-canvas" width="64" height="64" style="background:var(--color-bg); border:1px solid var(--color-border); vertical-align:middle;"></canvas>
+                </div>
+            </div>
             <div class="arcade-canvas-wrap">
                 <canvas id="tetris-canvas" width="${COLS * CELL}" height="${ROWS * CELL}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
             </div>
@@ -79,6 +88,8 @@ export const TetrisGame = {
         `;
         this.canvas = this.root.querySelector("#tetris-canvas");
         this.ctx = this.canvas.getContext("2d");
+        this.nextCanvas = this.root.querySelector("#tetris-next-canvas");
+        this.nextCtx = this.nextCanvas.getContext("2d");
         this.root.querySelector("#tt-left").addEventListener("click", () => this.tryMove(-1, 0));
         this.root.querySelector("#tt-right").addEventListener("click", () => this.tryMove(1, 0));
         this.root.querySelector("#tt-down").addEventListener("click", () => this.softDrop());
@@ -111,6 +122,7 @@ export const TetrisGame = {
         this.level = 1;
         this.gameOver = false;
         this.ready = false;
+        this.nextPiece = this.randomPiece();
         this.root.querySelector("#tetris-message").textContent = "";
         this.root.querySelector("#tetris-again").style.display = "none";
         this.spawnPiece();
@@ -142,12 +154,30 @@ export const TetrisGame = {
     },
 
     spawnPiece() {
-        this.piece = this.randomPiece();
+        this.piece = this.nextPiece || this.randomPiece();
+        this.nextPiece = this.randomPiece();
+        this.drawNextPreview();
         this.px = Math.floor((COLS - this.piece.shape[0].length) / 2);
         this.py = 0;
         if (this.collides(this.piece.shape, this.px, this.py)) {
             this.endGame();
         }
+    },
+
+    drawNextPreview() {
+        const ctx = this.nextCtx;
+        if (!ctx) return;
+        ctx.clearRect(0, 0, this.nextCanvas.width, this.nextCanvas.height);
+        const shape = this.nextPiece.shape;
+        const size = 14;
+        const offsetX = (this.nextCanvas.width - shape[0].length * size) / 2;
+        const offsetY = (this.nextCanvas.height - shape.length * size) / 2;
+        ctx.fillStyle = this.nextPiece.color;
+        shape.forEach((row, y) =>
+            row.forEach((cell, x) => {
+                if (cell) ctx.fillRect(offsetX + x * size + 1, offsetY + y * size + 1, size - 2, size - 2);
+            })
+        );
     },
 
     collides(shape, px, py) {

@@ -9,6 +9,13 @@
  * hit its speed floor after only 3-4 foods and felt unplayable). Body color
  * is the live theme accent (read via themeColor() since canvas can't
  * resolve CSS vars itself); food uses the secondary/cyan theme color.
+ *
+ * Levels: every FOODS_PER_LEVEL regular foods, the next food spawned is a
+ * gold star instead - eating it advances the level, banks a bonus, and
+ * shrinks the snake back to its starting length (score and level both
+ * carry forward, only the snake's body resets), so each level opens with
+ * the same room-to-maneuver it started with instead of getting more
+ * cramped forever.
  */
 import { themeColor } from "../theme-colors.js";
 import { runCountdown, submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector, paintDifficultySelector } from "../game-fx.js";
@@ -23,6 +30,9 @@ const DIFFICULTY_PRESETS = {
     normal: { start: 150, floor: 95, stepPerFood: 4 },
     hard: { start: 130, floor: 70, stepPerFood: 6 }
 };
+const START_LENGTH = 3;
+const FOODS_PER_LEVEL = 5;
+const LEVEL_UP_BONUS = 50;
 
 export const SnakeGame = {
     root: null,
@@ -39,11 +49,14 @@ export const SnakeGame = {
     colors: null,
     difficulty: "normal",
     foodsEaten: 0,
+    level: 1,
+    isLevelFood: false,
 
     mount(root) {
         this.root = root;
         this.difficulty = loadDifficulty(DIFFICULTY_KEY);
         this.root.innerHTML = `
+            <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">LEVEL: <strong id="snake-level" style="color:var(--color-accent);">1</strong></p>
             <div class="arcade-canvas-wrap">
                 <canvas id="snake-canvas" width="${COLS * CELL}" height="${ROWS * CELL}" style="background:var(--color-bg); border:1px solid var(--color-border);"></canvas>
             </div>
@@ -96,6 +109,7 @@ export const SnakeGame = {
         this.nextDirection = { x: 1, y: 0 };
         this.score = 0;
         this.foodsEaten = 0;
+        this.level = 1;
         this.gameOver = false;
         this.root.querySelector("#snake-message").textContent = "";
         this.root.querySelector("#snake-again").style.display = "none";
@@ -125,6 +139,10 @@ export const SnakeGame = {
             pos = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
         } while (this.snake.some((s) => s.x === pos.x && s.y === pos.y));
         this.food = pos;
+        // Every FOODS_PER_LEVEL regular foods, the NEXT spawn is the level
+        // food instead - foodsEaten resets to 0 on level-up (see levelUp()),
+        // so this fires again the same number of foods into every level.
+        this.isLevelFood = this.foodsEaten > 0 && this.foodsEaten % FOODS_PER_LEVEL === 0;
     },
 
     setDirection(dx, dy) {
@@ -158,27 +176,71 @@ export const SnakeGame = {
 
         this.snake.unshift(head);
         if (head.x === this.food.x && head.y === this.food.y) {
-            this.score += 10;
-            this.foodsEaten += 1;
-            this.updateScore();
-            this.placeFood();
-            this.startTimer(); // speed ramps up gently as food is eaten
+            if (this.isLevelFood) {
+                this.levelUp();
+            } else {
+                this.score += 10;
+                this.foodsEaten += 1;
+                this.updateScore();
+                this.placeFood();
+                this.startTimer(); // speed ramps up gently as food is eaten
+            }
         } else {
             this.snake.pop();
         }
         this.draw();
     },
 
+    /** Eating the gold level food: bank a bonus, advance the level, and
+     *  shrink back to the starting length so the new level opens with the
+     *  same room to maneuver it started with - re-centered on the board
+     *  (rather than anchored at the eaten food's spot) so the fresh snake
+     *  can never spawn clipped through a wall near the edge. */
+    levelUp() {
+        this.level++;
+        this.score += LEVEL_UP_BONUS;
+        this.foodsEaten = 0;
+        this.direction = { x: 1, y: 0 };
+        this.nextDirection = { x: 1, y: 0 };
+        const cx = Math.floor(COLS / 2);
+        const cy = Math.floor(ROWS / 2);
+        this.snake = Array.from({ length: START_LENGTH }, (_, i) => ({ x: cx - i, y: cy }));
+        this.updateScore();
+        this.placeFood();
+        this.startTimer();
+        const msgEl = this.root.querySelector("#snake-message");
+        if (msgEl) {
+            msgEl.style.color = "var(--color-accent)";
+            msgEl.textContent = `LEVEL ${this.level}! +${LEVEL_UP_BONUS}`;
+            setTimeout(() => {
+                if (this.gameOver) return;
+                msgEl.textContent = "";
+                msgEl.style.color = "var(--color-danger)";
+            }, 1200);
+        }
+    },
+
     updateScore() {
         const el = document.getElementById("arcade-current-score");
         if (el) el.textContent = this.score;
+        const levelEl = this.root.querySelector("#snake-level");
+        if (levelEl) levelEl.textContent = this.level;
     },
 
     draw() {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        ctx.fillStyle = this.colors.food;
-        ctx.fillRect(this.food.x * CELL + 2, this.food.y * CELL + 2, CELL - 4, CELL - 4);
+        if (this.isLevelFood) {
+            // Gold circle instead of the usual cyan square - a level food
+            // needs to read as "different" at a glance, not just re-colored.
+            ctx.fillStyle = "#facc15";
+            ctx.beginPath();
+            ctx.arc(this.food.x * CELL + CELL / 2, this.food.y * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.fillStyle = this.colors.food;
+            ctx.fillRect(this.food.x * CELL + 2, this.food.y * CELL + 2, CELL - 4, CELL - 4);
+        }
         this.snake.forEach((seg, i) => {
             ctx.fillStyle = this.colors.head;
             ctx.globalAlpha = i === 0 ? 1 : 0.75;
