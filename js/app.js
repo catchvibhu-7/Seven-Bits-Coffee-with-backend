@@ -96,6 +96,7 @@ async function fetchCurrentWaitMins() {
 
 async function refreshSession() {
     session = await AuthSystem.getSession();
+    StoreSystem.setActiveUserId(session.userId ?? null);
     updateStaffShellForSession();
     updateNavForSession();
     if (TRACKING_ROLES.includes(session.role)) {

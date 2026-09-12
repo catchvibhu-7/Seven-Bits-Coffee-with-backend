@@ -17,8 +17,18 @@ const STORAGE_KEY = "sb-selected-store-id";
 // pinned to their own single assigned store server-side regardless.
 const STAFF_STORAGE_KEY = "sb-staff-selected-store-id";
 
+// The staff store-switcher key above is plain localStorage with no account
+// tie - namespaced by userId (set from refreshSession() in app.js) so a
+// second staff account logging in on the same browser doesn't inherit the
+// previous account's store filter.
+let activeUserId = null;
+
 export const StoreSystem = {
     stores: [],
+
+    setActiveUserId(userId) {
+        activeUserId = userId ?? null;
+    },
 
     /** Whether this session even has more than one store to choose between
      *  for staff-facing operational pages - mirrors admin-portal.js's own
@@ -32,16 +42,17 @@ export const StoreSystem = {
     },
 
     getStaffSelectedStoreId() {
-        const raw = localStorage.getItem(STAFF_STORAGE_KEY);
+        const raw = localStorage.getItem(STAFF_STORAGE_KEY + ":" + activeUserId);
         const id = raw ? Number(raw) : NaN;
         return Number.isFinite(id) ? id : null;
     },
 
     setStaffSelectedStoreId(id) {
+        const key = STAFF_STORAGE_KEY + ":" + activeUserId;
         if (id == null) {
-            localStorage.removeItem(STAFF_STORAGE_KEY);
+            localStorage.removeItem(key);
         } else {
-            localStorage.setItem(STAFF_STORAGE_KEY, String(id));
+            localStorage.setItem(key, String(id));
         }
     },
 
