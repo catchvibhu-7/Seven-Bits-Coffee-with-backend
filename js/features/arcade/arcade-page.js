@@ -398,18 +398,21 @@ export const ArcadePage = {
     renderSwitcher(gameKey) {
         const switcher = this.root.querySelector("#arcade-switcher");
         if (!switcher) return;
-        const others = Object.entries(GAME_DEFS).filter(([key]) => key !== gameKey);
+        // The active game stays IN the list (used to be filtered out) so it
+        // doesn't just vanish - which read as confusing, since there was no
+        // way to tell from the list alone which game was actually open.
         switcher.innerHTML = `
             <div class="arcade-switcher-games">
-                ${others
-                    .map(
-                        ([key, def]) => `
-                    <button class="arcade-switch-btn" data-game="${key}">
+                ${Object.entries(GAME_DEFS)
+                    .map(([key, def]) => {
+                        const active = key === gameKey;
+                        return `
+                    <button class="arcade-switch-btn${active ? " arcade-switch-btn-active" : ""}" data-game="${key}" ${active ? 'aria-current="true"' : ""}>
                         ${THUMBS[key]}
                         <span>${def.name}</span>
                     </button>
-                `
-                    )
+                `;
+                    })
                     .join("")}
             </div>
             ${
@@ -422,6 +425,7 @@ export const ArcadePage = {
             }
         `;
         switcher.querySelectorAll(".arcade-switch-btn").forEach((btn) => {
+            if (btn.dataset.game === gameKey) return; // already here - not clickable
             btn.addEventListener("click", () => this.launchGame(btn.dataset.game));
         });
     },

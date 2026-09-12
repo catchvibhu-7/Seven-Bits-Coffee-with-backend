@@ -2,10 +2,13 @@
  * SEVEN BITS COFFEE - SPACE INVADERS (arcade)
  * Location: /js/features/arcade/invaders-game.js
  *
- * Wave-based, 3 lives shared across the whole run - clearing a wave starts
- * the next one (more/faster enemies) instead of ending the game, keeping
- * score and lives; only running out of lives ends it. Colors read live from
- * the theme via themeColor()
+ * Wave-based - clearing a wave starts the next one (more/faster enemies,
+ * busier fire) instead of ending the game, and lives refill to a fresh 3
+ * each time so an earlier rough wave doesn't permanently cripple a later
+ * one; only running out of lives mid-wave ends it. Lives left at the
+ * moment a wave clears bank a score bonus first, so not getting hit stays
+ * worth playing for even though the refill would otherwise make lives
+ * feel disposable. Colors read live from the theme via themeColor()
  * (canvas can't resolve CSS vars itself): player ship = accent, enemies =
  * cyan; player/enemy bullets stay fixed (white/red) since they need to
  * read as distinctly "yours" vs "incoming" at a glance more than they
@@ -25,6 +28,7 @@ const ENEMY_COLS = 8;
 const ENEMY_W = 24;
 const ENEMY_H = 16;
 const ENEMY_GAP = 8;
+const LIVES_BONUS_PER_LIFE = 100;
 const ENEMY_TOP = 30;
 
 export const InvadersGame = {
@@ -166,9 +170,16 @@ export const InvadersGame = {
 
     /** Wave cleared with lives still in hand - advance instead of ending,
      *  same countdown-then-resume flow startGame() uses so the player gets
-     *  a beat to reset before the faster wave starts moving. */
+     *  a beat to reset before the faster wave starts moving. Lives refill
+     *  to a full 3 for the new wave (so a rough earlier wave doesn't carry
+     *  a permanent handicap into later, harder ones), but banking a bonus
+     *  for whatever was left first is what makes NOT losing any worth
+     *  playing for instead of just being free insurance. */
     nextLevel() {
+        const livesBonus = this.lives * LIVES_BONUS_PER_LIFE;
+        this.score += livesBonus;
         this.level++;
+        this.lives = 3;
         this.playerBullets = [];
         this.enemyBullets = [];
         this.ready = false;
@@ -176,7 +187,8 @@ export const InvadersGame = {
         this.updateHud();
         if (this.rafId) cancelAnimationFrame(this.rafId);
         this.draw();
-        this.root.querySelector("#inv-message").textContent = `WAVE ${this.level - 1} CLEARED!`;
+        this.root.querySelector("#inv-message").textContent =
+            livesBonus > 0 ? `WAVE ${this.level - 1} CLEARED! +${livesBonus} LIVES BONUS` : `WAVE ${this.level - 1} CLEARED!`;
         runCountdown(this.root, () => {
             this.root.querySelector("#inv-message").textContent = "";
             this.ready = true;
@@ -212,7 +224,11 @@ export const InvadersGame = {
 
         this.playerBullets.forEach((b) => (b.y -= BULLET_SPEED));
         this.playerBullets = this.playerBullets.filter((b) => b.y > -50);
-        this.enemyBullets.forEach((b) => (b.y += 4));
+        // Early waves are gentler to dodge - slower incoming bullets, ramping
+        // up toward a cap as the level rises - rather than every wave firing
+        // at the same speed the harder later waves need.
+        const enemyBulletSpeed = Math.min(6, 2 + (this.level - 1) * 0.4);
+        this.enemyBullets.forEach((b) => (b.y += enemyBulletSpeed));
         this.enemyBullets = this.enemyBullets.filter((b) => b.y < HEIGHT + 50);
 
         const aliveEnemies = this.enemies.filter((e) => e.alive);
@@ -230,7 +246,11 @@ export const InvadersGame = {
             aliveEnemies.forEach((e) => (e.y += 10));
         }
 
-        if (this.frame % 45 === 0 && aliveEnemies.length > 0) {
+        // Same easing as bullet speed above - early waves fire far less
+        // often (a shot every ~85 frames at level 1) than the later, busier
+        // ones (floored at every 30 frames so it never becomes unfair).
+        const shotInterval = Math.max(30, 85 - (this.level - 1) * 8);
+        if (this.frame % shotInterval === 0 && aliveEnemies.length > 0) {
             const shooter = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
             this.enemyBullets.push({ x: shooter.x + ENEMY_W / 2, y: shooter.y + ENEMY_H });
         }

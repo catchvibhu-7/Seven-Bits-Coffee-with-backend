@@ -80,15 +80,35 @@ export const SudokuGame = {
     elapsed: 0,
     timerInterval: null,
     gameOver: false,
+    keyHandler: null,
 
     mount(root) {
         this.root = root;
         this.difficulty = loadDifficulty(DIFFICULTY_KEY);
+        // Physical keyboard: 1-9 fills the selected cell, Backspace/Delete/0
+        // clears it. Skipped entirely while the hidden mobile input (below)
+        // has focus - typing there already reaches inputNumber() via its own
+        // 'input' listener, so handling it here too would double-count
+        // every digit.
+        this.keyHandler = (e) => {
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            if (e.target && e.target.id === "sudoku-mobile-input") return;
+            if (/^[1-9]$/.test(e.key)) {
+                e.preventDefault();
+                this.inputNumber(Number(e.key));
+            } else if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") {
+                e.preventDefault();
+                this.inputNumber(0);
+            }
+        };
+        document.addEventListener("keydown", this.keyHandler);
         this.startGame();
     },
 
     unmount() {
         this.stopTimer();
+        if (this.keyHandler) document.removeEventListener("keydown", this.keyHandler);
+        this.keyHandler = null;
     },
 
     exit() {
@@ -177,6 +197,7 @@ export const SudokuGame = {
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
                 <button id="sudoku-again" class="admin-btn-primary" style="display:${this.gameOver ? "" : "none"};">PLAY AGAIN</button>
             </div>
+            <input id="sudoku-mobile-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-hidden="true" style="opacity:0; width:1px; height:1px; border:none; padding:0;" />
         `;
 
         this.root.querySelectorAll(".sudoku-cell").forEach((el) => {
@@ -192,6 +213,29 @@ export const SudokuGame = {
             saveDifficulty(DIFFICULTY_KEY, d);
             this.startGame();
         });
+
+        // Invisible text input, focused whenever a cell is selected - its
+        // only job is to make a touch device pop up its native numeric
+        // keypad (a bare div can't do that, only a real input can). Reads
+        // via 'input' rather than keydown since that's what actually fires
+        // from a software keyboard tap.
+        const mobileInput = this.root.querySelector("#sudoku-mobile-input");
+        mobileInput.addEventListener("input", (e) => {
+            const digit = e.target.value.replace(/[^1-9]/g, "").slice(-1);
+            e.target.value = "";
+            if (digit) this.inputNumber(Number(digit));
+        });
+        mobileInput.addEventListener("keydown", (e) => {
+            if (e.key === "Backspace" || e.key === "Delete") {
+                e.preventDefault();
+                this.inputNumber(0);
+            }
+        });
+        // Re-focus after every render (render() rebuilds this element from
+        // scratch each time, which would otherwise close the keyboard after
+        // every single digit typed) - done synchronously so there's no
+        // visible close/reopen flicker.
+        if (this.selected && !this.gameOver) mobileInput.focus({ preventScroll: true });
     },
 
     selectCell(r, c) {

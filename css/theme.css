@@ -3377,6 +3377,17 @@ body.home-full-width .home-body {
     background: #1a1a1a;
 }
 
+/* The game currently playing - stays IN the list (not filtered out) so its
+   position doesn't jump around, but reads clearly as "you are here" rather
+   than just another clickable option. Not clickable (see renderSwitcher()),
+   so no :hover treatment needed. */
+.arcade-switch-btn-active {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
+    cursor: default;
+}
+
 .arcade-switch-btn .arcade-thumb {
     width: 22px;
     height: 22px;

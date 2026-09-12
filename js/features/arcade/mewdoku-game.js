@@ -12,7 +12,11 @@
  * many colored regions outward from each cat by repeatedly claiming a
  * random unclaimed neighbor cell, one cell per region per pass, until the
  * whole board is tiled. That's what gives the regions their organic,
- * jigsaw-piece shapes instead of a plain checkerboard.
+ * jigsaw-piece shapes instead of a plain checkerboard. One region is
+ * deliberately left out of the growth entirely, staying at its single
+ * seed cell - a free, certain starting point (that region's cat can only
+ * ever go in its one cell) instead of every region being equally
+ * ambiguous on the very first move.
  */
 import { submitScoreWithCelebration, loadDifficulty, saveDifficulty, difficultySelectorHtml, wireDifficultySelector } from "../game-fx.js";
 
@@ -37,10 +41,11 @@ function generateRegions(n) {
         regionOf[r][cols[r]] = r;
         regionCells[r].push([r, cols[r]]);
     }
+    const frozenRegion = Math.floor(Math.random() * n);
     let unclaimed = n * n - n;
     while (unclaimed > 0) {
         let grew = false;
-        for (const regionId of shuffled([...Array(n).keys()])) {
+        for (const regionId of shuffled([...Array(n).keys()].filter((id) => id !== frozenRegion))) {
             if (unclaimed === 0) break;
             const frontier = [];
             for (const [r, c] of regionCells[regionId]) {
@@ -59,7 +64,8 @@ function generateRegions(n) {
         }
         // Rare fallback (a cell fully boxed in by other regions before its
         // own region's frontier could reach it) - hand it to any claimed
-        // neighbor rather than looping forever.
+        // neighbor rather than looping forever. Never the frozen region -
+        // that one's single-cell guarantee has to hold no matter what.
         if (!grew && unclaimed > 0) {
             outer: for (let r = 0; r < n; r++) {
                 for (let c = 0; c < n; c++) {
@@ -67,7 +73,7 @@ function generateRegions(n) {
                     for (const [dr, dc] of DIRS) {
                         const nr = r + dr;
                         const nc = c + dc;
-                        if (nr >= 0 && nr < n && nc >= 0 && nc < n && regionOf[nr][nc] !== -1) {
+                        if (nr >= 0 && nr < n && nc >= 0 && nc < n && regionOf[nr][nc] !== -1 && regionOf[nr][nc] !== frozenRegion) {
                             regionOf[r][c] = regionOf[nr][nc];
                             regionCells[regionOf[nr][nc]].push([r, c]);
                             unclaimed--;
@@ -78,7 +84,7 @@ function generateRegions(n) {
             }
         }
     }
-    return regionOf;
+    return { regionOf, frozenRegion };
 }
 
 function regionColor(id, n) {
@@ -90,6 +96,7 @@ export const MewdokuGame = {
     root: null,
     n: 4,
     regionOf: null,
+    frozenRegion: null,
     cats: null, // n x n booleans
     difficulty: "normal",
     startTime: 0,
@@ -114,7 +121,9 @@ export const MewdokuGame = {
 
     startGame() {
         this.n = BOARD_SIZE[this.difficulty] || BOARD_SIZE.normal;
-        this.regionOf = generateRegions(this.n);
+        const { regionOf, frozenRegion } = generateRegions(this.n);
+        this.regionOf = regionOf;
+        this.frozenRegion = frozenRegion;
         this.cats = Array.from({ length: this.n }, () => Array(this.n).fill(false));
         this.startTime = Date.now();
         this.elapsed = 0;
@@ -174,13 +183,30 @@ export const MewdokuGame = {
     render(message = "") {
         const n = this.n;
         const cellFont = n <= 4 ? 22 : n <= 8 ? 15 : 9;
+        // Cells sharing a row/column with an already-placed cat get dimmed -
+        // a plain visual hint, not a hard rule (two cats can still land in
+        // the same row mid-solve; conflictsAt()'s red border is what
+        // actually flags that once it happens).
+        const blockedRows = new Set();
+        const blockedCols = new Set();
+        for (let r = 0; r < n; r++) {
+            for (let c = 0; c < n; c++) {
+                if (this.cats[r][c]) {
+                    blockedRows.add(r);
+                    blockedCols.add(c);
+                }
+            }
+        }
         const cellsHtml = this.regionOf
             .map((row, r) =>
                 row
                     .map((regionId, c) => {
                         const hasCat = this.cats[r][c];
                         const conflict = hasCat && this.conflictsAt(r, c);
-                        return `<div class="mewdoku-cell" data-r="${r}" data-c="${c}" style="aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:${cellFont}px; background:${regionColor(regionId, n)}; border:1px solid var(--color-bg); box-shadow:${conflict ? "inset 0 0 0 2px var(--color-danger)" : "none"}; cursor:pointer;">${hasCat ? "🐱" : ""}</div>`;
+                        const dimmed = !hasCat && (blockedRows.has(r) || blockedCols.has(c));
+                        const isFreebie = regionId === this.frozenRegion;
+                        const outline = isFreebie && !hasCat ? "outline:2px dashed rgba(255,255,255,0.7); outline-offset:-2px;" : "";
+                        return `<div class="mewdoku-cell" data-r="${r}" data-c="${c}" style="aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:${cellFont}px; background:${regionColor(regionId, n)}; border:1px solid var(--color-bg); box-shadow:${conflict ? "inset 0 0 0 2px var(--color-danger)" : "none"}; ${outline} filter:${dimmed ? "brightness(0.45)" : "none"}; cursor:pointer;">${hasCat ? "🐱" : ""}</div>`;
                     })
                     .join("")
             )
@@ -189,7 +215,7 @@ export const MewdokuGame = {
         this.root.innerHTML = `
             <p style="text-align:center; font-size:12px; color:var(--color-text-muted); margin-bottom:8px;">TIME: <strong id="mewdoku-timer" style="color:var(--color-accent);">${this.elapsed}</strong>s &middot; CATS: ${this.countCats()}/${n}</p>
             <div class="arcade-board" style="display:grid; grid-template-columns:repeat(${n},1fr); gap:0;">${cellsHtml}</div>
-            <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">One cat per row, column and color. Click a cell to place or remove one.</p>
+            <p style="text-align:center; font-size:10px; color:var(--color-text-muted); margin-top:8px;">One cat per row, column and color. The dashed cell only fits one color - start there. Click a cell to place or remove a cat.</p>
             ${difficultySelectorHtml("mewdoku-diff", this.difficulty)}
             <p id="mewdoku-message" style="text-align:center; font-size:17px; color:var(--color-danger); margin:14px 0 0; min-height:1.4em;">${message}</p>
             <div style="display:grid; gap:10px; max-width:200px; margin:8px auto 0;">
