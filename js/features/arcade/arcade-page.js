@@ -19,10 +19,11 @@ import { SimonGame } from "./simon-game.js";
 import { MinesweeperGame } from "./minesweeper-game.js";
 import { Game2048 } from "./2048-game.js";
 import { BreakoutGame } from "./breakout-game.js";
-import { FlappyGame } from "./flappy-game.js";
 import { InvadersGame } from "./invaders-game.js";
 import { ConnectFourGame } from "./connectfour-game.js";
 import { CheckersGame } from "./checkers-game.js";
+import { SudokuGame } from "./sudoku-game.js";
+import { MewdokuGame } from "./mewdoku-game.js";
 import { escapeHtml } from "../html-utils.js";
 
 // Inline SVG (not CSS background-images) so thumbnails can reference the
@@ -109,13 +110,26 @@ const THUMBS = {
             <circle cx="32" cy="40" r="4" fill="var(--color-text)" />
             <rect x="22" y="52" width="20" height="6" rx="2" fill="var(--color-accent)" />
         </svg>`,
-    flappy: `
+    sudoku: `
         <svg viewBox="0 0 64 64" class="arcade-thumb">
-            <rect x="4" y="4" width="10" height="24" fill="var(--color-cyan)" />
-            <rect x="4" y="40" width="10" height="20" fill="var(--color-cyan)" />
-            <rect x="50" y="4" width="10" height="14" fill="var(--color-cyan)" />
-            <rect x="50" y="30" width="10" height="30" fill="var(--color-cyan)" />
-            <circle cx="32" cy="30" r="8" fill="var(--color-accent)" />
+            <g stroke="var(--color-border)" stroke-width="1.5">
+                <rect x="6" y="6" width="52" height="52" fill="none" />
+                <line x1="23" y1="6" x2="23" y2="58" /><line x1="40" y1="6" x2="40" y2="58" />
+                <line x1="6" y1="23" x2="58" y2="23" /><line x1="6" y1="40" x2="58" y2="40" />
+            </g>
+            <text x="14" y="19" font-size="12" fill="var(--color-accent)" font-weight="bold">5</text>
+            <text x="48" y="19" font-size="12" fill="var(--color-text)" font-weight="bold">3</text>
+            <text x="31" y="36" font-size="12" fill="var(--color-cyan)" font-weight="bold">9</text>
+            <text x="14" y="53" font-size="12" fill="var(--color-text)" font-weight="bold">7</text>
+        </svg>`,
+    mewdoku: `
+        <svg viewBox="0 0 64 64" class="arcade-thumb">
+            <rect x="6" y="6" width="26" height="26" fill="var(--color-accent)" opacity="0.5" />
+            <rect x="32" y="6" width="26" height="26" fill="var(--color-cyan)" opacity="0.5" />
+            <rect x="6" y="32" width="26" height="26" fill="#a855f7" opacity="0.5" />
+            <rect x="32" y="32" width="26" height="26" fill="#22c55e" opacity="0.5" />
+            <text x="19" y="24" font-size="16" text-anchor="middle">🐱</text>
+            <text x="45" y="50" font-size="16" text-anchor="middle">🐱</text>
         </svg>`,
     invaders: `
         <svg viewBox="0 0 64 64" class="arcade-thumb">
@@ -155,8 +169,9 @@ const TIPS = {
     minesweeper: "A revealed number tells you exactly how many mines touch that cell - use it to rule out safe neighbors.",
     "2048": "Pick one corner to favor and keep pushing tiles toward it - mixing directions scatters your big numbers.",
     breakout: "Where the ball hits your paddle changes its bounce angle - aim for the edges to steer around bricks.",
-    flappy: "Small, steady taps beat one big flap - find a rhythm instead of reacting to each pipe.",
-    invaders: "Keep moving sideways while you shoot - a still target is an easy one.",
+    invaders: "Keep moving sideways while you shoot - clearing a wave starts a faster one, so keep your lives banked.",
+    sudoku: "Scan for a row, column or 3x3 box that's almost full - it usually only has one number left that fits.",
+    mewdoku: "Each cat needs its own row, column AND colored region - place one, then rule out the row/column it blocks for the rest.",
     connectfour: "Controlling the center column gives you the most ways to eventually connect four.",
     checkers: "Captures are forced - if one's available on your turn, you have to take it."
 };
@@ -171,10 +186,11 @@ const GAME_DEFS = {
     minesweeper: { name: "MINESWEEPER", module: MinesweeperGame, scoreLabel: "HIGH SCORES" },
     "2048": { name: "2048", module: Game2048, scoreLabel: "HIGH SCORES" },
     breakout: { name: "BREAKOUT", module: BreakoutGame, scoreLabel: "HIGH SCORES" },
-    flappy: { name: "FLAPPY BIT", module: FlappyGame, scoreLabel: "HIGH SCORES" },
     invaders: { name: "SPACE INVADERS", module: InvadersGame, scoreLabel: "HIGH SCORES" },
     connectfour: { name: "CONNECT FOUR", module: ConnectFourGame, scoreLabel: "BEST WIN STREAK" },
-    checkers: { name: "CHECKERS", module: CheckersGame, scoreLabel: "BEST WIN STREAK" }
+    checkers: { name: "CHECKERS", module: CheckersGame, scoreLabel: "BEST WIN STREAK" },
+    sudoku: { name: "SUDOKU", module: SudokuGame, scoreLabel: "HIGH SCORES" },
+    mewdoku: { name: "MEWDOKU", module: MewdokuGame, scoreLabel: "HIGH SCORES" }
 };
 
 // The 10 single-player games have a static (never changes mid-game) title
@@ -185,7 +201,7 @@ const GAME_DEFS = {
 // in-game header carries live match-state (mode select / vs bot / vs an
 // opponent's name) that doesn't fit a static sidebar line, and they have no
 // numeric score at all (win/lose only).
-const SCORE_GAMES = new Set(["tetris", "snake", "pong", "breakout", "flappy", "invaders", "2048"]);
+const SCORE_GAMES = new Set(["tetris", "snake", "pong", "breakout", "invaders", "2048"]);
 const CUSTOM_HEADER_GAMES = new Set(["tictactoe", "connectfour", "checkers"]);
 let fullscreenListenerWired = false;
 
